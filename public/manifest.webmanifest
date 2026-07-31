@@ -1,0 +1,21 @@
+{
+  "name": "RealEstate AI",
+  "short_name": "RE AI",
+  "description": "AI agent OS for real estate — leads, CMA, calendar, RSF knowledge, content agent.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0c0d10",
+  "theme_color": "#0c0d10",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
