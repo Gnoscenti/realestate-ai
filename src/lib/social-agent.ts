@@ -45,6 +45,9 @@ export type SocialPost = {
   visualBrief: string;
   characterCount: number;
   status: PostStatus;
+  imageUrl?: string;
+  imaginePrompt?: string;
+  mediaSource?: "mls" | "website" | "imagine" | "none";
 };
 
 export type CampaignPlan = {
@@ -379,8 +382,8 @@ export function runSocialContentAgent(input: {
         "9:00 AM",
         voiceLead(voice, "just listed"),
         `${propLine(p)}. Standouts: ${feats}. ${p?.description.slice(0, 160) ?? "Fresh to market with strong curb appeal."}`,
-        `DM “TOUR” or link in bio · ${agent}`,
-        "Hero exterior + interior collage, clean type overlay JUST LISTED",
+        `${agent} · Message TOUR for a private showing`,
+        "Hero exterior + interior collage — no view-count or fake engagement overlays",
         `Exterior of ${p?.address ?? "new listing"}`,
       );
       add(
@@ -390,7 +393,7 @@ export function runSocialContentAgent(input: {
         "12:00 PM",
         `Swipe the full story — ${p?.beds ?? 3} bed in ${neighborhood}`,
         `Slide 1: exterior\nSlide 2: kitchen/living\nSlide 3: primary suite\nSlide 4: outdoor\nSlide 5: floor-plan callout + price ${price}\n\nWhy it wins: ${feats}.`,
-        "Save this post · Book a private showing today",
+        "Book a private showing this week",
         "5-card carousel: exterior → kitchen → suite → yard → floor plan",
         `Photo tour of ${p?.title ?? "listing"}`,
       );
@@ -400,8 +403,8 @@ export function runSocialContentAgent(input: {
         1,
         "6:30 PM",
         "Hook (0–2s): “Stop scrolling if you want [neighborhood]…”",
-        `VO script:\n0–2s: Pattern interrupt on exterior\n2–8s: Walk kitchen/living — call out ${feats.split(",")[0] ?? "updates"}\n8–14s: Outdoor / view beat\n14–20s: Price ${price} + beds/baths on screen\n20–25s: CTA on-camera: “Comment TOUR and I’ll send details.”`,
-        "Caption CTA: Comment TOUR · share with a buyer friend",
+        `VO script:\n0–2s: Pattern interrupt on exterior\n2–8s: Walk kitchen/living — call out ${feats.split(",")[0] ?? "updates"}\n8–14s: Outdoor living\n14–20s: Price ${price} + beds/baths on screen\n20–25s: On-camera: “Comment TOUR for details.”`,
+        "Caption: Comment TOUR for details",
         "Vertical 9:16 walkthrough, trending audio soft luxury",
         "Video walkthrough of listing",
       );
@@ -412,7 +415,7 @@ export function runSocialContentAgent(input: {
         "10:00 AM",
         `NEW LISTING · ${p?.address ?? neighborhood}`,
         `${p?.beds ?? "—"} bed / ${p?.baths ?? "—"} bath · ${p?.sqft?.toLocaleString() ?? "—"} sqft · ${price}\n\n${p?.description.slice(0, 220) ?? "Reach out for the full feature sheet."}\n\nHighlights: ${feats}.`,
-        "Comment or message for a private tour this week.",
+        "Message for a private tour this week.",
         "Wide listing graphic with map pin + price",
         `Facebook listing card for ${p?.address ?? "property"}`,
       );
@@ -423,7 +426,7 @@ export function runSocialContentAgent(input: {
         "8:00 AM",
         `Listing insight: ${neighborhood} inventory worth a look`,
         `I just brought ${p?.title ?? "a property"} live at ${price}.\n\nFor buyer-clients: ${feats} matter for both livability and resale.\n\nFor my network: if you know a relocating household targeting ${neighborhood}, happy to share the CMA context behind the list price — not just portal photos.`,
-        "Comment or DM for the one-pager.",
+        "DM for the one-pager.",
         "Professional listing photo + subtle market chart inset",
         "LinkedIn market listing post",
       );
@@ -433,8 +436,8 @@ export function runSocialContentAgent(input: {
         1,
         "7:00 PM",
         "POV: you finally found the one in " + neighborhood,
-        `Beat sheet:\n• Cold open: door open reveal\n• Text overlay: ${p?.beds}BD · ${price}\n• 3 quick cuts: kitchen, light, outdoor\n• End card: “Link in bio / DM TOUR”`,
-        "Follow for more " + neighborhood + " drops",
+        `Beat sheet:\n• Cold open: door open reveal\n• Text overlay: ${p?.beds}BD · ${price}\n• 3 quick cuts: kitchen, light, outdoor\n• End card: “DM TOUR for details”`,
+        "Follow for more " + neighborhood + " homes",
         "Fast cuts, natural light, on-screen captions",
         "TikTok listing teaser",
       );
@@ -445,7 +448,7 @@ export function runSocialContentAgent(input: {
         "11:00 AM",
         `Just listed · ${neighborhood}`,
         `${p?.beds ?? "—"}bd ${price}. ${feats.split(",")[0] ?? "Updated"}.`,
-        "DM for details.",
+        "Message for details.",
         "Single hero still",
         "Tweet listing announce",
       );
@@ -514,7 +517,7 @@ export function runSocialContentAgent(input: {
         1,
         "9:00 AM",
         `Open house ${when}`,
-        `${neighborhood} · ${p?.beds ?? "—"}bd · ${price || "see listing"}`,
+        `${neighborhood} · ${p?.beds ?? "—"}bd${price ? ` · ${price}` : ""}`,
         "Reply OPEN for address pin.",
         "Map thumbnail",
         "OH tweet",
@@ -874,7 +877,7 @@ export function runSocialContentAgent(input: {
     ],
     strategy: [
       "Hook in first line — portal scrollers decide in <2s",
-      "One CTA per post (keyword DM or single link)",
+      "One clear CTA per post — no fake view counts or “000 views” overlays",
       "Alternate education vs inventory so feed isn’t all listing spam",
       "Repurpose: carousel → stories → short reel script from same asset pack",
       "Log every DM keyword into Lead Intelligence same day",

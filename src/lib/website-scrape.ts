@@ -36,6 +36,16 @@ export type ScrapedListing = {
   type?: Property["type"];
 };
 
+
+function isJunkListingTitle(title?: string): boolean {
+  const t = (title || "").trim().toLowerCase();
+  if (!t) return true;
+  return /^(view\s*listing|view\s*property|see\s*listing|listing|details|learn more|click here|000|\d{1,3})$/i.test(
+    t,
+  );
+}
+
+
 export type WebsiteScrapeResult = {
   ok: boolean;
   sourceUrl: string;
@@ -264,10 +274,14 @@ function fromJsonLd(
             : undefined;
       const url =
         typeof o.url === "string" ? absolutize(baseUrl, o.url) : undefined;
-      if (price > 50000 || address.length > 8 || name.length > 5) {
+      if (
+        (price > 50000 || address.length > 8 || name.length > 5) &&
+        !(isJunkListingTitle(name) && isJunkListingTitle(address))
+      ) {
+        const title = isJunkListingTitle(name) ? address || "Listing" : name || address || "Listing";
         listings.push({
-          title: name || address || "Listing",
-          address: address || name,
+          title,
+          address: isJunkListingTitle(address) ? title : address || name,
           city: city || undefined,
           price: price || 0,
           beds,
@@ -512,6 +526,7 @@ export function scoreInternalLinks(
     .map((x) => x.url);
 }
 
+
 export function scrapedListingsToProperties(
   listings: ScrapedListing[],
   agentName: string,
@@ -526,10 +541,16 @@ export function scrapedListingsToProperties(
       l.city ||
       areaFallback.split(",")[0]?.trim() ||
       "Market";
+    const rawTitle = l.title || l.address || "Listing";
+    const title = isJunkListingTitle(rawTitle)
+      ? (l.address && !isJunkListingTitle(l.address) ? l.address : "Listing")
+      : rawTitle;
+    const address =
+      l.address && !isJunkListingTitle(l.address) ? l.address : title;
     return {
       id: uid("web"),
-      title: l.title || l.address,
-      address: l.address || l.title,
+      title,
+      address,
       neighborhood: l.neighborhood || city,
       city,
       price,
@@ -553,9 +574,20 @@ export function scrapedListingsToProperties(
       mlsNumber: l.mlsNumber,
       listingSide: "mine" as const,
       listAgentName: agentName,
+      imageUrl: l.imageUrl,
+      photoUrls: l.imageUrl ? [l.imageUrl] : [],
     };
+  }).filter((prop) => {
+    if (isJunkListingTitle(prop.title) && isJunkListingTitle(prop.address))
+      return false;
+    return Boolean(
+      (prop.address && !isJunkListingTitle(prop.address)) ||
+        prop.price > 0 ||
+        prop.mlsNumber,
+    );
   });
 }
+
 
 /** Build a safe empty result */
 export function emptyScrape(url: string, error?: string): WebsiteScrapeResult {

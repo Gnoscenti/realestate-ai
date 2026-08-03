@@ -107,3 +107,27 @@ describe("seed detectors (regression: no fake book)", () => {
     expect(looksLikeSeedLead(lead)).toBe(false);
   });
 });
+
+
+describe("junk listing titles", () => {
+  it("drops View Listing / 000 labels", () => {
+    const props = scrapedListingsToProperties(
+      [
+        { title: "View Listing", address: "View Listing", price: 0, status: "active" },
+        { title: "000", address: "000", price: 0, status: "active" },
+        {
+          title: "123 Covenant Ln",
+          address: "123 Covenant Ln",
+          price: 3200000,
+          status: "active",
+          imageUrl: "https://example.com/a.jpg",
+        },
+      ],
+      "Agent",
+      "Rancho Santa Fe",
+    );
+    expect(props).toHaveLength(1);
+    expect(props[0]!.title).toMatch(/Covenant/);
+    expect(props[0]!.imageUrl).toBeTruthy();
+  });
+});

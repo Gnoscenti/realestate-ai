@@ -65,7 +65,11 @@ export interface Property {
   /** Who owns the listing in the agent's book */
   listingSide?: "mine" | "office" | "market";
   listAgentName?: string;
+  /** Hero / gallery from website scrape or MLS media */
+  photoUrls?: string[];
+  imageUrl?: string;
 }
+
 
 export interface Deal {
   id: string;

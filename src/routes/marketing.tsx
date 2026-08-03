@@ -52,6 +52,10 @@ import {
 } from "@/lib/social-agent";
 import { myListings } from "@/lib/mls";
 import { cn } from "@/lib/utils";
+import { attachMediaToPosts, buildImaginePrompt, pickListingMedia } from "@/lib/imagine-media";
+import { SOCIAL_NETWORKS, networkForPlatform } from "@/lib/social-accounts";
+import { Image as ImageIcon, Link2, Power } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 const searchSchema = z.object({
   goal: z.string().optional(),
@@ -83,6 +87,12 @@ function MarketingPage() {
   const saveCampaign = useAppStore((s) => s.saveCampaign);
   const setCampaignPostStatus = useAppStore((s) => s.setCampaignPostStatus);
   const deleteCampaign = useAppStore((s) => s.deleteCampaign);
+  const socialAccounts = useAppStore((s) => s.socialAccounts);
+  const connectSocialAccount = useAppStore((s) => s.connectSocialAccount);
+  const disconnectSocialAccount = useAppStore((s) => s.disconnectSocialAccount);
+  const setSocialAutoPost = useAppStore((s) => s.setSocialAutoPost);
+  const [handleDrafts, setHandleDrafts] = useState<Record<string, string>>({});
+  const [imagineBusy, setImagineBusy] = useState(false);
 
   const book = useMemo(() => {
     const mine = myListings(properties);
@@ -198,7 +208,7 @@ function MarketingPage() {
       : undefined;
     const area = profile?.areaOfOperations || property?.city || "your market";
 
-    const plan = runSocialContentAgent({
+    let plan = runSocialContentAgent({
       goal,
       platforms,
       voice,
@@ -210,15 +220,43 @@ function MarketingPage() {
       openHouseWhen: "Sat 1–4 PM",
     });
 
-    // Inject website into CTAs where useful
+    // Attach listing / website photos + Imagine prompts (no fake view-count overlays)
+    plan = {
+      ...plan,
+      posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
+    };
+
+    // Inject website into CTAs where useful — never "000 view listing" junk
     if (site) {
       plan.posts = plan.posts.map((p) => ({
         ...p,
-        cta: p.cta.includes("link in bio")
-          ? p.cta
-          : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
+        cta: /view listing|000 view/i.test(p.cta)
+          ? `Message for details · ${site}`
+          : p.cta.includes("link in bio")
+            ? p.cta
+            : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
       }));
     }
+    plan.posts = plan.posts.map((p) => ({
+      ...p,
+      hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+      body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+      cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
+      visualBrief: p.visualBrief
+        .replace(/JUST LISTED/gi, "New to market")
+        .replace(/view count|000 views|fake engagement/gi, "")
+        .trim(),
+    }));
+
+    // Auto-queue posts for networks with autoPost ON
+    plan.posts = plan.posts.map((p) => {
+      const net = networkForPlatform(p.platform);
+      const acct = socialAccounts.find((a) => a.id === net);
+      if (acct?.connected && acct.autoPost) {
+        return { ...p, status: "queued" as const };
+      }
+      return p;
+    });
 
     saveCampaign(plan);
     setActivePlan(plan);
@@ -638,6 +676,23 @@ function MarketingPage() {
                             </Button>
                           </CardHeader>
                           <CardContent className="space-y-4">
+                            {selectedPost.imageUrl && (
+                              <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+                                <img
+                                  src={selectedPost.imageUrl}
+                                  alt={selectedPost.altText}
+                                  className="max-h-56 w-full object-cover"
+                                  crossOrigin="anonymous"
+                                />
+                                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                                  {selectedPost.mediaSource === "imagine"
+                                    ? "Grok Imagine"
+                                    : selectedPost.mediaSource === "mls"
+                                      ? "MLS photo"
+                                      : "Website photo"}
+                                </div>
+                              </div>
+                            )}
                             <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm leading-relaxed text-[var(--color-fg)] font-sans">
                               {composeFullCaption(selectedPost)}
                             </pre>
@@ -866,6 +921,208 @@ function MarketingPage() {
               )}
             </TabsContent>
           </Tabs>
+
+
+            <TabsContent value="accounts" className="space-y-4">
+              <Card className="glass-card border-0">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Link2 className="h-4 w-4 text-[var(--color-primary)]" />
+                    Connected accounts
+                  </CardTitle>
+                  <CardDescription>
+                    Connect each network, then use the Auto-post switch when you want
+                    approved content queued automatically. You stay in control.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {socialAccounts.map((acct) => {
+                    const meta = SOCIAL_NETWORKS.find((n) => n.id === acct.id)!;
+                    return (
+                      <div
+                        key={acct.id}
+                        className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-[var(--color-fg)]">
+                            {acct.label}
+                          </div>
+                          {acct.connected ? (
+                            <div className="text-xs text-[var(--color-fg-muted)]">
+                              Connected as {acct.handle}
+                            </div>
+                          ) : (
+                            <Input
+                              className="mt-1.5 h-10 max-w-xs"
+                              placeholder={meta.placeholder}
+                              value={handleDrafts[acct.id] ?? ""}
+                              onChange={(e) =>
+                                setHandleDrafts((d) => ({
+                                  ...d,
+                                  [acct.id]: e.target.value,
+                                }))
+                              }
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {acct.connected && (
+                            <button
+                              type="button"
+                              className={cn(
+                                "flex min-h-[40px] items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
+                                acct.autoPost
+                                  ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
+                                  : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
+                              )}
+                              onClick={() => {
+                                setSocialAutoPost(acct.id, !acct.autoPost);
+                                toast.message(
+                                  acct.autoPost
+                                    ? `${acct.label} auto-post off`
+                                    : `${acct.label} auto-post on — approved posts queue automatically`,
+                                );
+                              }}
+                            >
+                              <Power className="h-3.5 w-3.5" />
+                              Auto-post {acct.autoPost ? "ON" : "OFF"}
+                            </button>
+                          )}
+                          {acct.connected ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                disconnectSocialAccount(acct.id);
+                                toast.message(`${acct.label} disconnected`);
+                              }}
+                            >
+                              Disconnect
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const h = (handleDrafts[acct.id] || "").trim();
+                                if (!h) {
+                                  toast.error("Enter a handle or page name");
+                                  return;
+                                }
+                                connectSocialAccount(acct.id, h);
+                                toast.success(`${acct.label} connected`);
+                              }}
+                            >
+                              Connect
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              <Card className="glass-card border-0">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ImageIcon className="h-4 w-4 text-[var(--color-primary)]" />
+                    Grok Imagine + listing photos
+                  </CardTitle>
+                  <CardDescription>
+                    AI picks photos from your website or MLS listing. When no photo
+                    exists, a Grok Imagine prompt is prepared for creative generation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {(() => {
+                    const pick = pickListingMedia(property, profile?.photoUrl);
+                    return (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+                          {pick.imageUrl ? (
+                            <img
+                              src={pick.imageUrl}
+                              alt={property?.title || "Listing"}
+                              className="h-44 w-full object-cover"
+                              crossOrigin="anonymous"
+                            />
+                          ) : (
+                            <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
+                              No website/MLS photo yet — Imagine will create from facts
+                            </div>
+                          )}
+                          <div className="p-3 text-xs text-[var(--color-fg-muted)]">
+                            Source: <strong className="text-[var(--color-fg)]">{pick.source}</strong>
+                            {" · "}
+                            {pick.reason}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
+                            Imagine prompt
+                          </div>
+                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
+                            {pick.imaginePrompt}
+                          </pre>
+                          <Button
+                            className="min-h-[44px] w-full"
+                            disabled={!activePlan || imagineBusy}
+                            onClick={() => {
+                              if (!activePlan) {
+                                toast.message("Run the Content Agent first");
+                                return;
+                              }
+                              setImagineBusy(true);
+                              const prompt = buildImaginePrompt(property, pick.imageUrl ? "enhance" : "create");
+                              const next = {
+                                ...activePlan,
+                                posts: activePlan.posts.map((post) => ({
+                                  ...post,
+                                  imaginePrompt: prompt,
+                                  mediaSource: pick.imageUrl
+                                    ? (post.mediaSource ?? pick.source)
+                                    : ("imagine" as const),
+                                  imageUrl: pick.imageUrl || post.imageUrl,
+                                  visualBrief: pick.imageUrl
+                                    ? `${post.visualBrief} · AI-selected listing photo`
+                                    : `Grok Imagine · ${prompt.slice(0, 100)}…`,
+                                })),
+                              };
+                              saveCampaign(next);
+                              setActivePlan(next);
+                              setImagineBusy(false);
+                              toast.success(
+                                pick.imageUrl
+                                  ? "AI applied listing photos to this campaign"
+                                  : "Imagine prompts attached — generate creatives from the brief",
+                              );
+                            }}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            {property?.photoUrls?.length || property?.imageUrl
+                              ? "Use AI-picked listing photos"
+                              : "Attach Grok Imagine prompts"}
+                          </Button>
+                          {property?.photoUrls && property.photoUrls.length > 1 && (
+                            <div className="flex gap-2 overflow-x-auto pt-1">
+                              {property.photoUrls.slice(0, 6).map((url) => (
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-[var(--color-border)]"
+                                  crossOrigin="anonymous"
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
           <Card className="border-[color-mix(in_oklab,var(--color-accent)_20%,var(--color-border))]">
             <CardContent className="flex gap-3 p-4">

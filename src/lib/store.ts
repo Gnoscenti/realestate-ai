@@ -19,6 +19,8 @@ import {
 import { pullActiveListingsFromMls } from "@/lib/mls";
 import type { MlsConnection } from "@/lib/mls-platforms";
 import type { EmailAlert, EmailConnection } from "@/lib/email-alerts";
+import type { SocialAccountConnection, SocialNetworkId } from "@/lib/social-accounts";
+import { defaultSocialAccounts } from "@/lib/social-accounts";
 import {
   buildDemoInboxScan,
   messagesToAlerts,
@@ -98,6 +100,7 @@ interface AppState {
   tourStepIndex: number;
   emailAlerts: EmailAlert[];
   emailConnection: EmailConnection | null;
+  socialAccounts: SocialAccountConnection[];
 
   setSidebarCollapsed: (v: boolean) => void;
   setHydrated: (v: boolean) => void;
@@ -116,6 +119,9 @@ interface AppState {
   markAlertRead: (id: string) => void;
   markAllAlertsRead: () => void;
   dismissAlert: (id: string) => void;
+  connectSocialAccount: (id: SocialNetworkId, handle: string) => void;
+  disconnectSocialAccount: (id: SocialNetworkId) => void;
+  setSocialAutoPost: (id: SocialNetworkId, autoPost: boolean) => void;
   completePriority: (id: string) => void;
   clearCompletedPriorities: () => void;
 
@@ -309,6 +315,7 @@ export const useAppStore = create<AppState>()(
       tourStepIndex: 0,
       emailAlerts: [],
       emailConnection: null,
+      socialAccounts: defaultSocialAccounts(),
 
       setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
       setHydrated: (v) => set({ hydrated: v }),
@@ -441,6 +448,42 @@ export const useAppStore = create<AppState>()(
       dismissAlert: (id) => {
         set((s) => ({
           emailAlerts: s.emailAlerts.filter((a) => a.id !== id),
+        }));
+      },
+
+      connectSocialAccount: (id, handle) => {
+        set((s) => ({
+          socialAccounts: s.socialAccounts.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  connected: true,
+                  handle: handle.trim() || a.handle || a.label,
+                  connectedAt: new Date().toISOString(),
+                }
+              : a,
+          ),
+        }));
+      },
+      disconnectSocialAccount: (id) => {
+        set((s) => ({
+          socialAccounts: s.socialAccounts.map((a) =>
+            a.id === id
+              ? { ...a, connected: false, autoPost: false, handle: "" }
+              : a,
+          ),
+        }));
+      },
+      setSocialAutoPost: (id, autoPost) => {
+        set((s) => ({
+          socialAccounts: s.socialAccounts.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  autoPost: a.connected ? autoPost : false,
+                }
+              : a,
+          ),
         }));
       },
 
@@ -1475,7 +1518,7 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: "realestate-ai-workspace-v11",
+      name: "realestate-ai-workspace-v12",
       skipHydration: true,
       partialize: (s) => ({
         leads: s.leads,
@@ -1500,6 +1543,7 @@ export const useAppStore = create<AppState>()(
         tourCompleted: s.tourCompleted,
         emailAlerts: s.emailAlerts,
         emailConnection: s.emailConnection,
+        socialAccounts: s.socialAccounts,
       }),
     },
   ),
@@ -1524,6 +1568,7 @@ export function rehydrateStore() {
       if (st.tourStepIndex == null) patch.tourStepIndex = 0;
       if (!st.emailAlerts) patch.emailAlerts = [];
       if (st.emailConnection === undefined) patch.emailConnection = null;
+      if (!st.socialAccounts) patch.socialAccounts = defaultSocialAccounts();
       if (!st.billing) patch.billing = emptyBilling();
       if (!st.feedback)
         patch.feedback = SEED_FEEDBACK.map((f) => ({
