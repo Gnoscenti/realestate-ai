@@ -10,14 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as CmaRouteImport } from './routes/cma'
+import { Route as EdgeRouteImport } from './routes/edge'
 import { Route as FeedbackRouteImport } from './routes/feedback'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as MarketRouteImport } from './routes/market'
 import { Route as MarketingRouteImport } from './routes/marketing'
+import { Route as MlsRouteImport } from './routes/mls'
 import { Route as OutreachRouteImport } from './routes/outreach'
 import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
@@ -26,6 +29,11 @@ import { Route as TransactionsRouteImport } from './routes/transactions'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlertsRoute = AlertsRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BillingRoute = BillingRouteImport.update({
@@ -41,6 +49,11 @@ const CalendarRoute = CalendarRouteImport.update({
 const CmaRoute = CmaRouteImport.update({
   id: '/cma',
   path: '/cma',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EdgeRoute = EdgeRouteImport.update({
+  id: '/edge',
+  path: '/edge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedbackRoute = FeedbackRouteImport.update({
@@ -68,6 +81,11 @@ const MarketingRoute = MarketingRouteImport.update({
   path: '/marketing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MlsRoute = MlsRouteImport.update({
+  id: '/mls',
+  path: '/mls',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OutreachRoute = OutreachRouteImport.update({
   id: '/outreach',
   path: '/outreach',
@@ -91,14 +109,17 @@ const TransactionsRoute = TransactionsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
   '/outreach': typeof OutreachRoute
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
@@ -106,14 +127,17 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
   '/outreach': typeof OutreachRoute
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
@@ -122,14 +146,17 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
   '/outreach': typeof OutreachRoute
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
@@ -139,14 +166,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/alerts'
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/edge'
     | '/feedback'
     | '/knowledge'
     | '/leads'
     | '/market'
     | '/marketing'
+    | '/mls'
     | '/outreach'
     | '/properties'
     | '/search'
@@ -154,14 +184,17 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/alerts'
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/edge'
     | '/feedback'
     | '/knowledge'
     | '/leads'
     | '/market'
     | '/marketing'
+    | '/mls'
     | '/outreach'
     | '/properties'
     | '/search'
@@ -169,14 +202,17 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/alerts'
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/edge'
     | '/feedback'
     | '/knowledge'
     | '/leads'
     | '/market'
     | '/marketing'
+    | '/mls'
     | '/outreach'
     | '/properties'
     | '/search'
@@ -185,14 +221,17 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AlertsRoute: typeof AlertsRoute
   BillingRoute: typeof BillingRoute
   CalendarRoute: typeof CalendarRoute
   CmaRoute: typeof CmaRoute
+  EdgeRoute: typeof EdgeRoute
   FeedbackRoute: typeof FeedbackRoute
   KnowledgeRoute: typeof KnowledgeRoute
   LeadsRoute: typeof LeadsRoute
   MarketRoute: typeof MarketRoute
   MarketingRoute: typeof MarketingRoute
+  MlsRoute: typeof MlsRoute
   OutreachRoute: typeof OutreachRoute
   PropertiesRoute: typeof PropertiesRoute
   SearchRoute: typeof SearchRoute
@@ -206,6 +245,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts': {
+      id: '/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/billing': {
@@ -227,6 +273,13 @@ declare module '@tanstack/react-router' {
       path: '/cma'
       fullPath: '/cma'
       preLoaderRoute: typeof CmaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/edge': {
+      id: '/edge'
+      path: '/edge'
+      fullPath: '/edge'
+      preLoaderRoute: typeof EdgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feedback': {
@@ -264,6 +317,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mls': {
+      id: '/mls'
+      path: '/mls'
+      fullPath: '/mls'
+      preLoaderRoute: typeof MlsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/outreach': {
       id: '/outreach'
       path: '/outreach'
@@ -297,14 +357,17 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AlertsRoute: AlertsRoute,
   BillingRoute: BillingRoute,
   CalendarRoute: CalendarRoute,
   CmaRoute: CmaRoute,
+  EdgeRoute: EdgeRoute,
   FeedbackRoute: FeedbackRoute,
   KnowledgeRoute: KnowledgeRoute,
   LeadsRoute: LeadsRoute,
   MarketRoute: MarketRoute,
   MarketingRoute: MarketingRoute,
+  MlsRoute: MlsRoute,
   OutreachRoute: OutreachRoute,
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,

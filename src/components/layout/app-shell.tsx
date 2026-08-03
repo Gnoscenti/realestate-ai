@@ -21,6 +21,9 @@ import {
   Calendar,
   MessageSquare,
   CreditCard,
+  Link2,
+  Swords,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -36,12 +39,38 @@ import { IosTabBar } from "@/components/layout/ios-tab-bar";
 import { initNativeShell } from "@/lib/native";
 import { Paywall } from "@/components/billing/paywall";
 import { hasAppAccess } from "@/lib/billing";
+import { ProductTour, TourHelpButton } from "@/components/onboarding/product-tour";
+import { HoverHint } from "@/components/ui/hover-hint";
+import { syncNotificationBadges } from "@/lib/app-badge";
+import { unreadCount as emailUnreadCount } from "@/lib/email-alerts";
+
+
+
+const NAV_HINTS: Record<string, string> = {
+  "/": "Start here each day — ranked work for you",
+  "/outreach": "Reply to new leads in seconds",
+  "/leads": "Your real clients & prospects",
+  "/search": "Find homes by criteria",
+  "/cma": "Comps & listing value stories",
+  "/knowledge": "Local market talking points",
+  "/calendar": "Appointments + trusted vendors",
+  "/market": "Market trends & valuation views",
+  "/transactions": "Deals from offer to close",
+  "/properties": "Your listing book",
+  "/mls": "Connect real MLS feeds or website",
+  "/marketing": "Social posts from your listings",
+  "/feedback": "Tell us what to improve",
+  "/billing": "Trial, plan & access codes",
+  "/edge": "How we beat FUB, kvCORE, Ylopo & portals",
+  "/alerts": "DocuSign, client & deal emails",
+};
 
 type NavItem = {
   to: string;
   label: string;
   icon: LucideIcon;
   exact?: boolean;
+  tour?: string;
 };
 
 const NAV: NavItem[] = [
@@ -55,51 +84,89 @@ const NAV: NavItem[] = [
   { to: "/market", label: "Market & Valuation", icon: TrendingUp },
   { to: "/transactions", label: "Transaction Hub", icon: FileText },
   { to: "/properties", label: "Property Mgmt", icon: Building2 },
+  { to: "/mls", label: "MLS Hub", icon: Link2 },
   { to: "/marketing", label: "Content Agent", icon: Megaphone },
   { to: "/feedback", label: "Feedback Board", icon: MessageSquare },
   { to: "/billing", label: "Billing & Access", icon: CreditCard },
+  { to: "/edge", label: "Edge Playbook", icon: Swords },
+  { to: "/alerts", label: "Email Alerts", icon: Bell },
 ];
 
 function NavItems({
   onNavigate,
   collapsed,
+  alertUnread = 0,
 }: {
   onNavigate?: () => void;
   collapsed?: boolean;
+  alertUnread?: number;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <nav className="flex flex-col gap-0.5 px-2">
+    <nav className="flex flex-col gap-0.5 px-2" data-tour="nav-sidebar">
       {NAV.map((item) => {
         const active = item.exact
           ? pathname === item.to
           : pathname === item.to || pathname.startsWith(item.to + "/");
         const Icon = item.icon;
         return (
-          <Link
+          <HoverHint
             key={item.to}
-            to={item.to}
-            onClick={onNavigate}
-            className={cn(
-              "group flex min-h-[44px] items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm font-medium transition-[background-color,color] duration-150",
-              active
-                ? "bg-[var(--color-primary-soft)] text-[var(--color-primary)]"
-                : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
-              collapsed && "justify-center px-2",
-            )}
-            title={collapsed ? item.label : undefined}
+            label={NAV_HINTS[item.to] ?? item.label}
+            side="right"
+            className="w-full"
           >
-            <Icon
+            <Link
+              to={item.to}
+              onClick={onNavigate}
+              data-tour={
+                item.to === "/"
+                  ? "nav-command"
+                  : item.to === "/outreach"
+                    ? "nav-outreach"
+                    : item.to === "/leads"
+                      ? "nav-leads"
+                      : item.to === "/mls"
+                        ? "nav-mls"
+                        : item.to === "/marketing"
+                          ? "nav-marketing"
+                          : item.to === "/calendar"
+                            ? "nav-calendar"
+                            : undefined
+              }
               className={cn(
-                "h-[18px] w-[18px] shrink-0",
+                "group relative flex min-h-[44px] w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-150",
                 active
-                  ? "text-[var(--color-primary)]"
-                  : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg-muted)]",
+                  ? "bg-[var(--color-primary-soft)] text-[var(--color-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-primary)_25%,transparent)]"
+                  : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
+                collapsed && "justify-center px-2",
               )}
-            />
-            {!collapsed && <span className="truncate">{item.label}</span>}
-          </Link>
+              title={collapsed ? item.label : undefined}
+            >
+              <Icon
+                className={cn(
+                  "h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110",
+                  active
+                    ? "text-[var(--color-primary)]"
+                    : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg-muted)]",
+                )}
+              />
+              {!collapsed && (
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate">{item.label}</span>
+                  {item.to === "/alerts" && alertUnread > 0 && (
+                    <span className="nav-alert-dot ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-bold text-white">
+                      {alertUnread > 9 ? "9+" : alertUnread}
+                    </span>
+                  )}
+                </span>
+              )}
+              {collapsed && item.to === "/alerts" && alertUnread > 0 && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--color-danger)]" />
+              )}
+            </Link>
+          </HoverHint>
         );
       })}
     </nav>
@@ -139,17 +206,51 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const properties = useAppStore((s) => s.properties);
   const memory = useAppStore((s) => s.agentMemory);
   const syncMls = useAppStore((s) => s.syncMlsListings);
+  const resyncFromWebsite = useAppStore((s) => s.resyncFromWebsite);
+  const syncAllMls = useAppStore((s) => s.syncAllMls);
+  const mlsConnections = useAppStore((s) => s.mlsConnections);
   const hotCount = useAppStore(
     (s) => s.leads.filter((l) => l.heat === "hot").length,
   );
   const myBook = myListings(properties).length;
   const billing = useAppStore((s) => s.billing);
   const accessOk = hasAppAccess(billing);
+  const tourCompleted = useAppStore((s) => s.tourCompleted);
+  const tourActive = useAppStore((s) => s.tourActive);
+  const startTour = useAppStore((s) => s.startTour);
+  const emailAlerts = useAppStore((s) => s.emailAlerts);
+  const emailConnection = useAppStore((s) => s.emailConnection);
+  const scanEmailInbox = useAppStore((s) => s.scanEmailInbox);
+  const alertUnread = emailUnreadCount(emailAlerts);
 
   useEffect(() => {
     rehydrateStore();
     void initNativeShell();
   }, []);
+
+  // First visit after unlock — guided glass tour
+  useEffect(() => {
+    if (!hydrated || !onboarded || !accessOk) return;
+    if (tourCompleted || tourActive) return;
+    const t = window.setTimeout(() => startTour(), 600);
+    return () => window.clearTimeout(t);
+  }, [hydrated, onboarded, accessOk, tourCompleted, tourActive, startTour]);
+
+  // App icon + favicon notification dots
+  useEffect(() => {
+    if (!hydrated || !accessOk) return;
+    void syncNotificationBadges(alertUnread);
+  }, [hydrated, accessOk, alertUnread]);
+
+  // Periodic inbox scan when connected
+  useEffect(() => {
+    if (!hydrated || !onboarded || !accessOk || !emailConnection) return;
+    void scanEmailInbox({});
+    const id = window.setInterval(() => {
+      void scanEmailInbox({});
+    }, 3 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [hydrated, onboarded, accessOk, emailConnection?.email, scanEmailInbox]);
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,7 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[var(--color-bg)] text-[var(--color-fg-muted)]">
+      <div className="flex min-h-dvh items-center justify-center bg-transparent text-[var(--color-fg-muted)]">
         <div className="text-sm">Loading workspace…</div>
       </div>
     );
@@ -184,10 +285,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh bg-[var(--color-bg)] text-[var(--color-fg)]">
+    <div className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-[width] duration-200 md:flex",
+          "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",
           collapsed ? "w-[72px]" : "w-[240px]",
         )}
         style={{ paddingTop: "env(safe-area-inset-top)" }}
@@ -209,7 +310,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto py-3">
-          <NavItems collapsed={collapsed} />
+          <NavItems collapsed={collapsed} alertUnread={alertUnread} />
         </div>
         {!collapsed && (
           <div
@@ -224,16 +325,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClick={() => setEditProfile(true)}
                 className="flex min-h-[44px] w-full items-center gap-2.5 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-2.5 text-left transition-colors hover:bg-[var(--color-surface-2)]"
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-xs font-semibold text-[var(--color-primary)]">
-                  {initials(profile.name)}
-                </div>
+                {profile.photoUrl ? (
+                  <img
+                    src={profile.photoUrl}
+                    alt=""
+                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-xs font-semibold text-[var(--color-primary)]">
+                    {initials(profile.name)}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium text-[var(--color-fg)]">
                     {profile.name}
                   </div>
                   <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">
-                    {profile.areaOfOperations}
+                    {profile.phone || profile.areaOfOperations}
                   </div>
+                  {profile.agentMlsId && (
+                    <div className="truncate text-[10px] text-[var(--color-primary)]">
+                      MLS/Lic {profile.agentMlsId}
+                    </div>
+                  )}
                 </div>
                 <Settings2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-fg-subtle)]" />
               </button>
@@ -259,7 +373,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
-          className="sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg)_88%,transparent)] px-3 backdrop-blur-md sm:px-5"
+          className="glass-header sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg)_88%,transparent)] px-3 backdrop-blur-md sm:px-5"
           style={{
             paddingTop: "max(0.5rem, env(safe-area-inset-top))",
             minHeight: "calc(4rem + env(safe-area-inset-top))",
@@ -289,7 +403,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="overflow-y-auto py-3"
                 style={{ maxHeight: "calc(100dvh - 8rem)" }}
               >
-                <NavItems onNavigate={() => setMobileOpen(false)} />
+                <NavItems onNavigate={() => setMobileOpen(false)} alertUnread={alertUnread} />
               </div>
               {profile && (
                 <div
@@ -336,18 +450,54 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </form>
 
           {profile && (
+            <>
             <Button
+              variant="ghost"
+              size="icon"
+              className="relative min-h-[44px] min-w-[44px]"
+              data-tour="alerts-bell"
+              title="Email alerts"
+              onClick={() => navigate({ to: "/alerts" })}
+            >
+              <Bell className="h-4 w-4" />
+              {alertUnread > 0 && (
+                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[9px] font-bold text-white ring-2 ring-[var(--color-bg)]">
+                  {alertUnread > 9 ? "9+" : alertUnread}
+                </span>
+              )}
+            </Button>
+            <Button data-tour="sync-btn"
               size="sm"
               variant="outline"
               className="hidden min-h-[44px] shrink-0 sm:inline-flex"
               onClick={() => {
-                syncMls();
-                toast.success("MLS listings refreshed");
+                void (async () => {
+                  if (mlsConnections.length) {
+                    const r = await syncAllMls();
+                    if (r.errors.length) toast.message(r.errors[0]!);
+                    else toast.success(`MLS synced · ${r.listings} listing(s)`);
+                    return;
+                  }
+                  if (profile.website) {
+                    const r = await resyncFromWebsite();
+                    if (r.error) toast.message(r.error);
+                    else
+                      toast.success(
+                        r.listings
+                          ? `Website synced · ${r.listings} listing(s)`
+                          : "Website scanned — no new listings",
+                      );
+                    return;
+                  }
+                  toast.message("Connect a platform in MLS Hub");
+                  navigate({ to: "/mls" });
+                })();
               }}
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              Sync MLS
+              {mlsConnections.length ? "Sync MLS" : profile.website ? "Sync site" : "MLS Hub"}
             </Button>
+            </>
           )}
 
           <Badge variant="secondary" className="hidden sm:inline-flex">
@@ -359,7 +509,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        <IosTabBar />
+        <ProductTour />
+      <TourHelpButton />
+      <IosTabBar />
       </div>
     </div>
   );

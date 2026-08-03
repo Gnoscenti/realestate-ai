@@ -47,6 +47,7 @@ import {
 } from "@/lib/priorities";
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { buildDailyEdgeBrief } from "@/lib/competitors";
 
 export const Route = createFileRoute("/")({
   component: DashboardPage,
@@ -186,9 +187,10 @@ function DashboardPage() {
       </div>
 
       <QuickStats />
+      <EdgeBriefBar />
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="space-y-4 lg:col-span-5">
+        <div className="space-y-4 lg:col-span-5" data-tour="action-desk">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="font-display text-lg font-semibold tracking-tight">
@@ -216,7 +218,7 @@ function DashboardPage() {
                     type="button"
                     onClick={() => setSelectedId(item.id)}
                     className={cn(
-                      "w-full rounded-[var(--radius-lg)] border p-3 text-left transition-colors",
+                      "glass-card w-full p-3 text-left transition-[transform,background-color,border-color] duration-150 hover:-translate-y-0.5",
                       active
                         ? "border-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-border))] bg-[var(--color-surface)]"
                         : "border-[var(--color-border)] bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface-2)]/50",
@@ -385,6 +387,51 @@ function DashboardPage() {
           <RecentActivity />
           <ModuleGrid />
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function EdgeBriefBar() {
+  const profile = useAppStore((s) => s.agentProfile);
+  const leads = useAppStore((s) => s.leads);
+  const properties = useAppStore((s) => s.properties);
+  const deals = useAppStore((s) => s.deals);
+  const mlsConnections = useAppStore((s) => s.mlsConnections);
+  const brief = buildDailyEdgeBrief({
+    agentName: profile?.name,
+    newLeadCount: leads.filter((l) => l.status === "new").length,
+    hotLeadCount: leads.filter((l) => l.heat === "hot").length,
+    listingCount: properties.filter((p) =>
+      ["active", "coming_soon", "pending"].includes(p.status),
+    ).length,
+    openDealCount: deals.filter((d) => d.stage !== "closed").length,
+    hasMlsConnection: mlsConnections.some(
+      (c) => c.status === "connected" || c.hasCredentials,
+    ),
+    hasWebsite: Boolean(profile?.website),
+  });
+  return (
+    <div
+      data-tour="edge-brief"
+      className="glass-card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="min-w-0">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-primary)]">
+          Competitive edge · today
+        </div>
+        <p className="mt-1 line-clamp-2 text-sm text-[var(--color-fg-muted)]">
+          {brief.split("\n").slice(1, 3).join(" · ").replace(/^• /g, "")}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild size="sm" variant="outline" className="min-h-[40px]">
+          <Link to="/edge">Edge Playbook</Link>
+        </Button>
+        <Button asChild size="sm" className="min-h-[40px]">
+          <Link to="/outreach">5-min protocol</Link>
+        </Button>
       </div>
     </div>
   );

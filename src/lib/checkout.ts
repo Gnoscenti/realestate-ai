@@ -14,6 +14,6 @@ const inputSchema = z.object({
 export const startCheckout = createServerFn({ method: "POST" })
   .validator(inputSchema)
   .handler(async ({ data }) => {
-    const { createCheckoutSession } = await import("@/lib/stripe.server");
+    const { createCheckoutSession } = await import("@/lib/stripe-checkout");
     return createCheckoutSession(data);
   });

@@ -40,6 +40,8 @@ import {
   generateReactivation,
 } from "@/lib/ai";
 import { cn, formatCurrency } from "@/lib/utils";
+import { buildFiveMinuteProtocol } from "@/lib/edge-pack";
+import { SPEED_TO_LEAD_SLA_MINUTES } from "@/lib/competitors";
 
 const searchSchema = z.object({
   lead: z.string().optional(),
@@ -67,6 +69,12 @@ function OutreachPage() {
   const deals = useAppStore((s) => s.deals);
   const touchLead = useAppStore((s) => s.touchLead);
   const pushActivity = useAppStore((s) => s.pushActivity);
+  const profile = useAppStore((s) => s.agentProfile);
+  const [slaClock, setSlaClock] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setSlaClock((n) => n + 1), 15000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const activeLeads = useMemo(
     () =>
@@ -110,6 +118,10 @@ function OutreachPage() {
     [lead],
   );
   const agreement = useMemo(() => generateBuyerAgreementOutline(), []);
+  const protocol = useMemo(
+    () => (lead ? buildFiveMinuteProtocol(lead) : null),
+    [lead, slaClock],
+  );
 
   const markSent = (label: string) => {
     if (!lead) return;
@@ -188,6 +200,112 @@ function OutreachPage() {
           hint="Target first response window"
         />
       </div>
+
+
+      {protocol && (
+        <Card className="glass-card border-0 overflow-hidden">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Timer className="h-4 w-4 text-[var(--color-primary)]" />
+                5-minute protocol
+                <Badge
+                  variant={
+                    protocol.sla.tone === "ok"
+                      ? "success"
+                      : protocol.sla.tone === "warn"
+                        ? "warning"
+                        : "danger"
+                  }
+                >
+                  {protocol.sla.label}
+                </Badge>
+              </CardTitle>
+              <span className="text-xs text-[var(--color-fg-subtle)]">
+                Open {Math.round(protocol.minutesOpen)}m · target {'<'}{SPEED_TO_LEAD_SLA_MINUTES}m
+                {" · "}
+                <Link to="/edge" className="text-[var(--color-primary)] underline-offset-2 hover:underline">
+                  vs competitors
+                </Link>
+              </span>
+            </div>
+            <CardDescription>
+              Counters Follow Up Boss speed culture: SMS → email → call/VM → log — all in one card.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ol className="grid gap-2 sm:grid-cols-5">
+              {protocol.steps.map((s) => (
+                <li
+                  key={s.n}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-2.5"
+                >
+                  <div className="text-[11px] font-semibold text-[var(--color-primary)]">
+                    {s.n}. {s.label}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-[var(--color-fg-muted)]">
+                    {s.detail}
+                  </p>
+                </li>
+              ))}
+            </ol>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => void copyText(protocol.pack.sms)}
+              >
+                <Copy className="h-4 w-4" />
+                Copy SMS
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void copyText(
+                    `Subject: ${protocol.pack.emailSubject}\n\n${protocol.pack.emailBody}`,
+                  )
+                }
+              >
+                Copy email
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void copyText(protocol.pack.allInOne)}
+              >
+                Copy full pack
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => markSent("5-min multi-channel pack logged")}
+              >
+                <Check className="h-4 w-4" />
+                Mark pack sent
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
+                3-touch plan (beats Structurely spray with your voice)
+              </div>
+              {protocol.touches.map((touch) => (
+                <div
+                  key={touch.step}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="secondary">Touch {touch.step}</Badge>
+                    <span className="text-[var(--color-fg-muted)]">{touch.when}</span>
+                    <span className="text-[var(--color-fg-subtle)]">· {touch.channel}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">{touch.purpose}</p>
+                  <p className="mt-2 text-sm text-[var(--color-fg)]">{touch.body}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="h-auto flex-wrap">

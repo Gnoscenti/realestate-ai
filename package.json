@@ -18,7 +18,14 @@
     "cap:prepare": "node scripts/prepare-capacitor.mjs",
     "cap:sync": "npm run cap:prepare && npx cap sync",
     "ios:open": "npx cap open ios",
-    "ios:build": "npm run cap:sync && echo 'Open Xcode (npm run ios:open) to archive for App Store'"
+    "ios:build": "npm run cap:sync && echo 'Open Xcode (npm run ios:open) to archive for App Store'",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:smoke": "node scripts/browser-smoke.mjs http://127.0.0.1:8080/",
+    "ci": "npm run typecheck && npm run test:unit && npm run build && npm run test:e2e"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",
@@ -85,6 +92,7 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
     "@eslint/js": "^9.20.0",
+    "@playwright/test": "^1.52.0",
     "@types/node": "^22.16.5",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.1.0",
@@ -102,6 +110,7 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^4.1.10"
   }
 }

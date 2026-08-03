@@ -83,3 +83,20 @@ scripts/        # migrate, capacitor prepare, browser smoke
 ## License
 
 Private / proprietary unless otherwise stated by Gnoscenti.
+
+## Testing
+
+```bash
+# Unit + integration (Vitest) — scrape parser, CSV import, billing codes
+npm run test:unit
+
+# E2E (Playwright) — onboarding, website scrape, empty book, paywall
+# Starts dev server if needed (or reuses :8080)
+npx playwright install chromium   # first time only
+npm run test:e2e
+
+# Full CI gate
+npm run ci
+```
+
+Specs live under `tests/unit/` and `tests/e2e/`. Mock realtor site: `tests/fixtures/mock-realtor-site.mjs`.

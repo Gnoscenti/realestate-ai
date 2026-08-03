@@ -35,3 +35,12 @@ screenshots/
 .grok/
 AGENTS.md
 .grok/status
+
+# Tests
+test-results/
+playwright-report/
+blob-report/
+coverage/
+.vercel-deploy-args.json
+.project_id
+artifacts/

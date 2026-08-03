@@ -133,6 +133,19 @@ export interface AgentProfile {
   brokerage?: string;
   onboardedAt: string;
   lastMlsSyncAt?: string;
+  /** From website scrape / manual */
+  phone?: string;
+  email?: string;
+  photoUrl?: string;
+  /** Agent MLS / DRE / license ID from site */
+  agentMlsId?: string;
+  license?: string;
+  bio?: string;
+  title?: string;
+  /** Where identity + inventory last came from */
+  dataSource?: "website" | "mls" | "import" | "manual";
+  lastWebsiteScrapeAt?: string;
+  websiteScrapeSummary?: string;
 }
 
 /** Fixed anchor so SSR + client seed data never diverge */
