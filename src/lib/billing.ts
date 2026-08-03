@@ -24,6 +24,7 @@ export const PLAN = {
     "Calendar sync + contractor directory",
     "Adaptive AI that learns your book",
     "Priority support during beta",
+    "Persistent Suggest drawer → Beta comments for Grok",
   ],
 } as const;
 

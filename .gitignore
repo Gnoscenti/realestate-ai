@@ -44,3 +44,4 @@ coverage/
 .vercel-deploy-args.json
 .project_id
 artifacts/
+Beta comments/.counter

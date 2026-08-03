@@ -52,3 +52,39 @@ export const SheetContent = React.forwardRef<
   </SheetPortal>
 ));
 SheetContent.displayName = DialogPrimitive.Content.displayName;
+
+export function SheetHeader({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex flex-col space-y-1.5 text-left", className)}
+      {...props}
+    />
+  );
+}
+
+export function SheetTitle({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      className={cn("text-lg font-semibold text-[var(--color-fg)]", className)}
+      {...props}
+    />
+  );
+}
+
+export function SheetDescription({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      className={cn("text-sm text-[var(--color-fg-muted)]", className)}
+      {...props}
+    />
+  );
+}

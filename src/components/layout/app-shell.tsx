@@ -41,6 +41,7 @@ import { Paywall } from "@/components/billing/paywall";
 import { hasAppAccess } from "@/lib/billing";
 import { ProductTour, TourHelpButton } from "@/components/onboarding/product-tour";
 import { HoverHint } from "@/components/ui/hover-hint";
+import { BetaCommentDrawer } from "@/components/beta/beta-comment-drawer";
 import { syncNotificationBadges } from "@/lib/app-badge";
 import { unreadCount as emailUnreadCount } from "@/lib/email-alerts";
 
@@ -510,6 +511,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
 
         <ProductTour />
+      <BetaCommentDrawer />
       <TourHelpButton />
       <IosTabBar />
       </div>
