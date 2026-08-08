@@ -242,6 +242,12 @@ const STAGE_PROGRESS: Record<Deal["stage"], number> = {
   closed: 100,
 };
 
+function randomInt(maxExclusive: number): number {
+  const values = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(values);
+  return Math.floor((values[0]! / 2 ** 32) * maxExclusive);
+}
+
 function welcomeFor(name?: string, area?: string): ChatMessage[] {
   const greet = name ? `Hi ${name.split(" ")[0]}` : "Hello";
   const local = isRsfCorridor(area)
@@ -1355,7 +1361,7 @@ export const useAppStore = create<AppState>()(
                         | "issue"
                         | "reviewed",
                       confidence:
-                        doc.confidence || 90 + Math.floor(Math.random() * 8),
+                        doc.confidence || 90 + randomInt(8),
                       findings:
                         doc.findings.length > 0
                           ? doc.findings
