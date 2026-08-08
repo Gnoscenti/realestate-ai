@@ -27,12 +27,13 @@ function createMemoryStorage(initial: Record<string, string>): Storage {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  Reflect.deleteProperty(globalThis, "localStorage");
   vi.resetModules();
 });
 
 describe("store hydration", () => {
   it("normalizes partial persisted agent memory before marking the store hydrated", async () => {
+    vi.resetModules();
     const localStorage = createMemoryStorage({
       [STORE_KEY]: JSON.stringify({
         state: {
@@ -46,7 +47,10 @@ describe("store hydration", () => {
         version: 0,
       }),
     });
-    vi.stubGlobal("localStorage", localStorage);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: localStorage,
+    });
 
     const { rehydrateStore, useAppStore } = await import("@/lib/store");
 
