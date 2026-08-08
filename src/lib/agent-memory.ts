@@ -272,9 +272,11 @@ export function memoryInsights(
 ): string[] {
   const safeMemory = normalizeMemory(memory);
   const insights: string[] = [];
-  const name = profile?.name?.split(" ")[0] ?? "You";
+  const firstName = profile?.name?.split(" ")[0];
   insights.push(
-    `${name}'s AI familiarity is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} interactions.`,
+    firstName
+      ? `${firstName}'s AI familiarity is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} interactions.`
+      : `Your AI familiarity is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} interactions.`,
   );
   const n = topKeys(safeMemory.neighborhoods, 3);
   if (n.length) insights.push(`Strongest market focus: ${n.join(" · ")}.`);

@@ -36,7 +36,7 @@ describe("agent memory hardening", () => {
 
   it("accepts undefined memory when building insights and personalization", () => {
     expect(memoryInsights(undefined)).toContain(
-      "You's AI familiarity is 8/100 after 0 interactions.",
+      "Your AI familiarity is 8/100 after 0 interactions.",
     );
     expect(personalizationPreamble(undefined)).toContain("Familiarity 8/100");
   });
