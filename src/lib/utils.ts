@@ -33,7 +33,7 @@ export function initials(name: string): string {
 }
 
 export function uid(prefix = "id"): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+  return `${prefix}_${globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
 export function relativeTime(iso: string): string {
