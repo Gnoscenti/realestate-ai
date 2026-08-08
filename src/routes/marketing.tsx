@@ -533,11 +533,12 @@ function MarketingPage() {
 
         <div className="lg:col-span-8 space-y-4">
           <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
+            <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="agent">Agent run</TabsTrigger>
               <TabsTrigger value="pack">Content pack</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
               <TabsTrigger value="queue">Publish queue</TabsTrigger>
+              <TabsTrigger value="accounts">Accounts</TabsTrigger>
             </TabsList>
 
             <TabsContent value="agent" className="space-y-4">
@@ -920,8 +921,6 @@ function MarketingPage() {
                 </div>
               )}
             </TabsContent>
-          </Tabs>
-
 
             <TabsContent value="accounts" className="space-y-4">
               <Card className="glass-card border-0">
@@ -1123,6 +1122,7 @@ function MarketingPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+          </Tabs>
 
           <Card className="border-[color-mix(in_oklab,var(--color-accent)_20%,var(--color-border))]">
             <CardContent className="flex gap-3 p-4">
