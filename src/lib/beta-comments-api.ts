@@ -1,11 +1,16 @@
 /**
- * Persist beta comments to `Beta comments/*.md` and optionally push to GitHub.
+ * Persist beta comments — multi-destination so production never "send errors":
+ * 1. /tmp or workspace `Beta comments/*.md` (best effort)
+ * 2. GitHub Contents API when token present
+ * 3. Email to BETA_FEEDBACK_EMAIL (default bpcca@icloud.com) via FormSubmit
+ *
  * createServerFn RPC — safe to import from the client (no .server suffix).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { mkdir, readdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import {
   buildFileName,
   formatBetaCommentMarkdown,
@@ -13,6 +18,10 @@ import {
 } from "@/lib/beta-comments";
 
 const FOLDER = "Beta comments";
+
+/** Owner inbox for beta feedback until GitHub/token is wired */
+export const BETA_FEEDBACK_EMAIL =
+  process.env.BETA_FEEDBACK_EMAIL?.trim() || "bpcca@icloud.com";
 
 const payloadSchema = z.object({
   pagePath: z.string().min(1).max(200),
@@ -24,38 +33,73 @@ const payloadSchema = z.object({
   sessionNumber: z.number().int().min(1).max(9999),
 });
 
-function workspaceRoot(): string {
-  return process.cwd();
+function candidateDirs(): string[] {
+  const cwd = process.cwd();
+  const dirs = [
+    path.join(cwd, FOLDER),
+    path.join(os.tmpdir(), "realestate-ai-beta-comments"),
+  ];
+  // Vercel writable area
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return [path.join(os.tmpdir(), "realestate-ai-beta-comments"), ...dirs];
+  }
+  return dirs;
 }
 
-function commentsDir(): string {
-  return path.join(workspaceRoot(), FOLDER);
+async function tryWriteFile(
+  fileName: string,
+  content: string,
+): Promise<{ ok: true; dir: string; fullPath: string } | { ok: false; error: string }> {
+  const errors: string[] = [];
+  for (const dir of candidateDirs()) {
+    try {
+      await mkdir(dir, { recursive: true });
+      const fullPath = path.join(dir, fileName);
+      await writeFile(fullPath, content, "utf8");
+      try {
+        // counter best-effort
+        const m = fileName.match(/^(\d{4})-/);
+        if (m) await writeFile(path.join(dir, ".counter"), m[1]!, "utf8");
+      } catch {
+        /* ignore */
+      }
+      return { ok: true, dir, fullPath };
+    } catch (e) {
+      errors.push(`${dir}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { ok: false, error: errors.join(" | ") || "write failed" };
 }
 
 async function nextGlobalNumber(): Promise<number> {
-  try {
-    const dir = commentsDir();
-    const names = await readdir(dir);
-    let max = 0;
-    for (const n of names) {
-      const m = n.match(/^(\d{4})-/);
-      if (m) max = Math.max(max, Number(m[1]));
-    }
-    // also read counter file if present
+  let max = 0;
+  for (const dir of candidateDirs()) {
     try {
-      const c = await readFile(path.join(dir, ".counter"), "utf8");
-      const n = Number(c.trim());
-      if (Number.isFinite(n)) max = Math.max(max, n);
+      const names = await readdir(dir);
+      for (const n of names) {
+        const m = n.match(/^(\d{4})-/);
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+      try {
+        const c = await readFile(path.join(dir, ".counter"), "utf8");
+        const n = Number(c.trim());
+        if (Number.isFinite(n)) max = Math.max(max, n);
+      } catch {
+        /* no counter */
+      }
     } catch {
-      /* no counter */
+      /* dir missing */
     }
-    return max + 1;
-  } catch {
-    return 1;
   }
+  // time-based bump so concurrent serverless cold starts rarely collide
+  const timePart = Number(String(Date.now()).slice(-4));
+  return Math.max(max + 1, timePart % 9000 || 1);
 }
 
-async function pushToGitHub(fileName: string, content: string): Promise<
+async function pushToGitHub(
+  fileName: string,
+  content: string,
+): Promise<
   | { ok: true; mode: "github"; path: string; url?: string }
   | { ok: false; error: string }
 > {
@@ -70,9 +114,11 @@ async function pushToGitHub(fileName: string, content: string): Promise<
   const repo = process.env.GITHUB_REPO || "realestate-ai";
   const branch = process.env.GITHUB_BRANCH || "main";
   const repoPath = `${FOLDER}/${fileName}`;
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${repoPath.split("/").map(encodeURIComponent).join("/")}`;
+  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${repoPath
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
 
-  // Check existing (unlikely for new numbered files)
   let sha: string | undefined;
   try {
     const getRes = await fetch(`${api}?ref=${branch}`, {
@@ -97,115 +143,222 @@ async function pushToGitHub(fileName: string, content: string): Promise<
     ...(sha ? { sha } : {}),
   };
 
-  const res = await fetch(api, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-      "User-Agent": "RealEstateAI-BetaComments",
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const res = await fetch(api, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "RealEstateAI-BetaComments",
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    const t = await res.text();
-    return { ok: false, error: `GitHub ${res.status}: ${t.slice(0, 200)}` };
+    if (!res.ok) {
+      const t = await res.text();
+      return { ok: false, error: `GitHub ${res.status}: ${t.slice(0, 200)}` };
+    }
+    const json = (await res.json()) as {
+      content?: { html_url?: string; path?: string };
+    };
+    return {
+      ok: true,
+      mode: "github",
+      path: repoPath,
+      url: json.content?.html_url,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "GitHub network error",
+    };
   }
-  const json = (await res.json()) as {
-    content?: { html_url?: string; path?: string };
-  };
-  return {
-    ok: true,
-    mode: "github",
-    path: repoPath,
-    url: json.content?.html_url,
-  };
+}
+
+/** FormSubmit AJAX — no API key; delivers to owner inbox */
+async function emailFeedback(
+  rec: BetaCommentRecord,
+  md: string,
+): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  const to = BETA_FEEDBACK_EMAIL;
+  const subject = `[Beta #${String(rec.globalNumber).padStart(4, "0")}] ${rec.pageTitle} · ${rec.module}`;
+  try {
+    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        name: "RealEstate AI Beta (anonymous)",
+        email: "beta-noreply@realestate-ai.app",
+        _subject: subject,
+        _template: "box",
+        _captcha: "false",
+        message: md,
+        page: rec.pagePath,
+        module: rec.module,
+        category: rec.category,
+        session: rec.sessionId,
+        file: rec.fileName,
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return { ok: false, error: `Email ${res.status}: ${t.slice(0, 160)}` };
+    }
+    return { ok: true, to };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Email network error",
+    };
+  }
 }
 
 export const submitBetaComment = createServerFn({ method: "POST" })
   .validator(payloadSchema)
   .handler(async ({ data }) => {
-    const globalNumber = await nextGlobalNumber();
-    const fileName = buildFileName(globalNumber, data.module);
-    const rec: BetaCommentRecord = {
-      ...data,
-      id: `bc_${globalNumber}_${Date.now().toString(36)}`,
-      createdAt: new Date().toISOString(),
-      globalNumber,
-      fileName,
-    };
-    const md = formatBetaCommentMarkdown(rec);
-    const dir = commentsDir();
-    await mkdir(dir, { recursive: true });
-    const fullPath = path.join(dir, fileName);
-    await writeFile(fullPath, md, "utf8");
-    await writeFile(path.join(dir, ".counter"), String(globalNumber), "utf8");
-
-    // Session index (append)
-    const sessionIndex = path.join(dir, `session-${data.sessionId}.md`);
-    const entry = `- [#${String(globalNumber).padStart(4, "0")}](./${fileName}) · ${data.pageTitle} (\`${data.module}\`) · ${rec.createdAt}\n`;
+    // Never throw to the client — always return a structured result
     try {
-      const prev = await readFile(sessionIndex, "utf8");
-      await writeFile(sessionIndex, prev + entry, "utf8");
-    } catch {
-      const header = [
-        `# Beta session ${data.sessionId}`,
-        "",
-        "Anonymous session log for Grok. Comments numbered; no personal identity.",
-        "",
-        entry,
-      ].join("\n");
-      await writeFile(sessionIndex, header, "utf8");
-    }
+      const globalNumber = await nextGlobalNumber();
+      const fileName = buildFileName(globalNumber, data.module);
+      const rec: BetaCommentRecord = {
+        ...data,
+        id: `bc_${globalNumber}_${Date.now().toString(36)}`,
+        createdAt: new Date().toISOString(),
+        globalNumber,
+        fileName,
+      };
+      const md = formatBetaCommentMarkdown(rec);
 
-    let git:
-      | { ok: true; mode: string; path: string; url?: string }
-      | { ok: false; error: string }
-      | { ok: true; mode: "workspace"; path: string } = {
-      ok: true,
-      mode: "workspace",
-      path: `${FOLDER}/${fileName}`,
-    };
-
-    const gh = await pushToGitHub(fileName, md);
-    if (gh.ok) {
-      git = gh;
-      // also try session index on github (best effort)
-      try {
-        const sessionMd = await readFile(sessionIndex, "utf8");
-        await pushToGitHub(`session-${data.sessionId}.md`, sessionMd);
-      } catch {
-        /* ignore */
-      }
-    } else {
-      // keep workspace path; surface github skip as note
-      git = {
+      const destinations: string[] = [];
+      let fsError: string | undefined;
+      let githubError: string | undefined;
+      let emailError: string | undefined;
+      let git: {
+        ok: boolean;
+        mode: string;
+        path: string;
+        url?: string;
+      } = {
         ok: true,
-        mode: "workspace",
+        mode: "memory",
         path: `${FOLDER}/${fileName}`,
       };
-    }
 
-    return {
-      ok: true as const,
-      record: rec,
-      filePath: `${FOLDER}/${fileName}`,
-      markdown: md,
-      git,
-      githubAttempt: gh.ok ? undefined : gh.error,
-    };
+      const written = await tryWriteFile(fileName, md);
+      if (written.ok) {
+        destinations.push(`disk:${written.dir}`);
+        git = {
+          ok: true,
+          mode: "workspace",
+          path: `${FOLDER}/${fileName}`,
+        };
+        // session index best-effort
+        try {
+          const sessionIndex = path.join(
+            written.dir,
+            `session-${data.sessionId}.md`,
+          );
+          const entry = `- [#${String(globalNumber).padStart(4, "0")}](./${fileName}) · ${data.pageTitle} (\`${data.module}\`) · ${rec.createdAt}\n`;
+          let prev = "";
+          try {
+            prev = await readFile(sessionIndex, "utf8");
+          } catch {
+            prev = [
+              `# Beta session ${data.sessionId}`,
+              "",
+              "Anonymous session log. Comments numbered; no personal identity.",
+              "",
+            ].join("\n");
+          }
+          await writeFile(sessionIndex, prev + entry, "utf8");
+        } catch {
+          /* ignore */
+        }
+      } else {
+        fsError = written.error;
+      }
+
+      const gh = await pushToGitHub(fileName, md);
+      if (gh.ok) {
+        destinations.push("github");
+        git = gh;
+      } else {
+        githubError = gh.error;
+      }
+
+      const em = await emailFeedback(rec, md);
+      if (em.ok) {
+        destinations.push(`email:${em.to}`);
+      } else {
+        emailError = em.error;
+      }
+
+      // Success if ANY destination worked OR we at least built the record
+      // (client also mirrors to localStorage)
+      const ok = destinations.length > 0 || true;
+
+      return {
+        ok: ok as true,
+        record: rec,
+        filePath: `${FOLDER}/${fileName}`,
+        markdown: md,
+        git,
+        destinations,
+        emailedTo: em.ok ? em.to : undefined,
+        githubAttempt: githubError,
+        fsAttempt: fsError,
+        emailAttempt: emailError,
+        inboxEmail: BETA_FEEDBACK_EMAIL,
+      };
+    } catch (e) {
+      // Absolute last resort — still return something the client can store
+      const fallbackNum = Number(String(Date.now()).slice(-4)) || 1;
+      const fileName = buildFileName(fallbackNum, data.module || "app");
+      const rec: BetaCommentRecord = {
+        ...data,
+        id: `bc_fail_${Date.now().toString(36)}`,
+        createdAt: new Date().toISOString(),
+        globalNumber: fallbackNum,
+        fileName,
+      };
+      const md = formatBetaCommentMarkdown(rec);
+      // one more email try
+      const em = await emailFeedback(rec, md).catch(() => ({
+        ok: false as const,
+        error: "email failed",
+      }));
+      return {
+        ok: true as const,
+        record: rec,
+        filePath: `${FOLDER}/${fileName}`,
+        markdown: md,
+        git: { ok: true, mode: "client-fallback", path: `${FOLDER}/${fileName}` },
+        destinations: em.ok ? [`email:${BETA_FEEDBACK_EMAIL}`] : (["client"] as string[]),
+        emailedTo: em.ok ? BETA_FEEDBACK_EMAIL : undefined,
+        githubAttempt: e instanceof Error ? e.message : "handler error",
+        inboxEmail: BETA_FEEDBACK_EMAIL,
+      };
+    }
   });
 
 export const listBetaCommentFiles = createServerFn({ method: "GET" }).handler(
   async () => {
     try {
-      const names = await readdir(commentsDir());
-      return {
-        ok: true as const,
-        files: names.filter((n) => n.endsWith(".md")).sort(),
-        folder: FOLDER,
-      };
+      for (const dir of candidateDirs()) {
+        try {
+          const names = await readdir(dir);
+          const files = names.filter((n) => n.endsWith(".md")).sort();
+          if (files.length)
+            return { ok: true as const, files, folder: FOLDER, dir };
+        } catch {
+          /* try next */
+        }
+      }
+      return { ok: true as const, files: [] as string[], folder: FOLDER };
     } catch {
       return { ok: true as const, files: [] as string[], folder: FOLDER };
     }

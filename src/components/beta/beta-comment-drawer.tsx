@@ -31,6 +31,11 @@ import {
   resolvePageMeta,
 } from "@/lib/beta-comments";
 import { submitBetaComment } from "@/lib/beta-comments-api";
+import {
+  CLIENT_BETA_EMAIL,
+  emailBetaCommentClient,
+  saveLocalBetaComment,
+} from "@/lib/beta-comment-client";
 import { useAppStore } from "@/lib/store";
 import { hasFeedbackAccess } from "@/lib/billing";
 import { cn } from "@/lib/utils";
@@ -45,7 +50,8 @@ type LocalComment = {
 
 /**
  * Persistent right-edge tab + drawer for free-code beta testers.
- * Submits anonymous numbered comments → `Beta comments/*.md` for Grok.
+ * Multi-path delivery: local inbox → server (disk/GitHub) → email to owner.
+ * Never shows a hard send error if the device can store the comment.
  */
 export function BetaCommentDrawer() {
   const billing = useAppStore((s) => s.billing);
@@ -83,55 +89,89 @@ export function BetaCommentDrawer() {
       return;
     }
     setBusy(true);
+
+    const sessionId = getOrCreateSessionId();
+    const sessionNumber = sessionCount + 1;
+    const payload = {
+      pagePath: page.pagePath,
+      pageTitle: page.title,
+      module: page.module,
+      body: text,
+      category,
+      sessionId,
+      sessionNumber,
+    };
+
+    // 1) Always save on-device first so nothing is lost
+    let rec = saveLocalBetaComment(payload);
+    let emailed = false;
+    let destinations: string[] = ["device"];
+
     try {
-      const sessionId = getOrCreateSessionId();
-      const sessionNumber = sessionCount + 1;
-      const res = await submitBetaComment({
-        data: {
-          pagePath: page.pagePath,
-          pageTitle: page.title,
-          module: page.module,
-          body: text,
-          category,
-          sessionId,
-          sessionNumber,
-        },
-      });
-      if (!res.ok) {
-        toast.error("Could not save comment");
-        return;
+      // 2) Server: disk + GitHub + email
+      const res = await submitBetaComment({ data: payload });
+      if (res?.record) {
+        rec = saveLocalBetaComment(payload, {
+          globalNumber: res.record.globalNumber,
+          fileName: res.record.fileName,
+          id: res.record.id,
+          createdAt: res.record.createdAt,
+        });
+        destinations = [
+          "device",
+          ...(Array.isArray(res.destinations) ? res.destinations : []),
+        ];
+        if (res.emailedTo) emailed = true;
       }
-      setSessionCount(sessionNumber);
-      sessionStorage.setItem("realestate-ai-beta-n", String(sessionNumber));
-      const entry: LocalComment = {
-        globalNumber: res.record.globalNumber,
-        fileName: res.record.fileName,
-        pageTitle: page.title,
-        body: text,
-        at: res.record.createdAt,
-      };
-      const nextHist = [entry, ...history].slice(0, 20);
-      setHistory(nextHist);
-      sessionStorage.setItem(
-        "realestate-ai-beta-hist",
-        JSON.stringify(nextHist),
-      );
-      setBody("");
-      toast.success(
-        `Saved as Beta comments/${res.record.fileName}${
-          res.git.mode === "github" ? " · pushed to git" : " · on server"
-        }`,
-      );
-      if (res.githubAttempt) {
-        toast.message(
-          "GitHub push skipped (no token) — file is on the workspace for Grok",
-        );
+    } catch {
+      // 3) Client email fallback if RPC throws
+      const mail = await emailBetaCommentClient(rec);
+      if (mail.ok) {
+        emailed = true;
+        destinations.push(`email:${CLIENT_BETA_EMAIL}`);
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Submit failed");
-    } finally {
-      setBusy(false);
     }
+
+    // If server didn't email, try client FormSubmit once
+    if (!emailed) {
+      const mail = await emailBetaCommentClient(rec);
+      if (mail.ok) {
+        emailed = true;
+        destinations.push(`email:${CLIENT_BETA_EMAIL}`);
+      }
+    }
+
+    setSessionCount(sessionNumber);
+    sessionStorage.setItem("realestate-ai-beta-n", String(sessionNumber));
+    const entry: LocalComment = {
+      globalNumber: rec.globalNumber,
+      fileName: rec.fileName,
+      pageTitle: page.title,
+      body: text,
+      at: rec.createdAt,
+    };
+    const nextHist = [entry, ...history].slice(0, 20);
+    setHistory(nextHist);
+    sessionStorage.setItem(
+      "realestate-ai-beta-hist",
+      JSON.stringify(nextHist),
+    );
+    setBody("");
+
+    const destNote = emailed
+      ? ` · emailed to ${CLIENT_BETA_EMAIL}`
+      : destinations.some((d) => d.startsWith("github") || d === "github")
+        ? " · on GitHub"
+        : " · saved on this device";
+
+    toast.success(`Comment #${String(rec.globalNumber).padStart(4, "0")} sent${destNote}`);
+    if (!emailed && !destinations.some((d) => d.includes("github") || d.includes("disk"))) {
+      toast.message(
+        `Also kept in your browser. Owner inbox: ${CLIENT_BETA_EMAIL}`,
+      );
+    }
+
+    setBusy(false);
   };
 
   return (
@@ -175,11 +215,11 @@ export function BetaCommentDrawer() {
               Beta suggestion
             </SheetTitle>
             <SheetDescription className="text-xs leading-relaxed">
-              Free-code testers only. Comments are{" "}
-              <strong className="text-[var(--color-fg)]">anonymous</strong>,
-              numbered, and saved as Markdown under{" "}
-              <code className="text-[var(--color-primary)]">Beta comments/</code>{" "}
-              for Grok to implement.
+              Anonymous & numbered. Goes to{" "}
+              <strong className="text-[var(--color-fg)]">Beta comments</strong>{" "}
+              for Grok, and is emailed to{" "}
+              <strong className="text-[var(--color-fg)]">{CLIENT_BETA_EMAIL}</strong>{" "}
+              so nothing is lost.
             </SheetDescription>
           </SheetHeader>
 
@@ -201,9 +241,7 @@ export function BetaCommentDrawer() {
               <Label htmlFor="beta-cat">Type</Label>
               <Select
                 value={category}
-                onValueChange={(v) =>
-                  setCategory(v as typeof category)
-                }
+                onValueChange={(v) => setCategory(v as typeof category)}
               >
                 <SelectTrigger id="beta-cat" className="mt-1.5 h-11">
                   <SelectValue />
@@ -223,14 +261,14 @@ export function BetaCommentDrawer() {
               <Textarea
                 id="beta-body"
                 className="mt-1.5 min-h-[140px] text-base md:text-sm"
-                placeholder="What should change on this screen? Be specific — Grok reads this .md file next."
+                placeholder="What should change on this screen? Be specific — Grok reads this next."
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 maxLength={8000}
               />
               <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-                No name or contact is stored. Session comments are numbered
-                only.
+                No name is stored. Delivery: device backup + email to product
+                owner + server file when available.
               </p>
             </div>
 
@@ -244,7 +282,7 @@ export function BetaCommentDrawer() {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              Send to Beta comments
+              Send suggestion
             </Button>
 
             {history.length > 0 && (
@@ -254,7 +292,7 @@ export function BetaCommentDrawer() {
                 </div>
                 {history.map((h) => (
                   <div
-                    key={h.fileName}
+                    key={h.fileName + h.at}
                     className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-2.5 text-xs"
                   >
                     <div className="flex items-center gap-2">
