@@ -32,8 +32,20 @@ export function initials(name: string): string {
     .join("");
 }
 
+function randomHex(bytes = 16): string {
+  const values = new Uint8Array(bytes);
+  globalThis.crypto.getRandomValues(values);
+  return Array.from(values, (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 export function uid(prefix = "id"): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+  const random =
+    typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID().replaceAll("-", "")
+      : randomHex();
+  return `${prefix}_${random}${Date.now().toString(36)}`;
 }
 
 export function relativeTime(iso: string): string {
