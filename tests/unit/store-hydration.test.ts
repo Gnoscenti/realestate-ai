@@ -28,6 +28,7 @@ function createMemoryStorage(initial: Record<string, string>): Storage {
 
 afterEach(() => {
   Reflect.deleteProperty(globalThis, "localStorage");
+  Reflect.deleteProperty(globalThis, "window");
   vi.resetModules();
 });
 
@@ -50,6 +51,10 @@ describe("store hydration", () => {
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
       value: localStorage,
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage },
     });
 
     const { rehydrateStore, useAppStore } = await import("@/lib/store");
