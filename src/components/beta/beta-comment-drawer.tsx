@@ -82,13 +82,11 @@ export function BetaCommentDrawer() {
         if (res.issue.url) toast.message(res.issue.url);
       } else if (res.destinations.length) {
         toast.success(`Suggestion sent · ${res.destinations.join(" · ")}`);
-      } else {
-        toast.success("Suggestion saved locally");
-      }
-
-      if (!res.ok) {
+      } else if (!res.ok) {
         const emailFallback = await emailBetaCommentClient(localRecord);
         if (emailFallback.error) toast.message(emailFallback.error);
+      } else {
+        toast.success("Suggestion saved locally");
       }
 
       setBody("");
