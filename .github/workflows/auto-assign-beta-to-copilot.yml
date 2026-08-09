@@ -1,0 +1,145 @@
+name: Auto-assign beta feedback to Copilot coding agent
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  assign-copilot:
+    # Run when the issue has (or just received) the beta-feedback label
+    if: >
+      (github.event.action == 'opened' && contains(join(github.event.issue.labels.*.name, ','), 'beta-feedback')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'beta-feedback')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign Copilot coding agent via GraphQL
+        uses: actions/github-script@v7
+        env:
+          # Prefer a dedicated PAT that can assign the coding agent.
+          # Fallback to GITHUB_TOKEN (often insufficient for bot assignment).
+          TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          github-token: ${{ env.TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issueNumber = context.payload.issue.number;
+
+            // 1. Check that Copilot coding agent is assignable and get its node ID + repo ID
+            const actorsQuery = `
+              query($owner: String!, $name: String!) {
+                repository(owner: $owner, name: $name) {
+                  id
+                  suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+                    nodes {
+                      login
+                      __typename
+                      ... on Bot { id }
+                      ... on User { id }
+                    }
+                  }
+                }
+              }`;
+
+            const actorsRes = await github.graphql(actorsQuery, { owner, name: repo }, {
+              headers: {
+                'GraphQL-Features': 'issues_copilot_assignment_api_support,coding_agent_model_selection'
+              }
+            });
+
+            const repoId = actorsRes.repository.id;
+            const copilot = actorsRes.repository.suggestedActors.nodes.find(
+              n => n.login === 'copilot-swe-agent' || n.login === 'copilot'
+            );
+
+            if (!copilot || !copilot.id) {
+              core.warning('Copilot coding agent is not available as an assignee in this repository. Enable it in repo settings / Copilot features.');
+              return;
+            }
+
+            // 2. Get the issue node ID
+            const issueQuery = `
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  issue(number: $number) {
+                    id
+                    title
+                    assignees(first: 10) { nodes { login } }
+                  }
+                }
+              }`;
+
+            const issueRes = await github.graphql(issueQuery, {
+              owner,
+              name: repo,
+              number: issueNumber
+            });
+
+            const issue = issueRes.repository.issue;
+            if (!issue) {
+              core.setFailed(`Issue #${issueNumber} not found`);
+              return;
+            }
+
+            // Skip if already assigned to Copilot
+            if (issue.assignees.nodes.some(a => a.login === 'copilot-swe-agent' || a.login === 'copilot')) {
+              core.info(`Issue #${issueNumber} is already assigned to Copilot. Skipping.`);
+              return;
+            }
+
+            // 3. Assign via replaceActorsForAssignable + agentAssignment
+            const mutation = `
+              mutation($input: ReplaceActorsForAssignableInput!) {
+                replaceActorsForAssignable(input: $input) {
+                  assignable {
+                    ... on Issue {
+                      id
+                      number
+                      title
+                      assignees(first: 10) {
+                        nodes { login }
+                      }
+                    }
+                  }
+                }
+              }`;
+
+            const input = {
+              assignableId: issue.id,
+              actorIds: [copilot.id],
+              agentAssignment: {
+                targetRepositoryId: repoId,
+                baseRef: 'main',
+                customInstructions: 'This is beta feedback from the RealEstate AI Agent OS Suggest drawer. Implement the requested correction or enhancement carefully. Prefer small, focused changes. Open a draft PR when ready and request review from the repo owner.',
+                customAgent: '',
+                model: ''
+              }
+            };
+
+            try {
+              const result = await github.graphql(mutation, { input }, {
+                headers: {
+                  'GraphQL-Features': 'issues_copilot_assignment_api_support,coding_agent_model_selection'
+                }
+              });
+              const assignees = result.replaceActorsForAssignable.assignable.assignees.nodes.map(n => n.login).join(', ');
+              core.info(`Successfully assigned issue #${issueNumber} to Copilot. Current assignees: ${assignees}`);
+            } catch (err) {
+              core.warning(`GraphQL assignment failed: ${err.message}`);
+              // Fallback: try classic assignees REST (may still fail for the bot)
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  assignees: ['copilot-swe-agent']
+                });
+                core.info('Fallback REST addAssignees succeeded');
+              } catch (restErr) {
+                core.setFailed(`Both GraphQL and REST assignment failed. Ensure COPILOT_ASSIGN_TOKEN (PAT with issues:write + agent assignment capability) is set as a repo secret. Error: ${restErr.message}`);
+              }
+            }
