@@ -41,8 +41,10 @@ npm run build
 
 | Variable | Purpose |
 | --- | --- |
-| `STRIPE_SECRET_KEY` | Live Stripe Checkout for $9.99 intro payments |
-| `CAP_SERVER_URL` | Deployed HTTPS origin for Capacitor `webDir` shell |
+| `STRIPE_SECRET_KEY` | Web-only Stripe $9.99 one-time intro checkout; renewal is not implemented |
+| `GITHUB_TOKEN` | Server-only Suggest → GitHub Issue delivery |
+| `RESEND_API_KEY` + `BETA_FEEDBACK_EMAIL` | Optional server-only feedback email copy |
+| `CAP_SERVER_URL` | Capacitor live-reload/preview only; do not ship in production |
 
 ### Free beta codes (pre-launch)
 
@@ -61,12 +63,17 @@ Redeem on the paywall to unlock full access **and** the feedback board.
 See [IOS.md](./IOS.md).
 
 ```bash
+# Windows/Linux preparation and validation:
+npm run ci
 npm run cap:prepare
-# Mac + Xcode:
-npx cap add ios
-CAP_SERVER_URL=https://your-deploy.vercel.app npm run cap:sync
-npx cap open ios
+npm run cap:sync
+# Compile, sign, and upload on a cloud macOS builder.
 ```
+
+The current remote-origin shell is suitable only for preview. A production
+App Store build needs bundled mobile web assets, cloud Xcode signing, and
+StoreKit or a purchase-free companion-app model. The no-Mac execution plan is
+in [IOS.md](./IOS.md).
 
 ## Project layout
 
