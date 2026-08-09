@@ -65,15 +65,17 @@ async function writeToDisk(fileName: string, markdown: string): Promise<boolean>
       join(process.cwd(), "Beta comments"),
       join("/tmp", "Beta comments"),
     ];
+    let wrote = false;
     for (const dir of dirs) {
       try {
         await mkdir(dir, { recursive: true });
         await writeFile(join(dir, fileName), markdown, "utf-8");
+        wrote = true;
       } catch {
         /* try next */
       }
     }
-    return true;
+    return wrote;
   } catch {
     return false;
   }
@@ -87,13 +89,14 @@ async function pushToGitHubContents(
 ): Promise<boolean> {
   try {
     const path = `Beta comments/${fileName}`;
-    const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodeURIComponent(path)}`;
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${encodedPath}`;
     const content = Buffer.from(markdown, "utf-8").toString("base64");
     let sha: string | undefined;
     try {
       const getRes = await fetch(url, {
         headers: {
-          Authorization: `token ${token}`,
+          Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
         },
       });
@@ -112,7 +115,7 @@ async function pushToGitHubContents(
     const putRes = await fetch(url, {
       method: "PUT",
       headers: {
-        Authorization: `token ${token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
       },
@@ -131,7 +134,7 @@ interface GHIssue {
 }
 
 /** Create a GitHub Issue. Returns issue info on success. */
-async function createGitHubIssue(
+export async function createGitHubIssue(
   token: string,
   rec: BetaCommentRecord,
   markdown: string,
@@ -147,13 +150,16 @@ async function createGitHubIssue(
   const issueBody =
     markdown + "\n\n---\n\n*Auto-created from the in-app Suggest drawer.*\n";
 
-  const tryCreate = async (withLabels: boolean): Promise<Response> => {
-    const payload: Record<string, unknown> = { title, body: issueBody };
-    if (withLabels) payload.labels = labels;
+  const tryCreate = async (issueLabels: string[]): Promise<Response> => {
+    const payload: Record<string, unknown> = {
+      title,
+      body: issueBody,
+      labels: issueLabels,
+    };
     return fetch(`https://api.github.com/repos/${OWNER}/${REPO}/issues`, {
       method: "POST",
       headers: {
-        Authorization: `token ${token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         Accept: "application/vnd.github+json",
       },
@@ -162,9 +168,11 @@ async function createGitHubIssue(
   };
 
   try {
-    let res = await tryCreate(true);
+    let res = await tryCreate(labels);
     if (res.status === 422) {
-      res = await tryCreate(false);
+      // Dynamic category/module labels may not exist. Keep beta-feedback
+      // mandatory so the auto-assignment workflow remains reachable.
+      res = await tryCreate(["beta-feedback"]);
     }
     if (res.ok) {
       const issue = (await res.json()) as GHIssue;
