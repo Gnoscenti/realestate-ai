@@ -176,11 +176,26 @@ async function pushToGitHub(
   }
 }
 
+function isActivationResponse(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    t.includes("activation") ||
+    t.includes("confirm") ||
+    t.includes("token not found") ||
+    t.includes("not a valid link") ||
+    t.includes("activate your form") ||
+    t.includes("check your email")
+  );
+}
+
 /** FormSubmit AJAX — no API key; delivers to owner inbox */
 async function emailFeedback(
   rec: BetaCommentRecord,
   md: string,
-): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; to: string }
+  | { ok: false; error: string; needsActivation?: boolean }
+> {
   const to = BETA_FEEDBACK_EMAIL;
   const subject = `[Beta #${String(rec.globalNumber).padStart(4, "0")}] ${rec.pageTitle} · ${rec.module}`;
   try {
@@ -204,11 +219,40 @@ async function emailFeedback(
         file: rec.fileName,
       }),
     });
-    if (!res.ok) {
-      const t = await res.text();
-      return { ok: false, error: `Email ${res.status}: ${t.slice(0, 160)}` };
+    const raw = await res.text();
+    let json: { success?: string | boolean; message?: string } | null = null;
+    try {
+      json = JSON.parse(raw) as { success?: string | boolean; message?: string };
+    } catch {
+      /* non-JSON */
     }
-    return { ok: true, to };
+    const msg = String(json?.message || raw || "");
+    const successFlag =
+      json?.success === true ||
+      json?.success === "true" ||
+      /success|ok|thank/i.test(msg);
+
+    if (res.ok && successFlag && !isActivationResponse(msg)) {
+      return { ok: true, to };
+    }
+
+    if (isActivationResponse(msg) || res.status === 422) {
+      return {
+        ok: false,
+        needsActivation: true,
+        error:
+          "FormSubmit needs a one-time activation. Check inbox/spam for the activation link.",
+      };
+    }
+
+    if (res.status === 404) {
+      return {
+        ok: false,
+        error: "FormSubmit endpoint not found — check BETA_FEEDBACK_EMAIL value.",
+      };
+    }
+
+    return { ok: false, error: `Email ${res.status}: ${msg.slice(0, 160)}` };
   } catch (e) {
     return {
       ok: false,

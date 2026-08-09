@@ -105,6 +105,7 @@ export function BetaCommentDrawer() {
     // 1) Always save on-device first so nothing is lost
     let rec = saveLocalBetaComment(payload);
     let emailed = false;
+    let mailDraftOpened = false;
     let destinations: string[] = ["device"];
 
     try {
@@ -124,20 +125,20 @@ export function BetaCommentDrawer() {
         if (res.emailedTo) emailed = true;
       }
     } catch {
-      // 3) Client email fallback if RPC throws
-      const mail = await emailBetaCommentClient(rec);
-      if (mail.ok) {
-        emailed = true;
-        destinations.push(`email:${CLIENT_BETA_EMAIL}`);
-      }
+      /* server unavailable — fall through to client email */
     }
 
-    // If server didn't email, try client FormSubmit once
+    // 3) Single client email attempt (opens mailto on fail)
     if (!emailed) {
-      const mail = await emailBetaCommentClient(rec);
+      const mail = await emailBetaCommentClient(rec, { openMailtoOnFail: true });
       if (mail.ok) {
-        emailed = true;
-        destinations.push(`email:${CLIENT_BETA_EMAIL}`);
+        if (mail.channel === "formsubmit") {
+          emailed = true;
+          destinations.push(`email:${CLIENT_BETA_EMAIL}`);
+        } else if (mail.channel === "mailto") {
+          mailDraftOpened = true;
+          destinations.push("mailto");
+        }
       }
     }
 
@@ -158,16 +159,16 @@ export function BetaCommentDrawer() {
     );
     setBody("");
 
-    const destNote = emailed
-      ? ` · emailed to ${CLIENT_BETA_EMAIL}`
-      : destinations.some((d) => d.startsWith("github") || d === "github")
-        ? " · on GitHub"
-        : " · saved on this device";
-
-    toast.success(`Comment #${String(rec.globalNumber).padStart(4, "0")} sent${destNote}`);
-    if (!emailed && !destinations.some((d) => d.includes("github") || d.includes("disk"))) {
-      toast.message(
-        `Also kept in your browser. Owner inbox: ${CLIENT_BETA_EMAIL}`,
+    const num = `#${String(rec.globalNumber).padStart(4, "0")}`;
+    if (emailed) {
+      toast.success(`Comment ${num} sent · emailed to ${CLIENT_BETA_EMAIL}`);
+    } else if (mailDraftOpened) {
+      toast.success(
+        `Comment ${num} saved · mail draft opened — send it to complete delivery`,
+      );
+    } else {
+      toast.success(
+        `Comment ${num} saved on device · email to ${CLIENT_BETA_EMAIL} (FormSubmit activation may be needed — check inbox/spam)`,
       );
     }
 
@@ -267,8 +268,9 @@ export function BetaCommentDrawer() {
                 maxLength={8000}
               />
               <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-                No name is stored. Delivery: device backup + email to product
-                owner + server file when available.
+                No name is stored. Delivery: device backup → server file → email
+                via FormSubmit (requires one-time activation of owner inbox) →
+                mailto fallback if FormSubmit is not yet active.
               </p>
             </div>
 
