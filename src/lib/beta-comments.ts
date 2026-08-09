@@ -29,25 +29,24 @@ export type BetaCommentRecord = BetaCommentPayload & {
 };
 
 /** Map route path → module label for Grok context */
-export const PAGE_MODULE_MAP: Record<string, { title: string; module: string }> =
-  {
-    "/": { title: "Command Center", module: "command-center" },
-    "/leads": { title: "Lead Intelligence", module: "leads" },
-    "/outreach": { title: "Instant Response", module: "outreach" },
-    "/properties": { title: "Property Management", module: "properties" },
-    "/transactions": { title: "Transaction Hub", module: "transactions" },
-    "/cma": { title: "CMA Studio", module: "cma" },
-    "/market": { title: "Market Intelligence", module: "market" },
-    "/marketing": { title: "Content Agent", module: "marketing" },
-    "/search": { title: "Smart Search", module: "search" },
-    "/knowledge": { title: "Market Knowledge", module: "knowledge" },
-    "/calendar": { title: "Calendar & Vendors", module: "calendar" },
-    "/mls": { title: "MLS Hub", module: "mls" },
-    "/billing": { title: "Billing & Access", module: "billing" },
-    "/feedback": { title: "Feedback Board", module: "feedback" },
-    "/edge": { title: "Edge Playbook", module: "edge" },
-    "/alerts": { title: "Email Alerts", module: "alerts" },
-  };
+export const PAGE_MODULE_MAP: Record<string, { title: string; module: string }> = {
+  "/": { title: "Command Center", module: "command-center" },
+  "/leads": { title: "Lead Intelligence", module: "leads" },
+  "/outreach": { title: "Instant Response", module: "outreach" },
+  "/properties": { title: "Property Management", module: "properties" },
+  "/transactions": { title: "Transaction Hub", module: "transactions" },
+  "/cma": { title: "CMA Studio", module: "cma" },
+  "/market": { title: "Market Intelligence", module: "market" },
+  "/marketing": { title: "Content Agent", module: "marketing" },
+  "/search": { title: "Smart Search", module: "search" },
+  "/knowledge": { title: "Market Knowledge", module: "knowledge" },
+  "/calendar": { title: "Calendar & Vendors", module: "calendar" },
+  "/mls": { title: "MLS Hub", module: "mls" },
+  "/billing": { title: "Billing & Access", module: "billing" },
+  "/feedback": { title: "Feedback Board", module: "feedback" },
+  "/edge": { title: "Edge Playbook", module: "edge" },
+  "/alerts": { title: "Email Alerts", module: "alerts" },
+};
 
 export function resolvePageMeta(pathname: string): {
   title: string;
@@ -65,9 +64,7 @@ export function resolvePageMeta(pathname: string): {
   };
 }
 
-export function formatBetaCommentMarkdown(
-  rec: BetaCommentRecord,
-): string {
+export function formatBetaCommentMarkdown(rec: BetaCommentRecord): string {
   const lines = [
     `# Beta Comment #${String(rec.globalNumber).padStart(4, "0")}`,
     "",
@@ -115,7 +112,15 @@ export function getOrCreateSessionId(): string {
   const key = "realestate-ai-beta-session";
   let id = sessionStorage.getItem(key);
   if (!id) {
-    id = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      id = `s_${crypto.randomUUID().replace(/-/g, "")}`;
+    } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = crypto.getRandomValues(new Uint8Array(12));
+      const suffix = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      id = `s_${suffix}`;
+    } else {
+      id = `s_${Date.now().toString(36)}`;
+    }
     sessionStorage.setItem(key, id);
   }
   return id;
