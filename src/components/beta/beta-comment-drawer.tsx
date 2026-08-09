@@ -49,7 +49,7 @@ function getOrCreateSessionId(): string {
   const key = "realestate-ai-beta-session";
   let id = sessionStorage.getItem(key);
   if (!id) {
-    id = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    id = `s_${Date.now().toString(36)}_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
     sessionStorage.setItem(key, id);
   }
   return id;
