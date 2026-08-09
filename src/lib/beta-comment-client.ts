@@ -44,3 +44,29 @@ export function saveLocalBetaComment(
   localStorage.setItem(INBOX_KEY, JSON.stringify(list.slice(0, 200)));
   return rec;
 }
+
+
+/**
+ * Replace the initial device-first record with the canonical server record.
+ * Also removes any stale copy of the same server id.
+ */
+export function reconcileLocalBetaComment(
+  localId: string,
+  serverRecord: BetaCommentRecord,
+): BetaCommentRecord {
+  const reconciled = [
+    serverRecord,
+    ...loadLocalBetaInbox().filter(
+      (record) => record.id !== localId && record.id !== serverRecord.id,
+    ),
+  ].slice(0, 200);
+  localStorage.setItem(INBOX_KEY, JSON.stringify(reconciled));
+
+  const previousCounter =
+    Number(localStorage.getItem(COUNTER_KEY) || "0") || 0;
+  localStorage.setItem(
+    COUNTER_KEY,
+    String(Math.max(previousCounter, serverRecord.globalNumber)),
+  );
+  return serverRecord;
+}
