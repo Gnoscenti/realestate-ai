@@ -43,6 +43,7 @@ const payload: BetaCommentPayload = {
 };
 
 beforeEach(() => {
+  vi.stubGlobal("window", {});
   vi.stubGlobal("localStorage", new MemoryStorage());
 });
 
