@@ -29,6 +29,7 @@ import { hasFeedbackAccess } from "@/lib/billing";
 import { resolvePageMeta } from "@/lib/beta-comments";
 import {
   saveLocalBetaComment,
+  reconcileLocalBetaComment,
   loadLocalBetaInbox,
 } from "@/lib/beta-comment-client";
 import type { BetaCommentPayload } from "@/lib/beta-comments";
@@ -97,24 +98,31 @@ export function BetaCommentDrawer() {
       sessionNumber,
     };
     // Save locally first — never lose data
-    saveLocalBetaComment(payload);
+    const localRecord = saveLocalBetaComment(payload);
     setBody("");
     setOpen(false);
     try {
       const res = await submitBetaComment({ data: payload });
+      reconcileLocalBetaComment(localRecord.id, res.record);
       if (res.issue) {
-        toast.success(`Comment #${res.record.globalNumber} sent · GitHub #${res.issue.number}`);
-        toast(`GitHub Issue: ${res.issue.url}`, {
+        toast.success(`Suggestion sent to GitHub #${res.issue.number}`);
+        toast(`Engineering issue: ${res.issue.url}`, {
           action: {
             label: "View",
             onClick: () => window.open(res.issue!.url, "_blank"),
           },
         });
+      } else if (res.destinations.length > 0) {
+        toast.warning(
+          "Saved on this device and server, but engineering automation was not queued.",
+        );
       } else {
-        toast.success(`Comment sent · saved to ${res.destinations.join(", ") || "device"}`);
+        toast.warning(
+          "Saved on this device only — server delivery is unavailable.",
+        );
       }
     } catch {
-      toast.error("Saved locally — will sync when possible.");
+      toast.warning("Saved on this device only — try sending again later.");
     } finally {
       setSubmitting(false);
     }
