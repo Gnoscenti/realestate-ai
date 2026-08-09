@@ -21,7 +21,7 @@ import {
   FREE_ACCESS_CODES,
 } from "@/lib/billing";
 import { useAppStore } from "@/lib/store";
-import { startCheckout } from "@/lib/checkout";
+import { confirmCheckout, startCheckout } from "@/lib/checkout";
 import { openExternalUrl } from "@/lib/native";
 import { cn } from "@/lib/utils";
 
@@ -37,20 +37,69 @@ export function Paywall({ agentName }: Props) {
   const [codeBusy, setCodeBusy] = useState(false);
   const [showCodes, setShowCodes] = useState(false);
 
-  // Honor return from Stripe / demo
+  // Return from Stripe.
+  //
+  // The success URL query string is attacker-controlled: anyone can type
+  // `?checkout=success` into the address bar. Access is therefore granted only
+  // after the server asks Stripe whether the session actually completed and was
+  // paid. Never unlock from the query parameter alone.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") === "success") {
-      const sessionId = params.get("session_id") ?? undefined;
-      completeDemoCheckout(sessionId ?? undefined);
-      toast.success("Welcome — 30-day intro is active");
+    if (params.get("checkout") !== "success") return;
+
+    const sessionId = params.get("session_id");
+    let cancelled = false;
+
+    const stripCheckoutParams = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete("checkout");
       url.searchParams.delete("demo");
       url.searchParams.delete("session_id");
       window.history.replaceState({}, "", url.pathname + url.search);
+    };
+
+    if (!sessionId) {
+      toast.error("That checkout could not be verified — no access granted.");
+      stripCheckoutParams();
+      return;
     }
+
+    void (async () => {
+      try {
+        const verified = await confirmCheckout({ data: { sessionId } });
+        if (cancelled) return;
+        if (verified.paid) {
+          // TODO: completeDemoCheckout() flags billing as isDemo. Replace with
+          // a store action that records a verified Stripe purchase.
+          completeDemoCheckout(verified.sessionId);
+          toast.success(
+            `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
+          );
+        } else if (verified.demo) {
+          completeDemoCheckout(verified.sessionId);
+          toast.warning(
+            `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
+          );
+        } else {
+          toast.error(
+            "We could not confirm that payment with Stripe — no access granted.",
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          toast.error(
+            "We could not confirm that payment with Stripe — no access granted.",
+          );
+        }
+      } finally {
+        if (!cancelled) stripCheckoutParams();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [completeDemoCheckout]);
 
   const onCheckout = async () => {
@@ -65,10 +114,11 @@ export function Paywall({ agentName }: Props) {
         },
       });
       if (result.mode === "demo") {
-        // Stay in-app for demo completion
+        // Demo sessions are only issued when ALLOW_DEMO_CHECKOUT=1 is set on
+        // the server. Say plainly that no money changed hands.
         completeDemoCheckout(result.sessionId);
-        toast.success(
-          `Demo checkout complete — ${formatMoney(INTRO_PRICE_CENTS)} intro for ${INTRO_DAYS} days`,
+        toast.warning(
+          `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
         );
         return;
       }
@@ -76,10 +126,10 @@ export function Paywall({ agentName }: Props) {
       toast.message("Complete payment in the secure Stripe window");
     } catch (err) {
       console.error(err);
-      // Graceful demo fallback if server fn fails
-      completeDemoCheckout();
-      toast.success(
-        `Intro unlocked (offline mode) — ${formatMoney(INTRO_PRICE_CENTS)} / ${INTRO_DAYS} days`,
+      // A failure here must never unlock the app. Failing open would make every
+      // server error a free subscription.
+      toast.error(
+        "Checkout is unavailable right now. You were not charged and no access was granted.",
       );
     } finally {
       setBusy(false);
@@ -100,7 +150,6 @@ export function Paywall({ agentName }: Props) {
       setCodeBusy(false);
     }
   };
-
   return (
     <div className="safe-pad-y gradient-mesh flex min-h-dvh items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-lg">
@@ -167,8 +216,8 @@ export function Paywall({ agentName }: Props) {
               Start {INTRO_DAYS}-day intro · {formatMoney(INTRO_PRICE_CENTS)}
             </Button>
             <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
-              Secure Stripe Checkout when keys are configured. Demo mode
-              activates access instantly in this preview.
+              Payment is processed by Stripe and verified before access is
+              granted.
             </p>
           </div>
         </div>
