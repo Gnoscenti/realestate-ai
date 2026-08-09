@@ -16,6 +16,7 @@ import {
   formatBetaCommentMarkdown,
   type BetaCommentRecord,
 } from "@/lib/beta-comments";
+import { classifyFormSubmitResponse } from "@/lib/formsubmit";
 
 const FOLDER = "Beta comments";
 
@@ -176,18 +177,6 @@ async function pushToGitHub(
   }
 }
 
-function isActivationResponse(text: string): boolean {
-  const t = text.toLowerCase();
-  return (
-    t.includes("activation") ||
-    t.includes("confirm") ||
-    t.includes("token not found") ||
-    t.includes("not a valid link") ||
-    t.includes("activate your form") ||
-    t.includes("check your email")
-  );
-}
-
 /** FormSubmit AJAX — no API key; delivers to owner inbox */
 async function emailFeedback(
   rec: BetaCommentRecord,
@@ -220,23 +209,12 @@ async function emailFeedback(
       }),
     });
     const raw = await res.text();
-    let json: { success?: string | boolean; message?: string } | null = null;
-    try {
-      json = JSON.parse(raw) as { success?: string | boolean; message?: string };
-    } catch {
-      /* non-JSON */
-    }
-    const msg = String(json?.message || raw || "");
-    const successFlag =
-      json?.success === true ||
-      json?.success === "true" ||
-      /success|ok|thank/i.test(msg);
+    const outcome = classifyFormSubmitResponse(res.status, res.ok, raw);
 
-    if (res.ok && successFlag && !isActivationResponse(msg)) {
+    if (outcome.kind === "success") {
       return { ok: true, to };
     }
-
-    if (isActivationResponse(msg) || res.status === 422) {
+    if (outcome.kind === "activation") {
       return {
         ok: false,
         needsActivation: true,
@@ -244,15 +222,18 @@ async function emailFeedback(
           "FormSubmit needs a one-time activation. Check inbox/spam for the activation link.",
       };
     }
-
-    if (res.status === 404) {
+    if (outcome.kind === "endpoint_not_found") {
       return {
         ok: false,
+        needsActivation: false,
         error: "FormSubmit endpoint not found — check BETA_FEEDBACK_EMAIL value.",
       };
     }
-
-    return { ok: false, error: `Email ${res.status}: ${msg.slice(0, 160)}` };
+    return {
+      ok: false,
+      needsActivation: false,
+      error: `Email ${res.status}: ${outcome.message.slice(0, 160)}`,
+    };
   } catch (e) {
     return {
       ok: false,
@@ -356,6 +337,7 @@ export const submitBetaComment = createServerFn({ method: "POST" })
         githubAttempt: githubError,
         fsAttempt: fsError,
         emailAttempt: emailError,
+        emailNeedsActivation: !em.ok && em.needsActivation === true,
         inboxEmail: BETA_FEEDBACK_EMAIL,
       };
     } catch (e) {
@@ -374,6 +356,7 @@ export const submitBetaComment = createServerFn({ method: "POST" })
       const em = await emailFeedback(rec, md).catch(() => ({
         ok: false as const,
         error: "email failed",
+        needsActivation: false,
       }));
       return {
         ok: true as const,
@@ -383,6 +366,7 @@ export const submitBetaComment = createServerFn({ method: "POST" })
         git: { ok: true, mode: "client-fallback", path: `${FOLDER}/${fileName}` },
         destinations: em.ok ? [`email:${BETA_FEEDBACK_EMAIL}`] : (["client"] as string[]),
         emailedTo: em.ok ? BETA_FEEDBACK_EMAIL : undefined,
+        emailNeedsActivation: !em.ok && em.needsActivation === true,
         githubAttempt: e instanceof Error ? e.message : "handler error",
         inboxEmail: BETA_FEEDBACK_EMAIL,
       };
