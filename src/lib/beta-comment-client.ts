@@ -12,11 +12,13 @@ import {
   type BetaCommentRecord,
   type BetaCommentPayload,
 } from "@/lib/beta-comments";
+import { classifyFormSubmitResponse } from "@/lib/formsubmit";
 
 const INBOX_KEY = "realestate-ai-beta-inbox";
 const COUNTER_KEY = "realestate-ai-beta-global-n";
 
-export const CLIENT_BETA_EMAIL = "bpcca@icloud.com";
+export const CLIENT_BETA_EMAIL =
+  import.meta.env.VITE_BETA_FEEDBACK_EMAIL?.trim() || "bpcca@icloud.com";
 
 export function loadLocalBetaInbox(): BetaCommentRecord[] {
   if (typeof window === "undefined") return [];
@@ -51,6 +53,29 @@ export function saveLocalBetaComment(
   return rec;
 }
 
+/** Replace the optimistic device record with the server-assigned record. */
+export function reconcileLocalBetaComment(
+  localId: string,
+  serverRecord: BetaCommentRecord,
+): BetaCommentRecord {
+  const list = loadLocalBetaInbox();
+  const index = list.findIndex((item) => item.id === localId);
+  const next =
+    index >= 0
+      ? list.map((item, itemIndex) =>
+          itemIndex === index ? serverRecord : item,
+        )
+      : [serverRecord, ...list];
+
+  localStorage.setItem(INBOX_KEY, JSON.stringify(next.slice(0, 200)));
+  const counter = Number(localStorage.getItem(COUNTER_KEY) || "0") || 0;
+  localStorage.setItem(
+    COUNTER_KEY,
+    String(Math.max(counter, serverRecord.globalNumber)),
+  );
+  return serverRecord;
+}
+
 export type EmailResult = {
   ok: boolean;
   /** formsubmit | mailto | none */
@@ -60,21 +85,12 @@ export type EmailResult = {
   needsActivation?: boolean;
 };
 
-function isActivationResponse(text: string): boolean {
-  const t = text.toLowerCase();
-  return (
-    t.includes("activation") ||
-    t.includes("confirm") ||
-    t.includes("token not found") ||
-    t.includes("not a valid link") ||
-    t.includes("activate your form") ||
-    t.includes("check your email")
-  );
-}
-
 /** Open native mail client with the beta note pre-filled (last-resort delivery). */
-export function openMailtoBetaComment(rec: BetaCommentRecord): void {
-  if (typeof window === "undefined") return;
+export function openMailtoBetaComment(
+  rec: BetaCommentRecord,
+  recipient = CLIENT_BETA_EMAIL,
+): boolean {
+  if (typeof window === "undefined") return false;
   const md = formatBetaCommentMarkdown(rec);
   const subject = `[Beta #${String(rec.globalNumber).padStart(4, "0")}] ${rec.pageTitle} · ${rec.module}`;
   const body = [
@@ -84,8 +100,13 @@ export function openMailtoBetaComment(rec: BetaCommentRecord): void {
     "",
     "— sent via mailto fallback (FormSubmit unavailable or not activated)",
   ].join("\n");
-  const href = `mailto:${encodeURIComponent(CLIENT_BETA_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`;
-  window.open(href, "_self");
+  const href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0, 1800))}`;
+  try {
+    window.open(href, "_self");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -94,14 +115,15 @@ export function openMailtoBetaComment(rec: BetaCommentRecord): void {
  */
 export async function emailBetaCommentClient(
   rec: BetaCommentRecord,
-  opts?: { openMailtoOnFail?: boolean },
+  opts?: { openMailtoOnFail?: boolean; recipient?: string },
 ): Promise<EmailResult> {
   const md = formatBetaCommentMarkdown(rec);
   const openMailto = opts?.openMailtoOnFail !== false;
+  const recipient = opts?.recipient?.trim() || CLIENT_BETA_EMAIL;
 
   try {
     const res = await fetch(
-      `https://formsubmit.co/ajax/${encodeURIComponent(CLIENT_BETA_EMAIL)}`,
+      `https://formsubmit.co/ajax/${encodeURIComponent(recipient)}`,
       {
         method: "POST",
         headers: {
@@ -125,45 +147,35 @@ export async function emailBetaCommentClient(
     );
 
     const raw = await res.text();
-    let json: { success?: string | boolean; message?: string } | null = null;
-    try {
-      json = JSON.parse(raw) as { success?: string | boolean; message?: string };
-    } catch {
-      /* non-JSON */
-    }
+    const outcome = classifyFormSubmitResponse(res.status, res.ok, raw);
 
-    const msg = String(json?.message || raw || "");
-    const successFlag =
-      json?.success === true ||
-      json?.success === "true" ||
-      /success|ok|thank/i.test(msg);
-
-    if (res.ok && successFlag && !isActivationResponse(msg)) {
+    if (outcome.kind === "success") {
       return { ok: true, channel: "formsubmit" };
     }
 
-    if (isActivationResponse(msg) || res.status === 404 || res.status === 422) {
-      if (openMailto) openMailtoBetaComment(rec);
-      return {
-        ok: openMailto,
-        channel: openMailto ? "mailto" : "none",
-        needsActivation: true,
-        error:
-          "FormSubmit needs a one-time activation for the owner email. Check inbox/spam for the activation link, or use the mail draft that just opened.",
-      };
-    }
+    const mailtoRequested =
+      openMailto && openMailtoBetaComment(rec, recipient);
+    const needsActivation = outcome.kind === "activation";
+    const error =
+      outcome.kind === "activation"
+        ? "FormSubmit needs one-time activation. Check the destination inbox/spam."
+        : outcome.kind === "endpoint_not_found"
+          ? "FormSubmit endpoint not found. Check the configured feedback email."
+          : outcome.message.slice(0, 160) || `Email ${res.status}`;
 
-    if (openMailto) openMailtoBetaComment(rec);
     return {
-      ok: openMailto,
-      channel: openMailto ? "mailto" : "none",
-      error: msg.slice(0, 160) || `Email ${res.status}`,
+      ok: mailtoRequested,
+      channel: mailtoRequested ? "mailto" : "none",
+      needsActivation,
+      error,
     };
   } catch (e) {
-    if (openMailto) openMailtoBetaComment(rec);
+    const mailtoRequested =
+      openMailto && openMailtoBetaComment(rec, recipient);
     return {
-      ok: openMailto,
-      channel: openMailto ? "mailto" : "none",
+      ok: mailtoRequested,
+      channel: mailtoRequested ? "mailto" : "none",
+      needsActivation: false,
       error: e instanceof Error ? e.message : "network",
     };
   }
