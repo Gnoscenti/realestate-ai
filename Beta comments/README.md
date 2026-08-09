@@ -4,26 +4,43 @@ Anonymous, numbered feedback from free-code beta testers.
 
 ## Delivery paths (Aug 2026)
 
-Each submit tries the following in order:
+A submission follows this durability sequence:
 
-1. **Browser local inbox** — always written first; no send error for testers
-2. **Server file** — `/tmp` or workspace `Beta comments/` when writable
-3. **GitHub** — when `GITHUB_TOKEN` is set in the environment
-4. **Email (FormSubmit)** — **bpcca@icloud.com** (override with `BETA_FEEDBACK_EMAIL`)
-5. **mailto fallback** — if FormSubmit is not yet activated, the client opens a pre-filled mail draft so the tester can send the comment manually
+1. **Browser local inbox** — written before any network request.
+2. **Server file** — `/tmp` or workspace `Beta comments/` when writable.
+3. **GitHub** — attempted when `GITHUB_TOKEN` is configured.
+4. **Email (FormSubmit)** — attempted using the configured destination.
+5. **Mail-app fallback** — requested after any FormSubmit failure, including
+   activation, endpoint configuration, or network errors.
+
+A successful server response reconciles the initial browser record with the
+server-assigned number instead of adding a duplicate.
+
+## Configure the destination
+
+Set both variables to the same inbox:
+
+```dotenv
+BETA_FEEDBACK_EMAIL=you@example.com
+VITE_BETA_FEEDBACK_EMAIL=you@example.com
+```
+
+- `BETA_FEEDBACK_EMAIL` is server-only.
+- `VITE_BETA_FEEDBACK_EMAIL` is public client configuration used for direct
+  FormSubmit and mail-app fallback.
+- If both are unset, the current default is `bpcca@icloud.com`.
 
 ## FormSubmit activation (one-time setup)
 
-FormSubmit requires the destination inbox to be confirmed before it will
-deliver messages. Until confirmed, AJAX returns a token/activation error and
-the client falls back to opening a mailto: draft.
+1. Configure both destination variables.
+2. Deploy and submit one beta comment.
+3. Open FormSubmit's confirmation email and activate the form (check spam).
+4. Submit again and confirm automatic delivery.
 
-**Steps:**
-
-1. Set `BETA_FEEDBACK_EMAIL` in your environment (`.env.local` or Vercel dashboard).
-2. Deploy and submit any beta comment.
-3. FormSubmit sends a confirmation to that address — click the link in the email (check spam).
-4. Done — subsequent comments are delivered via AJAX with no tester action needed.
+Until activation succeeds, the API reports `emailNeedsActivation: true`. The
+client keeps the comment locally and requests a pre-filled mail-app handoff.
+A bare HTTP 404 without activation text is treated as endpoint/configuration
+failure, not activation.
 
 ## For Grok / engineering
 
