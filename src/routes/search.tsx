@@ -101,8 +101,8 @@ function SearchPage() {
             Smart property search
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            AI ranks <strong>your book</strong> — imported contacts &amp;
-            MLS-synced listings only
+            AI ranks listings in <strong>your book</strong> — manually added,
+            imported, website-loaded, or MLS-synced.
           </p>
         </div>
       </div>
@@ -117,7 +117,7 @@ function SearchPage() {
           </div>
           <p className="text-sm text-[var(--color-fg-muted)]">
             Example: “3-bed Spanish revival near dog parks with ADU potential
-            under $800K" — matches against listings on your book
+            under $800K” — matches against listings in your book
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
@@ -218,8 +218,8 @@ function SearchPage() {
           {filtered.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                No listings match in your book. Import contacts or sync MLS
-                listings, then try a broader query.
+                No listings match in your book. Add or import listings or sync
+                MLS, then try a broader query.
               </CardContent>
             </Card>
           )}
