@@ -34,6 +34,7 @@ import { submitBetaComment } from "@/lib/beta-comments-api";
 import {
   CLIENT_BETA_EMAIL,
   emailBetaCommentClient,
+  reconcileLocalBetaComment,
   saveLocalBetaComment,
 } from "@/lib/beta-comment-client";
 import { useAppStore } from "@/lib/store";
@@ -90,89 +91,106 @@ export function BetaCommentDrawer() {
     }
     setBusy(true);
 
-    const sessionId = getOrCreateSessionId();
-    const sessionNumber = sessionCount + 1;
-    const payload = {
-      pagePath: page.pagePath,
-      pageTitle: page.title,
-      module: page.module,
-      body: text,
-      category,
-      sessionId,
-      sessionNumber,
-    };
-
-    // 1) Always save on-device first so nothing is lost
-    let rec = saveLocalBetaComment(payload);
-    let emailed = false;
-    let mailDraftOpened = false;
-    let destinations: string[] = ["device"];
-
     try {
-      // 2) Server: disk + GitHub + email
-      const res = await submitBetaComment({ data: payload });
-      if (res?.record) {
-        rec = saveLocalBetaComment(payload, {
-          globalNumber: res.record.globalNumber,
-          fileName: res.record.fileName,
-          id: res.record.id,
-          createdAt: res.record.createdAt,
-        });
-        destinations = [
-          "device",
-          ...(Array.isArray(res.destinations) ? res.destinations : []),
-        ];
-        if (res.emailedTo) emailed = true;
-      }
-    } catch {
-      /* server unavailable — fall through to client email */
-    }
+      const sessionId = getOrCreateSessionId();
+      const sessionNumber = sessionCount + 1;
+      const payload = {
+        pagePath: page.pagePath,
+        pageTitle: page.title,
+        module: page.module,
+        body: text,
+        category,
+        sessionId,
+        sessionNumber,
+      };
 
-    // 3) Single client email attempt (opens mailto on fail)
-    if (!emailed) {
-      const mail = await emailBetaCommentClient(rec, { openMailtoOnFail: true });
-      if (mail.ok) {
-        if (mail.channel === "formsubmit") {
+      // 1) Persist before any network request.
+      const localRecord = saveLocalBetaComment(payload);
+      let rec = localRecord;
+      let emailed = false;
+      let mailAppRequested = false;
+      let emailNeedsActivation = false;
+      let recipient = CLIENT_BETA_EMAIL;
+      let destinations: string[] = ["device"];
+
+      try {
+        // 2) Server: disk + GitHub + FormSubmit.
+        const res = await submitBetaComment({ data: payload });
+        recipient = res?.inboxEmail?.trim() || recipient;
+        emailNeedsActivation = Boolean(res?.emailNeedsActivation);
+        if (res?.record) {
+          rec = reconcileLocalBetaComment(localRecord.id, res.record);
+          destinations = [
+            "device",
+            ...(Array.isArray(res.destinations) ? res.destinations : []),
+          ];
+        }
+        emailed = Boolean(res?.emailedTo);
+      } catch {
+        /* server unavailable — continue with the client fallback */
+      }
+
+      // 3) One client attempt, then request a mail-app handoff on failure.
+      if (!emailed) {
+        const mail = await emailBetaCommentClient(rec, {
+          openMailtoOnFail: true,
+          recipient,
+        });
+        emailNeedsActivation ||= Boolean(mail.needsActivation);
+        if (mail.channel === "formsubmit" && mail.ok) {
           emailed = true;
-          destinations.push(`email:${CLIENT_BETA_EMAIL}`);
-        } else if (mail.channel === "mailto") {
-          mailDraftOpened = true;
+          destinations.push(`email:${recipient}`);
+        } else if (mail.channel === "mailto" && mail.ok) {
+          mailAppRequested = true;
           destinations.push("mailto");
         }
       }
-    }
 
-    setSessionCount(sessionNumber);
-    sessionStorage.setItem("realestate-ai-beta-n", String(sessionNumber));
-    const entry: LocalComment = {
-      globalNumber: rec.globalNumber,
-      fileName: rec.fileName,
-      pageTitle: page.title,
-      body: text,
-      at: rec.createdAt,
-    };
-    const nextHist = [entry, ...history].slice(0, 20);
-    setHistory(nextHist);
-    sessionStorage.setItem(
-      "realestate-ai-beta-hist",
-      JSON.stringify(nextHist),
-    );
-    setBody("");
-
-    const num = `#${String(rec.globalNumber).padStart(4, "0")}`;
-    if (emailed) {
-      toast.success(`Comment ${num} sent · emailed to ${CLIENT_BETA_EMAIL}`);
-    } else if (mailDraftOpened) {
-      toast.success(
-        `Comment ${num} saved · mail draft opened — send it to complete delivery`,
+      setSessionCount(sessionNumber);
+      sessionStorage.setItem("realestate-ai-beta-n", String(sessionNumber));
+      const entry: LocalComment = {
+        globalNumber: rec.globalNumber,
+        fileName: rec.fileName,
+        pageTitle: page.title,
+        body: text,
+        at: rec.createdAt,
+      };
+      const nextHist = [entry, ...history].slice(0, 20);
+      setHistory(nextHist);
+      sessionStorage.setItem(
+        "realestate-ai-beta-hist",
+        JSON.stringify(nextHist),
       );
-    } else {
-      toast.success(
-        `Comment ${num} saved on device · email to ${CLIENT_BETA_EMAIL} (FormSubmit activation may be needed — check inbox/spam)`,
-      );
-    }
+      setBody("");
 
-    setBusy(false);
+      const num = `#${String(rec.globalNumber).padStart(4, "0")}`;
+      const serverBacked = destinations.some(
+        (destination) =>
+          destination === "github" || destination.startsWith("disk:"),
+      );
+
+      if (emailed) {
+        toast.success(`Comment ${num} sent · emailed to ${recipient}`);
+      } else if (mailAppRequested) {
+        toast.success(
+          `Comment ${num} saved · mail app requested — send the draft to complete delivery`,
+        );
+      } else {
+        const savedWhere = serverBacked
+          ? "saved on device and server"
+          : "saved on device only";
+        const emailState = emailNeedsActivation
+          ? "activate FormSubmit from the destination inbox"
+          : "email unavailable";
+        toast.message(`Comment ${num} ${savedWhere} · ${emailState}`);
+      }
+    } catch {
+      toast.error(
+        "Could not save this comment on the device. Your text is still here — please retry.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -269,8 +287,8 @@ export function BetaCommentDrawer() {
               />
               <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
                 No name is stored. Delivery: device backup → server file → email
-                via FormSubmit (requires one-time activation of owner inbox) →
-                mailto fallback if FormSubmit is not yet active.
+                via FormSubmit → mail-app fallback if FormSubmit is unavailable,
+                misconfigured, or awaiting activation.
               </p>
             </div>
 
