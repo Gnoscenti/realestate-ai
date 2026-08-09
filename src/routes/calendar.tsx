@@ -128,7 +128,7 @@ function CalendarPage() {
         : undefined);
     connectCalendar(id, email);
     toast.success(
-      `${CALENDAR_PROVIDERS.find((p) => p.id === id)?.label} connected`,
+      `${CALENDAR_PROVIDERS.find((p) => p.id === id)?.label} connected (demo — nothing imported)`,
     );
   };
 
@@ -138,7 +138,7 @@ function CalendarPage() {
       return;
     }
     syncCalendars();
-    toast.success("Appointments refreshed from connected calendars");
+    toast.success("Refreshed. No external calendar is connected, so nothing was imported");
   };
 
   const markUsed = (id: string, company: string) => {
@@ -170,8 +170,9 @@ function CalendarPage() {
               Calendars, AI reminders & vendors
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Connect Google, Apple/iOS, Outlook, or CalDAV. Import real estate
-              appointments so the AI surfaces prep reminders. Keep termite,
+              Connect is a local demo toggle in this build: there is no OAuth and
+              nothing is imported yet. Appointments and reminders come from what
+              is stored on this device. Keep termite,
               inspection, electrician, and other vendors under category
               headings — with a Commonly Used list that persists.
             </p>
@@ -247,7 +248,7 @@ function CalendarPage() {
                           onClick={() => connect(p.id)}
                         >
                           <Link2 className="h-4 w-4" />
-                          Connect & import
+                          Connect (demo)
                         </Button>
                       </>
                     ) : (
@@ -287,9 +288,8 @@ function CalendarPage() {
             })}
           </div>
           <p className="text-xs text-[var(--color-fg-subtle)]">
-            Demo mode simulates OAuth + pull. Connected calendars import
-            showings, inspections, listing appointments, closings, and
-            contractor visits with AI-extracted reminders.
+            Demo only. Toggling a provider here does not start an OAuth flow and
+            does not import anything from Google, Apple, Outlook, or CalDAV.
           </p>
         </TabsContent>
 
@@ -300,14 +300,14 @@ function CalendarPage() {
                 <div>
                   <div className="font-medium">No calendars connected yet</div>
                   <p className="text-sm text-[var(--color-fg-muted)]">
-                    Connect Google, Apple, or Outlook to pull real estate
-                    appointments.
+                    Calendar import is not implemented yet, so appointments must be
+                      added manually.
                   </p>
                 </div>
                 <Button
                   onClick={() => {
                     connect("google");
-                    toast.success("Google Calendar connected");
+                    toast.success("Google Calendar connected (demo)");
                   }}
                 >
                   Quick-connect Google
@@ -409,10 +409,10 @@ function CalendarPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bell className="h-4 w-4 text-[var(--color-primary)]" />
-                AI picked these up from your calendar
+                Reminders from appointments saved on this device
               </CardTitle>
               <CardDescription>
-                Prep tasks extracted from imported appointments — ask the
+                Prep tasks from appointments saved on this device — ask the
                 assistant “what’s on my calendar?” anytime
               </CardDescription>
             </CardHeader>
