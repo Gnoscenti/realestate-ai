@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-afterEach(() => {
-  vi.resetModules();
-});
-
 describe("workspace scope", () => {
-  it("does not crash when persist api is unavailable", async () => {
+  afterEach(() => {
     vi.resetModules();
+  });
+
+  it("does not crash when persist api is unavailable", async () => {
     const setState = vi.fn();
 
     vi.doMock("@/lib/store", () => ({
