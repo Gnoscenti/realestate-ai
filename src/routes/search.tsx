@@ -101,7 +101,7 @@ function SearchPage() {
             Smart property search
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Describe what clients need — AI ranks the inventory
+            AI ranks listings in your book—manually added, imported, website-loaded, or MLS-synced.
           </p>
         </div>
       </div>
@@ -217,7 +217,7 @@ function SearchPage() {
           {filtered.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                No properties match. Try a broader query or clear filters.
+                No listings in your book match. Add or import listings, try a broader query, or clear filters.
               </CardContent>
             </Card>
           )}
