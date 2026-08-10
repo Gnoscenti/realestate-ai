@@ -1,19 +1,17 @@
 /**
  * Server-only Stripe helpers.
  *
- * Pricing: a single $9.99 charge that unlocks INTRO_DAYS of access.
+ * Pricing: a single one-time $9.99 charge that unlocks INTRO_DAYS of access.
  *
- * IMPORTANT: the advertised "$49/mo after the intro" renewal is NOT
- * implemented. This module creates a one-time `mode: "payment"` session only.
- * There is no subscription, no webhook, and nothing that will ever charge a
- * second time. Either implement a recurring price plus a webhook, or stop
- * advertising a renewal in the UI.
+ * This is deliberately `mode: "payment"`. There is no subscription, no
+ * webhook, and nothing that can ever charge a second time. Access simply
+ * expires after INTRO_DAYS and the UI must not advertise a renewal.
  */
 
 import {
+  CURRENCY,
   INTRO_DAYS,
   INTRO_PRICE_CENTS,
-  MONTHLY_PRICE_CENTS,
   PLAN,
 } from "@/lib/billing";
 
@@ -85,7 +83,7 @@ export async function createCheckoutSession(opts: {
           currency: "usd",
           unit_amount: INTRO_PRICE_CENTS,
           product_data: {
-            name: `${PLAN.name} — ${INTRO_DAYS}-day intro`,
+            name: `${PLAN.name} — ${INTRO_DAYS}-day access`,
             description: `Full agent workspace for ${INTRO_DAYS} days at $${(INTRO_PRICE_CENTS / 100).toFixed(2)}. One-time charge; this session does not create a recurring subscription.`,
           },
         },
@@ -96,8 +94,7 @@ export async function createCheckoutSession(opts: {
       plan: "intro_one_time",
       intro_days: String(INTRO_DAYS),
       intro_cents: String(INTRO_PRICE_CENTS),
-      advertised_monthly_cents: String(MONTHLY_PRICE_CENTS),
-      renewal_implemented: "false",
+      recurring: "none",
     },
     payment_intent_data: {
       metadata: {
@@ -146,15 +143,21 @@ export async function verifyCheckoutSession(
   try {
     const stripe = await stripeClient();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    const paid =
+    // A completed session belonging to this Stripe account is not enough on
+    // its own. Confirm it is this product, in this currency, before granting
+    // any access.
+    const complete =
       session.status === "complete" && session.payment_status === "paid";
+    const rightProduct = session.metadata?.product === "realestate-ai-pro";
+    const rightCurrency = (session.currency ?? CURRENCY) === CURRENCY;
+    const paid = complete && rightProduct && rightCurrency;
     return {
       paid,
       demo: false,
       sessionId: session.id,
       reason: paid
         ? undefined
-        : `status:${session.status}/payment:${session.payment_status}`,
+        : `status:${session.status}/payment:${session.payment_status}/product:${session.metadata?.product ?? "none"}`,
     };
   } catch {
     return {
