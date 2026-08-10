@@ -28,6 +28,7 @@ type Props = {
 
 export function Paywall({ agentName }: Props) {
   const completeDemoCheckout = useAppStore((s) => s.completeDemoCheckout);
+  const completePaidCheckout = useAppStore((s) => s.completePaidCheckout);
   const redeemAccessCode = useAppStore((s) => s.redeemAccessCode);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -70,9 +71,8 @@ export function Paywall({ agentName }: Props) {
           definitive = true;
         if (cancelled) return;
         if (verified.paid) {
-          // TODO: completeDemoCheckout() flags billing as isDemo. Replace with
-          // a store action that records a verified Stripe purchase.
-          completeDemoCheckout(verified.sessionId);
+          // A verified purchase, recorded as a real payment — not a demo.
+          completePaidCheckout(verified.sessionId);
           toast.success(
             `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
           );
@@ -102,7 +102,7 @@ export function Paywall({ agentName }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [completeDemoCheckout]);
+  }, [completeDemoCheckout, completePaidCheckout]);
 
   const onCheckout = async () => {
     setBusy(true);

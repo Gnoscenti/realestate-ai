@@ -27,6 +27,15 @@ import {
 import { useAppStore } from "@/lib/store";
 import { Paywall } from "@/components/billing/paywall";
 
+/**
+ * Enough to recognise a code you were already given, never enough to use one.
+ * This page renders for every account that has access, paying customers
+ * included, so printing all five codes here handed them out.
+ */
+function maskCode(code: string): string {
+  return code.slice(0, 3) + "\u2022".repeat(Math.max(3, code.length - 3));
+}
+
 export const Route = createFileRoute("/billing")({
   component: BillingPage,
 });
@@ -123,26 +132,42 @@ function BillingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pilot codes (5)</CardTitle>
+          <CardTitle className="text-base">
+            Pilot codes ({FREE_ACCESS_CODES.length})
+          </CardTitle>
           <CardDescription>
-            Share with trusted agents for feedback before full launch.
+            Masked on purpose — this page renders for every account with
+            access, paying customers included. Read the full values from{" "}
+            <span className="font-mono text-[var(--color-fg)]">
+              src/lib/billing.ts
+            </span>{" "}
+            when you need to issue one.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2">
-            {FREE_ACCESS_CODES.map((c) => (
-              <li
-                key={c.code}
-                className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              >
-                <span className="font-mono text-[var(--color-primary)]">
-                  {c.code}
-                </span>
-                <span className="text-xs text-[var(--color-fg-subtle)]">
-                  {c.label}
-                </span>
-              </li>
-            ))}
+            {FREE_ACCESS_CODES.map((c) => {
+              const mine = billing.redeemedCode === c.code;
+              return (
+                <li
+                  key={c.code}
+                  className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-sm"
+                >
+                  <span
+                    className={
+                      mine
+                        ? "font-mono text-[var(--color-primary)]"
+                        : "font-mono text-[var(--color-fg-subtle)]"
+                    }
+                  >
+                    {mine ? c.code : maskCode(c.code)}
+                  </span>
+                  <span className="text-xs text-[var(--color-fg-subtle)]">
+                    {mine ? "redeemed on this device" : c.label}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>
