@@ -34,7 +34,7 @@ function clone<T>(value: T): T {
  */
 const PRISTINE_PERSISTED: Partial<AppStoreState> = (() => {
   const state = useAppStore.getState();
-  const { partialize } = useAppStore.persist.getOptions();
+  const partialize = useAppStore.persist?.getOptions?.().partialize;
   const slice = partialize ? partialize(state) : state;
   return clone(slice) as unknown as Partial<AppStoreState>;
 })();
@@ -78,8 +78,15 @@ function migrateLegacyIfNeeded(scopedKey: string): void {
 export async function bindWorkspaceToUser(
   userId: string | null | undefined,
 ): Promise<void> {
+  const persistApi = useAppStore.persist;
   const key = workspaceStorageKey(userId);
-  if (currentKey === key && useAppStore.persist.hasHydrated()) {
+  if (!persistApi) {
+    currentKey = key;
+    useAppStore.setState({ hydrated: true });
+    return;
+  }
+
+  if (currentKey === key && persistApi.hasHydrated()) {
     if (!useAppStore.getState().hydrated) {
       useAppStore.getState().setHydrated(true);
     }
@@ -99,8 +106,8 @@ export async function bindWorkspaceToUser(
     useAppStore.setState({ hydrated: false });
     if (switchingAccounts) resetPersistedSlices();
     migrateLegacyIfNeeded(key);
-    useAppStore.persist.setOptions({ name: key });
-    await useAppStore.persist.rehydrate();
+    persistApi.setOptions({ name: key });
+    await persistApi.rehydrate();
     // onFinishHydration in rehydrateStore sets hydrated; belt-and-suspenders:
     if (!useAppStore.getState().hydrated) {
       useAppStore.getState().setHydrated(true);
