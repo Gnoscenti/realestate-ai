@@ -168,7 +168,8 @@ export function Paywall({ agentName }: Props) {
             <span className="font-semibold text-[var(--color-fg)]">
               {formatMoney(INTRO_PRICE_CENTS)}
             </span>
-            {" "}for {INTRO_DAYS} days of full access. No subscription, nothing
+            {" "}for {INTRO_DAYS} days of full access. No subscription and nothing
+          renews automatically.
           </p>
         </div>
 
