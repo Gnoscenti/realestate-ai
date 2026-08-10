@@ -169,6 +169,8 @@ interface AppState {
   redeemAccessCode: (code: string) => { ok: true; code: string } | { ok: false; error: string };
   clearBilling: () => void;
   completeDemoCheckout: (sessionId?: string) => void;
+  /** A server-verified Stripe payment. Never recorded as a demo. */
+  completePaidCheckout: (sessionId: string) => void;
   importLeadsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   importListingsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   addProperty: (
@@ -1072,6 +1074,19 @@ export const useAppStore = create<AppState>()(
           source: "demo_checkout",
           sessionId: sessionId ?? `cs_demo_${Date.now().toString(36)}`,
           isDemo: true,
+        });
+        set({ billing });
+      },
+
+      // A real payment that the server already verified with Stripe. Kept
+      // separate from completeDemoCheckout so a genuine purchase is never
+      // stamped isDemo: true (which also showed "demo checkout" on /billing
+      // and offered paying customers a "Reset access (demo)" button).
+      completePaidCheckout: (sessionId) => {
+        const billing = startIntroAccess({
+          source: "stripe_intro",
+          sessionId,
+          isDemo: false,
         });
         set({ billing });
       },
