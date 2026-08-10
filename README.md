@@ -14,8 +14,8 @@ AI-native workspace for real estate professionals, evolved from the [realestate-
 | **CMA Studio** | Hybrid AVM / comps tuned for RSF estates |
 | **Content Agent** | Agentic social campaigns (IG, FB, LinkedIn, email) using brand memory |
 | **RSF Knowledge** | Covenants, HOAs, neighborhoods, talk tracks |
-| **Calendar & Vendors** | Google / Apple / Outlook import (demo sync), AI reminders, contractor directory |
-| **Billing** | Stripe checkout — **$9.99 / 30-day intro → $49/mo**; 5 free beta codes |
+| **Calendar & Vendors** | Local calendar UI (no OAuth, nothing is imported yet), AI reminders, contractor directory |
+| **Billing** | Stripe checkout — **one-time $9.99 for 30 days of access**, no subscription and no renewal; 5 free beta codes |
 | **Feedback Board** | Pre-launch comments by product section (unlocked via code or paid access) |
 | **iOS / Capacitor** | Safe areas, bottom tabs, native status bar / keyboard / haptics bridge |
 
@@ -26,7 +26,7 @@ AI-native workspace for real estate professionals, evolved from the [realestate-
 - Tailwind CSS v4 + Radix (shadcn-style)  
 - Zustand (persisted workspace)  
 - Capacitor 8 (iOS wrap)  
-- Stripe (server checkout; demo mode without keys)
+- Stripe (server checkout; demo mode only when `ALLOW_DEMO_CHECKOUT=1`)
 
 ## Quick start
 
@@ -41,7 +41,8 @@ npm run build
 
 | Variable | Purpose |
 | --- | --- |
-| `STRIPE_SECRET_KEY` | Web-only Stripe $9.99 one-time intro checkout; renewal is not implemented |
+| `STRIPE_SECRET_KEY` | Live Stripe Checkout for the one-time $9.99 payment |
+| `ALLOW_DEMO_CHECKOUT` | Set to `1` to allow unlocking without payment. Never set in production. |
 | `GITHUB_TOKEN` | Server-only Suggest → GitHub Issue delivery |
 | `RESEND_API_KEY` + `BETA_FEEDBACK_EMAIL` | Optional server-only feedback email copy |
 | `CAP_SERVER_URL` | Capacitor live-reload/preview only; do not ship in production |

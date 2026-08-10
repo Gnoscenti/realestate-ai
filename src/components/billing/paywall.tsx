@@ -17,13 +17,10 @@ import {
   INTRO_DAYS,
   formatMoney,
   INTRO_PRICE_CENTS,
-  MONTHLY_PRICE_CENTS,
-  FREE_ACCESS_CODES,
 } from "@/lib/billing";
 import { useAppStore } from "@/lib/store";
-import { startCheckout } from "@/lib/checkout";
+import { confirmCheckout, startCheckout } from "@/lib/checkout";
 import { openExternalUrl } from "@/lib/native";
-import { cn } from "@/lib/utils";
 
 type Props = {
   agentName?: string;
@@ -35,22 +32,76 @@ export function Paywall({ agentName }: Props) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
-  const [showCodes, setShowCodes] = useState(false);
 
-  // Honor return from Stripe / demo
+  // Return from Stripe.
+  //
+  // The success URL query string is attacker-controlled: anyone can type
+  // `?checkout=success` into the address bar. Access is therefore granted only
+  // after the server asks Stripe whether the session actually completed and was
+  // paid. Never unlock from the query parameter alone.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("checkout") === "success") {
-      const sessionId = params.get("session_id") ?? undefined;
-      completeDemoCheckout(sessionId ?? undefined);
-      toast.success("Welcome — 30-day intro is active");
+    if (params.get("checkout") !== "success") return;
+
+    const sessionId = params.get("session_id");
+    let cancelled = false;
+    let definitive = false;
+
+    const stripCheckoutParams = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete("checkout");
       url.searchParams.delete("demo");
       url.searchParams.delete("session_id");
       window.history.replaceState({}, "", url.pathname + url.search);
+    };
+
+    if (!sessionId) {
+      toast.error("That checkout could not be verified — no access granted.");
+      stripCheckoutParams();
+      return;
     }
+
+    void (async () => {
+      try {
+        const verified = await confirmCheckout({ data: { sessionId } });
+          // Stripe gave a definitive answer (paid, demo or not paid), so the
+          // session id has served its purpose and can leave the URL.
+          definitive = true;
+        if (cancelled) return;
+        if (verified.paid) {
+          // TODO: completeDemoCheckout() flags billing as isDemo. Replace with
+          // a store action that records a verified Stripe purchase.
+          completeDemoCheckout(verified.sessionId);
+          toast.success(
+            `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
+          );
+        } else if (verified.demo) {
+          completeDemoCheckout(verified.sessionId);
+          toast.warning(
+            `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
+          );
+        } else {
+          toast.error(
+            "We could not confirm that payment with Stripe — no access granted.",
+          );
+        }
+      } catch {
+        // A transient network or Stripe outage is not a failed payment. Keep
+        // session_id in the URL so a reload can retry the confirmation.
+        if (!cancelled) {
+          toast.error(
+            "We could not reach Stripe to confirm that payment. Reload this page to retry — your purchase is not lost.",
+          );
+        }
+      } finally {
+        if (!cancelled && definitive) stripCheckoutParams();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [completeDemoCheckout]);
 
   const onCheckout = async () => {
@@ -65,10 +116,11 @@ export function Paywall({ agentName }: Props) {
         },
       });
       if (result.mode === "demo") {
-        // Stay in-app for demo completion
+        // Demo sessions are only issued when ALLOW_DEMO_CHECKOUT=1 is set on
+        // the server. Say plainly that no money changed hands.
         completeDemoCheckout(result.sessionId);
-        toast.success(
-          `Demo checkout complete — ${formatMoney(INTRO_PRICE_CENTS)} intro for ${INTRO_DAYS} days`,
+        toast.warning(
+          `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
         );
         return;
       }
@@ -76,10 +128,10 @@ export function Paywall({ agentName }: Props) {
       toast.message("Complete payment in the secure Stripe window");
     } catch (err) {
       console.error(err);
-      // Graceful demo fallback if server fn fails
-      completeDemoCheckout();
-      toast.success(
-        `Intro unlocked (offline mode) — ${formatMoney(INTRO_PRICE_CENTS)} / ${INTRO_DAYS} days`,
+      // A failure here must never unlock the app. Failing open would make every
+      // server error a free subscription.
+      toast.error(
+        "Checkout is unavailable right now. You were not charged and no access was granted.",
       );
     } finally {
       setBusy(false);
@@ -100,7 +152,6 @@ export function Paywall({ agentName }: Props) {
       setCodeBusy(false);
     }
   };
-
   return (
     <div className="safe-pad-y gradient-mesh flex min-h-dvh items-center justify-center p-4 sm:p-6">
       <div className="w-full max-w-lg">
@@ -113,11 +164,12 @@ export function Paywall({ agentName }: Props) {
           </h1>
           <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
             {agentName ? `Hi ${agentName.split(" ")[0]} — ` : ""}
-            Start with a {INTRO_DAYS}-day intro at{" "}
+            Pay once —{" "}
             <span className="font-semibold text-[var(--color-fg)]">
               {formatMoney(INTRO_PRICE_CENTS)}
             </span>
-            , then {formatMoney(MONTHLY_PRICE_CENTS)}/mo.
+            {" "}for {INTRO_DAYS} days of full access. No subscription and nothing
+          renews automatically.
           </p>
         </div>
 
@@ -126,7 +178,7 @@ export function Paywall({ agentName }: Props) {
             <div className="flex items-end justify-between gap-3">
               <div>
                 <div className="text-xs font-medium uppercase tracking-wider text-[var(--color-primary)]">
-                  Intro offer
+                  One-time price
                 </div>
                 <div className="mt-1 font-display text-3xl font-semibold tabular text-[var(--color-fg)]">
                   {formatMoney(INTRO_PRICE_CENTS)}
@@ -136,7 +188,7 @@ export function Paywall({ agentName }: Props) {
                 </div>
               </div>
               <div className="rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
-                Then {formatMoney(MONTHLY_PRICE_CENTS)}/mo
+                One-time payment
               </div>
             </div>
           </div>
@@ -164,11 +216,11 @@ export function Paywall({ agentName }: Props) {
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              Start {INTRO_DAYS}-day intro · {formatMoney(INTRO_PRICE_CENTS)}
+              Pay {formatMoney(INTRO_PRICE_CENTS)} · unlock {INTRO_DAYS} days
             </Button>
             <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
-              Secure Stripe Checkout when keys are configured. Demo mode
-              activates access instantly in this preview.
+              Payment is processed by Stripe and verified before access is
+              granted.
             </p>
           </div>
         </div>
@@ -211,45 +263,11 @@ export function Paywall({ agentName }: Props) {
               Redeem
             </Button>
           </div>
-
-          <button
-            type="button"
-            className="mt-3 text-xs text-[var(--color-primary)] underline-offset-2 hover:underline"
-            onClick={() => setShowCodes((v) => !v)}
-          >
-            {showCodes ? "Hide" : "Show"} the 5 pilot codes (pre-launch)
-          </button>
-          {showCodes && (
-            <ul className="mt-2 space-y-1.5 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3">
-              {FREE_ACCESS_CODES.map((c) => (
-                <li
-                  key={c.code}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "font-mono font-medium text-[var(--color-primary)] hover:underline",
-                    )}
-                    onClick={() => {
-                      setCode(c.code);
-                      toast.message(`Filled ${c.code}`);
-                    }}
-                  >
-                    {c.code}
-                  </button>
-                  <span className="truncate text-[var(--color-fg-subtle)]">
-                    {c.label}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[11px] text-[var(--color-fg-subtle)]">
           <Sparkles className="h-3 w-3" />
-          Cancel anytime after intro · No long-term contract
+          One-time charge · No subscription · Nothing renews automatically
         </p>
       </div>
     </div>

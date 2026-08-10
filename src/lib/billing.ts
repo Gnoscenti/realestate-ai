@@ -1,22 +1,20 @@
 /**
  * Pricing + access codes for RealEstate AI launch.
  *
- * Intro: $9.99 for 30 days → then $49/mo Pro.
+ * Pricing: a single one-time $9.99 charge that unlocks 30 days of access.
+ * There is no subscription and nothing renews automatically.
  * Five free beta codes unlock full access + feedback board.
  */
 
 export const INTRO_PRICE_CENTS = 999;
 export const INTRO_DAYS = 30;
-export const MONTHLY_PRICE_CENTS = 4900; // $49 after intro
 export const CURRENCY = "usd";
 
 export const PLAN = {
   id: "pro",
   name: "RealEstate AI Pro",
   introLabel: "$9.99",
-  introPeriod: "first 30 days",
-  monthlyLabel: "$49",
-  monthlyPeriod: "per month after",
+  introPeriod: "30 days of access",
   features: [
     "Command Center + ranked daily action packs",
     "CMA Studio & RSF market knowledge",
@@ -77,9 +75,9 @@ export type SubscriptionStatus =
 export type BillingState = {
   status: SubscriptionStatus;
   source: AccessSource;
-  /** ISO — end of $9.99 intro window */
+  /** ISO — end of the paid access window */
   introEndsAt: string | null;
-  /** ISO — next renewal / paid-through */
+  /** ISO — access paid-through. Nothing renews automatically. */
   currentPeriodEnd: string | null;
   /** Stripe session / sub ids when available */
   stripeCustomerId: string | null;

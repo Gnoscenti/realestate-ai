@@ -1,5 +1,9 @@
 /**
- * Client-callable checkout. Demo mode without STRIPE_SECRET_KEY.
+ * Client-callable checkout endpoints.
+ *
+ * `confirmCheckout` exists so the browser never decides on its own that a
+ * payment succeeded. The success URL query string is attacker-controlled, so
+ * the only trustworthy signal is Stripe's own view of the session.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -16,4 +20,15 @@ export const startCheckout = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { createCheckoutSession } = await import("@/lib/stripe-checkout");
     return createCheckoutSession(data);
+  });
+
+const confirmSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+});
+
+export const confirmCheckout = createServerFn({ method: "POST" })
+  .validator(confirmSchema)
+  .handler(async ({ data }) => {
+    const { verifyCheckoutSession } = await import("@/lib/stripe-checkout");
+    return verifyCheckoutSession(data.sessionId);
   });
