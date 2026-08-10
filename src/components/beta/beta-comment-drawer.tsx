@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAppStore } from "@/lib/store";
-import { hasFeedbackAccess } from "@/lib/billing";
 import { resolvePageMeta } from "@/lib/beta-comments";
 import {
   saveLocalBetaComment,
@@ -73,8 +72,11 @@ export function BetaCommentDrawer() {
   const [category, setCategory] = useState<Category>("other");
   const [submitting, setSubmitting] = useState(false);
 
-  const unlocked =
-    hasFeedbackAccess(billing) && Boolean(billing?.redeemedCode);
+  // Intentional: Suggest is pilot-code only, not "anyone with access", because
+  // submitBetaComment requires a valid pilot code server-side. A paying
+  // customer therefore does not get the drawer. hasFeedbackAccess() used to be
+  // ANDed in here and was redundant — a redeemed code already satisfies it.
+  const unlocked = Boolean(billing?.redeemedCode);
 
   const history = unlocked ? loadLocalBetaInbox() : [];
 
@@ -102,7 +104,18 @@ export function BetaCommentDrawer() {
     setBody("");
     setOpen(false);
     try {
-      const res = await submitBetaComment({ data: payload });
+      const res = await submitBetaComment({
+        data: { ...payload, accessCode: billing?.redeemedCode ?? "" },
+      });
+      if (!res.ok) {
+        // The server refused. Never claim delivery we did not get.
+        toast.warning(
+          res.reason === "rate_limited"
+            ? "Too many suggestions just now — saved on this device, try again in a few minutes."
+            : "That pilot code was rejected — saved on this device only.",
+        );
+        return;
+      }
       reconcileLocalBetaComment(localRecord.id, res.record);
       if (res.issue) {
         toast.success(`Suggestion sent to GitHub #${res.issue.number}`);
@@ -116,13 +129,23 @@ export function BetaCommentDrawer() {
         toast.warning(
           "Saved on this device and server, but engineering automation was not queued.",
         );
+      } else if (res.ephemeralOnly) {
+        toast.warning(
+          "Saved on this device. The server copy is temporary and will not be kept.",
+        );
       } else {
         toast.warning(
           "Saved on this device only — server delivery is unavailable.",
         );
       }
-    } catch {
-      toast.warning("Saved on this device only — try sending again later.");
+    } catch (err) {
+      const unauthorized =
+        err instanceof Error && err.message === "Unauthorized";
+      toast.warning(
+        unauthorized
+          ? "Saved on this device. Sign in to send suggestions to engineering."
+          : "Saved on this device only — try sending again later.",
+      );
     } finally {
       setSubmitting(false);
     }
