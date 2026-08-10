@@ -18,6 +18,7 @@ import { Route as EdgeRouteImport } from './routes/edge'
 import { Route as FeedbackRouteImport } from './routes/feedback'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
 import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as MarketRouteImport } from './routes/market'
 import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as MlsRouteImport } from './routes/mls'
@@ -71,6 +72,11 @@ const LeadsRoute = LeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MarketRoute = MarketRouteImport.update({
   id: '/market',
   path: '/market',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
   '/mls': typeof MlsRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByTo {
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
   '/mls': typeof MlsRoute
@@ -154,6 +162,7 @@ export interface FileRoutesById {
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
   '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
   '/market': typeof MarketRoute
   '/marketing': typeof MarketingRoute
   '/mls': typeof MlsRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/feedback'
     | '/knowledge'
     | '/leads'
+    | '/login'
     | '/market'
     | '/marketing'
     | '/mls'
@@ -192,6 +202,7 @@ export interface FileRouteTypes {
     | '/feedback'
     | '/knowledge'
     | '/leads'
+    | '/login'
     | '/market'
     | '/marketing'
     | '/mls'
@@ -210,6 +221,7 @@ export interface FileRouteTypes {
     | '/feedback'
     | '/knowledge'
     | '/leads'
+    | '/login'
     | '/market'
     | '/marketing'
     | '/mls'
@@ -229,6 +241,7 @@ export interface RootRouteChildren {
   FeedbackRoute: typeof FeedbackRoute
   KnowledgeRoute: typeof KnowledgeRoute
   LeadsRoute: typeof LeadsRoute
+  LoginRoute: typeof LoginRoute
   MarketRoute: typeof MarketRoute
   MarketingRoute: typeof MarketingRoute
   MlsRoute: typeof MlsRoute
@@ -303,6 +316,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/market': {
       id: '/market'
       path: '/market'
@@ -365,6 +385,7 @@ const rootRouteChildren: RootRouteChildren = {
   FeedbackRoute: FeedbackRoute,
   KnowledgeRoute: KnowledgeRoute,
   LeadsRoute: LeadsRoute,
+  LoginRoute: LoginRoute,
   MarketRoute: MarketRoute,
   MarketingRoute: MarketingRoute,
   MlsRoute: MlsRoute,
