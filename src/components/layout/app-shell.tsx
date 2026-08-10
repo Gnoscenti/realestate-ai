@@ -44,6 +44,9 @@ import { HoverHint } from "@/components/ui/hover-hint";
 import { BetaCommentDrawer } from "@/components/beta/beta-comment-drawer";
 import { syncNotificationBadges } from "@/lib/app-badge";
 import { unreadCount as emailUnreadCount } from "@/lib/email-alerts";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
+import { bindWorkspaceToUser } from "@/lib/auth/workspace-scope";
 
 
 
@@ -199,6 +202,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [headerQuery, setHeaderQuery] = useState("");
   const [editProfile, setEditProfile] = useState(false);
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user, isPending: authPending } = useCurrentUserState();
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const setCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const onboarded = useAppStore((s) => s.onboarded);
@@ -228,6 +233,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     rehydrateStore();
     void initNativeShell();
   }, []);
+
+  // Bind persisted workspace storage to the signed-in user, so profile,
+  // billing and listings follow the login across devices. This also runs for
+  // the anonymous key, so a signed-out visitor never reads the previous
+  // user's workspace back out of localStorage.
+  useEffect(() => {
+    if (authPending) return;
+    void bindWorkspaceToUser(user?.id);
+  }, [authPending, user?.id]);
 
   // First visit after unlock — guided glass tour
   useEffect(() => {
@@ -261,6 +275,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       search: { q: headerQuery.trim() },
     });
   };
+
+  // /login is a full-screen landing. It must render outside the shell, and we
+  // must never redirect away from it, or the sign-in page would loop.
+  if (pathname === SIGN_IN_PATH) return <>{children}</>;
+
+  // The session is still resolving. Rendering the signed-out path here would
+  // flash the login screen at signed-in users on every hard reload.
+  if (authPending) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-transparent text-[var(--color-fg-muted)]">
+        <div className="text-sm">Loading workspace…</div>
+      </div>
+    );
+  }
+
+  // Gate order is auth -> onboarding -> paywall -> app. A signed-out visitor
+  // never sees "Set up your Agent OS".
+  if (!user) return <RedirectToSignIn />;
 
   if (!hydrated) {
     return (
