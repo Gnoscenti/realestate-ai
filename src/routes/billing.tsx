@@ -19,7 +19,6 @@ import {
   daysLeft,
   formatMoney,
   INTRO_PRICE_CENTS,
-  MONTHLY_PRICE_CENTS,
   INTRO_DAYS,
   FREE_ACCESS_CODES,
   hasAppAccess,
@@ -50,8 +49,8 @@ function BillingPage() {
           Billing & access
         </h1>
         <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          Intro {formatMoney(INTRO_PRICE_CENTS)} / {INTRO_DAYS} days → then{" "}
-          {formatMoney(MONTHLY_PRICE_CENTS)}/mo for {PLAN.name}.
+          One-time {formatMoney(INTRO_PRICE_CENTS)} for {INTRO_DAYS} days of{" "}
+          {PLAN.name}. Nothing renews automatically.
         </p>
       </div>
 
@@ -79,13 +78,12 @@ function BillingPage() {
         <CardContent className="space-y-3 text-sm text-[var(--color-fg-muted)]">
           {billing.introEndsAt && (
             <p>
-              Intro ends{" "}
+              Access ends{" "}
               <span className="text-[var(--color-fg)]">
                 {new Date(billing.introEndsAt).toLocaleDateString()}
               </span>
-              . After that, plan renews at{" "}
-              {formatMoney(MONTHLY_PRICE_CENTS)}/mo (or reconnect Stripe
-              customer portal when live).
+              . Access does not renew automatically — purchase another{" "}
+                {INTRO_DAYS} days when it expires.
             </p>
           )}
           {billing.redeemedCode && (
