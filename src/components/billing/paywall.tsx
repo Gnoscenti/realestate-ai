@@ -17,13 +17,10 @@ import {
   INTRO_DAYS,
   formatMoney,
   INTRO_PRICE_CENTS,
-  MONTHLY_PRICE_CENTS,
-  FREE_ACCESS_CODES,
 } from "@/lib/billing";
 import { useAppStore } from "@/lib/store";
 import { confirmCheckout, startCheckout } from "@/lib/checkout";
 import { openExternalUrl } from "@/lib/native";
-import { cn } from "@/lib/utils";
 
 type Props = {
   agentName?: string;
@@ -35,7 +32,6 @@ export function Paywall({ agentName }: Props) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
-  const [showCodes, setShowCodes] = useState(false);
 
   // Return from Stripe.
   //
@@ -50,6 +46,7 @@ export function Paywall({ agentName }: Props) {
 
     const sessionId = params.get("session_id");
     let cancelled = false;
+    let definitive = false;
 
     const stripCheckoutParams = () => {
       const url = new URL(window.location.href);
@@ -68,6 +65,9 @@ export function Paywall({ agentName }: Props) {
     void (async () => {
       try {
         const verified = await confirmCheckout({ data: { sessionId } });
+          // Stripe gave a definitive answer (paid, demo or not paid), so the
+          // session id has served its purpose and can leave the URL.
+          definitive = true;
         if (cancelled) return;
         if (verified.paid) {
           // TODO: completeDemoCheckout() flags billing as isDemo. Replace with
@@ -87,13 +87,15 @@ export function Paywall({ agentName }: Props) {
           );
         }
       } catch {
+        // A transient network or Stripe outage is not a failed payment. Keep
+        // session_id in the URL so a reload can retry the confirmation.
         if (!cancelled) {
           toast.error(
-            "We could not confirm that payment with Stripe — no access granted.",
+            "We could not reach Stripe to confirm that payment. Reload this page to retry — your purchase is not lost.",
           );
         }
       } finally {
-        if (!cancelled) stripCheckoutParams();
+        if (!cancelled && definitive) stripCheckoutParams();
       }
     })();
 
@@ -162,11 +164,11 @@ export function Paywall({ agentName }: Props) {
           </h1>
           <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
             {agentName ? `Hi ${agentName.split(" ")[0]} — ` : ""}
-            Start with a {INTRO_DAYS}-day intro at{" "}
+            Pay once —{" "}
             <span className="font-semibold text-[var(--color-fg)]">
               {formatMoney(INTRO_PRICE_CENTS)}
             </span>
-            , then {formatMoney(MONTHLY_PRICE_CENTS)}/mo.
+            {" "}for {INTRO_DAYS} days of full access. No subscription, nothing
           </p>
         </div>
 
@@ -175,7 +177,7 @@ export function Paywall({ agentName }: Props) {
             <div className="flex items-end justify-between gap-3">
               <div>
                 <div className="text-xs font-medium uppercase tracking-wider text-[var(--color-primary)]">
-                  Intro offer
+                  One-time price
                 </div>
                 <div className="mt-1 font-display text-3xl font-semibold tabular text-[var(--color-fg)]">
                   {formatMoney(INTRO_PRICE_CENTS)}
@@ -185,7 +187,7 @@ export function Paywall({ agentName }: Props) {
                 </div>
               </div>
               <div className="rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
-                Then {formatMoney(MONTHLY_PRICE_CENTS)}/mo
+                One-time payment
               </div>
             </div>
           </div>
@@ -213,7 +215,7 @@ export function Paywall({ agentName }: Props) {
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              Start {INTRO_DAYS}-day intro · {formatMoney(INTRO_PRICE_CENTS)}
+              Pay {formatMoney(INTRO_PRICE_CENTS)} · unlock {INTRO_DAYS} days
             </Button>
             <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
               Payment is processed by Stripe and verified before access is
@@ -260,45 +262,11 @@ export function Paywall({ agentName }: Props) {
               Redeem
             </Button>
           </div>
-
-          <button
-            type="button"
-            className="mt-3 text-xs text-[var(--color-primary)] underline-offset-2 hover:underline"
-            onClick={() => setShowCodes((v) => !v)}
-          >
-            {showCodes ? "Hide" : "Show"} the 5 pilot codes (pre-launch)
-          </button>
-          {showCodes && (
-            <ul className="mt-2 space-y-1.5 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3">
-              {FREE_ACCESS_CODES.map((c) => (
-                <li
-                  key={c.code}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <button
-                    type="button"
-                    className={cn(
-                      "font-mono font-medium text-[var(--color-primary)] hover:underline",
-                    )}
-                    onClick={() => {
-                      setCode(c.code);
-                      toast.message(`Filled ${c.code}`);
-                    }}
-                  >
-                    {c.code}
-                  </button>
-                  <span className="truncate text-[var(--color-fg-subtle)]">
-                    {c.label}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[11px] text-[var(--color-fg-subtle)]">
           <Sparkles className="h-3 w-3" />
-          Cancel anytime after intro · No long-term contract
+          One-time charge · No subscription · Nothing renews automatically
         </p>
       </div>
     </div>
