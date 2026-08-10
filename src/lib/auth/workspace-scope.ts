@@ -34,7 +34,7 @@ function clone<T>(value: T): T {
  */
 const PRISTINE_PERSISTED: Partial<AppStoreState> = (() => {
   const state = useAppStore.getState();
-  const partialize = useAppStore.persist?.getOptions?.().partialize;
+  const partialize = useAppStore.persist?.getOptions?.()?.partialize;
   const slice = partialize ? partialize(state) : state;
   return clone(slice) as unknown as Partial<AppStoreState>;
 })();
