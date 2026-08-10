@@ -1,1 +1,3 @@
-PLACEHOLDER_USE_LOCAL
+export function BetaCommentDrawer() {
+  return null;
+}
