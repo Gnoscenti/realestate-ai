@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   FREE_ACCESS_CODES,
+  INTRO_DAYS,
   INTRO_PRICE_CENTS,
-  MONTHLY_PRICE_CENTS,
   normalizeCode,
   findFreeCode,
   hasAppAccess,
@@ -12,9 +12,14 @@ import {
 } from "@/lib/billing";
 
 describe("pricing", () => {
-  it("is $9.99 intro then $49/mo", () => {
+  it("is a single one-time $9.99 charge for 30 days", () => {
     expect(INTRO_PRICE_CENTS).toBe(999);
-    expect(MONTHLY_PRICE_CENTS).toBe(4900);
+    expect(INTRO_DAYS).toBe(30);
+  });
+
+  it("exposes no recurring price", async () => {
+    const billing = await import("@/lib/billing");
+    expect("MONTHLY_PRICE_CENTS" in billing).toBe(false);
   });
 
   it("ships exactly 5 free beta codes", () => {
