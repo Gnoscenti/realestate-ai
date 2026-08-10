@@ -4,16 +4,18 @@ AI-native workspace for real estate professionals, evolved from the [realestate-
 
 **Built for Rancho Santa Fe and surrounding San Diego luxury corridors**, with adaptive agent memory, MLS-style inventory, CMA, calendar/vendors, and a social content agent.
 
+> **Beta scope.** Inventory is simulated rather than pulled from a live MLS/IDX feed, calendar "connect" is a local toggle with no OAuth, and Market Knowledge is static curated content. The Stripe charge is real and server-verified.
+
 ## Product surface
 
 | Module | What it does |
 | --- | --- |
 | **Command Center** | Ranked daily actions (speed-to-lead, follow-ups, content gaps, calendar prep) with scripted packs |
-| **Onboarding** | Name, area of operations, website, MLS → pulls active listings for content + comps |
+| **Onboarding** | Name, area of operations, website, MLS selection. Generates a **simulated** inventory for your market so Content Agent and CMA work immediately. This is not a live MLS/IDX feed and no real listings are pulled — see `pullActiveListingsFromMls` |
 | **Instant Response** | Speed-to-lead scripts + compliance outline |
 | **CMA Studio** | Hybrid AVM / comps tuned for RSF estates |
 | **Content Agent** | Agentic social campaigns (IG, FB, LinkedIn, email) using brand memory |
-| **RSF Knowledge** | Covenants, HOAs, neighborhoods, talk tracks |
+| **RSF Knowledge** | Covenants, HOAs, neighborhoods, talk tracks — static curated content, not a live market data feed |
 | **Calendar & Vendors** | Local calendar UI (no OAuth, nothing is imported yet), AI reminders, contractor directory |
 | **Billing** | Stripe checkout — **one-time $9.99 for 30 days of access**, no subscription and no renewal; 5 free beta codes |
 | **Feedback Board** | Pre-launch comments by product section (unlocked via code or paid access) |
