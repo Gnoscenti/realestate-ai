@@ -10,7 +10,7 @@
  * browser. It is not cross-device sync — a second device has no scoped entry
  * and falls back to defaults until agentProfile/billing are server-backed.
  */
-import { useAppStore } from "@/lib/store";
+import { ensureHydrationHook, useAppStore } from "@/lib/store";
 
 type AppStoreState = ReturnType<typeof useAppStore.getState>;
 
@@ -106,6 +106,7 @@ export async function bindWorkspaceToUser(
     useAppStore.setState({ hydrated: false });
     if (switchingAccounts) resetPersistedSlices();
     migrateLegacyIfNeeded(key);
+    ensureHydrationHook();
     persistApi.setOptions({ name: key });
     await persistApi.rehydrate();
     // onFinishHydration in rehydrateStore sets hydrated; belt-and-suspenders:
