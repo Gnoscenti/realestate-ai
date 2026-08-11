@@ -23,21 +23,15 @@ export async function completeOnboarding(
     brokerage?: string;
   },
 ) {
-  await page.getByText("Set up your Agent OS").waitFor({ timeout: 20_000 });
+  await page.getByText("Finish your profile").waitFor({ timeout: 20_000 });
   await page.locator("#agent-name").fill(opts.name);
   if (opts.brokerage) {
     await page.locator("#brokerage").fill(opts.brokerage);
   }
-  await page.getByRole("button", { name: "Continue" }).click();
-
   await page.locator("#area").fill(opts.area);
   if (opts.website) {
     await page.locator("#website").fill(opts.website);
   }
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // MLS board step
-  await page.getByRole("button", { name: "Continue" }).click();
 }
 
 export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
