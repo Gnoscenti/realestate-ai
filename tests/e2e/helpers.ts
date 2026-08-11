@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-scope";
 
 /** Clear persisted workspace so each test starts fresh */
 export async function resetApp(page: Page) {
@@ -82,12 +83,12 @@ export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
 }
 
 export async function readWorkspaceState(page: Page) {
-  return page.evaluate(() => {
-    const WORKSPACE_KEY = "realestate-ai-workspace-v12";
+  return page.evaluate((workspaceKey) => {
     const scopedKey = Object.keys(localStorage).find((x) =>
-      x.startsWith(`${WORKSPACE_KEY}:`),
+      x.startsWith(`${workspaceKey}:`),
     );
-    const k = scopedKey ?? (localStorage.getItem(WORKSPACE_KEY) ? WORKSPACE_KEY : null);
+    const legacyKey = Object.keys(localStorage).find((x) => x === workspaceKey);
+    const k = scopedKey ?? legacyKey ?? null;
     if (!k) return null;
     try {
       const raw = JSON.parse(localStorage.getItem(k) || "{}");
@@ -117,5 +118,5 @@ export async function readWorkspaceState(page: Page) {
     } catch {
       return null;
     }
-  });
+  }, WORKSPACE_STORAGE_BASE_KEY);
 }

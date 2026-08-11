@@ -14,7 +14,7 @@ import { useAppStore } from "@/lib/store";
 
 type AppStoreState = ReturnType<typeof useAppStore.getState>;
 
-const BASE_KEY = "realestate-ai-workspace-v12";
+export const WORKSPACE_STORAGE_BASE_KEY = "realestate-ai-workspace-v12";
 
 let currentKey: string | null = null;
 let bindInFlight: Promise<void> | null = null;
@@ -52,8 +52,8 @@ function resetPersistedSlices(): void {
 }
 
 export function workspaceStorageKey(userId: string | null | undefined): string {
-  if (userId && userId.trim()) return `${BASE_KEY}:${userId.trim()}`;
-  return `${BASE_KEY}:anon`;
+  if (userId && userId.trim()) return `${WORKSPACE_STORAGE_BASE_KEY}:${userId.trim()}`;
+  return `${WORKSPACE_STORAGE_BASE_KEY}:anon`;
 }
 
 function migrateLegacyIfNeeded(scopedKey: string): void {
@@ -61,7 +61,7 @@ function migrateLegacyIfNeeded(scopedKey: string): void {
   try {
     const scoped = window.localStorage.getItem(scopedKey);
     if (scoped) return;
-    const legacy = window.localStorage.getItem(BASE_KEY);
+    const legacy = window.localStorage.getItem(WORKSPACE_STORAGE_BASE_KEY);
     if (!legacy) return;
     // Only migrate into a real user key — never copy into :anon blindly mid-session
     if (scopedKey.endsWith(":anon")) return;
