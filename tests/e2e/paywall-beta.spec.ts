@@ -13,7 +13,7 @@ test("beta code unlocks app access", async ({ page }) => {
     name: "Beta Tester",
     area: "Del Mar, CA",
   });
-  await page.getByRole("button", { name: "Launch workspace" }).click();
+  await page.getByRole("button", { name: /Launch workspace/i }).click();
   await page.waitForTimeout(800);
 
   // Should hit paywall or app — redeem either way
