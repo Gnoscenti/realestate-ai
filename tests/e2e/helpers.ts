@@ -83,9 +83,11 @@ export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
 
 export async function readWorkspaceState(page: Page) {
   return page.evaluate(() => {
-    const k = Object.keys(localStorage).find((x) =>
-      x.includes("realestate-ai"),
+    const WORKSPACE_KEY = "realestate-ai-workspace-v12";
+    const scopedKey = Object.keys(localStorage).find((x) =>
+      x.startsWith(`${WORKSPACE_KEY}:`),
     );
+    const k = scopedKey ?? (localStorage.getItem(WORKSPACE_KEY) ? WORKSPACE_KEY : null);
     if (!k) return null;
     try {
       const raw = JSON.parse(localStorage.getItem(k) || "{}");

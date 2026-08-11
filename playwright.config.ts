@@ -32,6 +32,10 @@ export default defineConfig({
     ? undefined
     : {
         command: "npm run dev",
+        env: {
+          ...process.env,
+          VITE_AUTH_ENABLED: process.env.VITE_AUTH_ENABLED ?? "false",
+        },
         url: baseURL,
         reuseExistingServer: true,
         timeout: 120_000,
