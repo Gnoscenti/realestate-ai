@@ -3,5 +3,8 @@
   "framework": null,
   "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "regions": ["sfo1"]
+  "regions": ["sfo1"],
+  "rewrites": [
+    { "source": "/((?!api/|_server/|assets/).*)", "destination": "/" }
+  ]
 }
