@@ -127,14 +127,14 @@ export function OnboardingWizard({
       website: website.trim() ? normalizeWebsite(website) : "",
       mls,
       brokerage:
-        scrape?.profile.brokerage?.trim() || brokerage.trim() || undefined,
-      phone: scrape?.profile.phone,
-      email: scrape?.profile.email || preferredEmail || undefined,
-      photoUrl: scrape?.profile.photoUrl,
-      agentMlsId: scrape?.profile.mlsNumber,
-      license: scrape?.profile.license || scrape?.profile.mlsNumber,
-      bio: scrape?.profile.bio,
-      title: scrape?.profile.title,
+        siteResult?.profile.brokerage?.trim() || brokerage.trim() || undefined,
+      phone: siteResult?.profile.phone,
+      email: siteResult?.profile.email || preferredEmail || undefined,
+      photoUrl: siteResult?.profile.photoUrl,
+      agentMlsId: siteResult?.profile.mlsNumber,
+      license: siteResult?.profile.license || siteResult?.profile.mlsNumber,
+      bio: siteResult?.profile.bio,
+      title: siteResult?.profile.title,
       dataSource: (siteResult?.ok ? "website" : "manual") as "website" | "manual",
     };
 
