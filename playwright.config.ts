@@ -37,7 +37,7 @@ export default defineConfig({
           VITE_AUTH_ENABLED: process.env.VITE_AUTH_ENABLED ?? "false",
         },
         url: baseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
 });

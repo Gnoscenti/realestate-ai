@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 
 /** Clear persisted workspace so each test starts fresh */
 export async function resetApp(page: Page) {
@@ -84,7 +85,11 @@ export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
 export async function readWorkspaceState(page: Page) {
   return page.evaluate(() => {
     const entries = Object.keys(localStorage)
-      .filter((key) => key.includes("realestate-ai"))
+      .filter(
+        (key) =>
+          key === WORKSPACE_STORAGE_BASE_KEY ||
+          key.startsWith(`${WORKSPACE_STORAGE_BASE_KEY}:`),
+      )
       .flatMap((key) => {
         try {
           const raw = JSON.parse(localStorage.getItem(key) || "{}");

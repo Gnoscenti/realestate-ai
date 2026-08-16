@@ -11,10 +11,9 @@
  * and falls back to defaults until agentProfile/billing are server-backed.
  */
 import { useAppStore } from "@/lib/store";
+import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 
 type AppStoreState = ReturnType<typeof useAppStore.getState>;
-
-export const WORKSPACE_STORAGE_BASE_KEY = "realestate-ai-workspace-v12";
 
 let currentKey: string | null = null;
 let bindInFlight: Promise<void> | null = null;
