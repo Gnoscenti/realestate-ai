@@ -83,12 +83,12 @@ export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
 }
 
 export async function readWorkspaceState(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate((workspaceStorageBaseKey) => {
     const entries = Object.keys(localStorage)
       .filter(
         (key) =>
-          key === WORKSPACE_STORAGE_BASE_KEY ||
-          key.startsWith(`${WORKSPACE_STORAGE_BASE_KEY}:`),
+          key === workspaceStorageBaseKey ||
+          key.startsWith(`${workspaceStorageBaseKey}:`),
       )
       .flatMap((key) => {
         try {
@@ -125,5 +125,5 @@ export async function readWorkspaceState(page: Page) {
       onboarded: Boolean(s.onboarded),
       access: s.billing?.status as string | undefined,
     };
-  });
+  }, WORKSPACE_STORAGE_BASE_KEY);
 }
