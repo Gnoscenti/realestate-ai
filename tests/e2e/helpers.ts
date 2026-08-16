@@ -1,5 +1,4 @@
 import type { Page } from "@playwright/test";
-import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-scope";
 
 /** Clear persisted workspace so each test starts fresh */
 export async function resetApp(page: Page) {
@@ -83,40 +82,43 @@ export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
 }
 
 export async function readWorkspaceState(page: Page) {
-  return page.evaluate((workspaceKey) => {
-    const scopedKey = Object.keys(localStorage).find((x) =>
-      x.startsWith(`${workspaceKey}:`),
-    );
-    const legacyKey = Object.keys(localStorage).find((x) => x === workspaceKey);
-    const k = scopedKey ?? legacyKey ?? null;
-    if (!k) return null;
-    try {
-      const raw = JSON.parse(localStorage.getItem(k) || "{}");
-      const s = raw.state ?? raw;
-      return {
-        key: k,
-        name: s.agentProfile?.name as string | undefined,
-        phone: s.agentProfile?.phone as string | undefined,
-        photo: Boolean(s.agentProfile?.photoUrl),
-        agentMlsId: s.agentProfile?.agentMlsId as string | undefined,
-        source: s.agentProfile?.dataSource as string | undefined,
-        props: (s.properties as unknown[] | undefined)?.length ?? 0,
-        leads: (s.leads as unknown[] | undefined)?.length ?? 0,
-        propTitles: ((s.properties as { title?: string; address?: string }[]) ||
-          [])
-          .slice(0, 6)
-          .map((p) => p.title || p.address),
-        seedLeads: ((s.leads as { name?: string; email?: string }[]) || []).some(
-          (l) =>
-            /Sarah Johnson|Mike Chen|Emily Rodriguez|David Park/.test(
-              l.name || "",
-            ) || /@email\.com$/i.test(l.email || ""),
-        ),
-        onboarded: Boolean(s.onboarded),
-        access: s.billing?.status as string | undefined,
-      };
-    } catch {
-      return null;
-    }
-  }, WORKSPACE_STORAGE_BASE_KEY);
+  return page.evaluate(() => {
+    const entries = Object.keys(localStorage)
+      .filter((key) => key.includes("realestate-ai"))
+      .flatMap((key) => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(key) || "{}");
+          return [{ key, state: raw.state ?? raw }];
+        } catch {
+          return [];
+        }
+      });
+    const workspace =
+      entries.find(({ state }) => state.onboarded || state.agentProfile) ??
+      entries[0];
+    if (!workspace) return null;
+
+    const { key, state: s } = workspace;
+    return {
+      key,
+      name: s.agentProfile?.name as string | undefined,
+      phone: s.agentProfile?.phone as string | undefined,
+      photo: Boolean(s.agentProfile?.photoUrl),
+      agentMlsId: s.agentProfile?.agentMlsId as string | undefined,
+      source: s.agentProfile?.dataSource as string | undefined,
+      props: (s.properties as unknown[] | undefined)?.length ?? 0,
+      leads: (s.leads as unknown[] | undefined)?.length ?? 0,
+      propTitles: ((s.properties as { title?: string; address?: string }[]) || [])
+        .slice(0, 6)
+        .map((p) => p.title || p.address),
+      seedLeads: ((s.leads as { name?: string; email?: string }[]) || []).some(
+        (l) =>
+          /Sarah Johnson|Mike Chen|Emily Rodriguez|David Park/.test(
+            l.name || "",
+          ) || /@email\.com$/i.test(l.email || ""),
+      ),
+      onboarded: Boolean(s.onboarded),
+      access: s.billing?.status as string | undefined,
+    };
+  });
 }
