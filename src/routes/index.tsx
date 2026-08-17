@@ -17,6 +17,9 @@ import {
   Package,
   RefreshCw,
   Scale,
+  UserPlus,
+  Link2,
+  Settings2,
   Sparkles,
   Zap,
   Calendar,
@@ -77,6 +80,94 @@ const ARTIFACT_ICON: Record<CommandArtifact["kind"], typeof Package> = {
   brief: Sparkles,
 };
 
+const FIRST_TASKS = [
+  {
+    to: "/leads",
+    label: "Add a lead",
+    help: "Start with one real contact and get the next follow-up.",
+    icon: UserPlus,
+  },
+  {
+    to: "/mls",
+    label: "Connect listings",
+    help: "Bring in inventory from MLS, a website, or CSV.",
+    icon: Link2,
+  },
+  {
+    to: "/calendar",
+    label: "Add appointment",
+    help: "Put the next client event where the workspace can prepare it.",
+    icon: Calendar,
+  },
+] as const;
+
+function FreshWorkspaceGuide({ hasProfile }: { hasProfile: boolean }) {
+  return (
+    <Card
+      className="border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))]"
+      data-testid="fresh-workspace-guide"
+    >
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="accent">Start here</Badge>
+          <span className="text-xs text-[var(--color-fg-subtle)]">
+            Setup is optional
+          </span>
+        </div>
+        <CardTitle>Choose one real task</CardTitle>
+        <CardDescription>
+          Your workspace is ready. Add the item you already have in front of
+          you; RealEstate AI will build the next actions from it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {FIRST_TASKS.map((task) => {
+            const Icon = task.icon;
+            return (
+              <Button
+                key={task.to}
+                asChild
+                variant="outline"
+                className="h-auto min-h-[72px] justify-start whitespace-normal p-3 text-left"
+              >
+                <Link to={task.to}>
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="block font-semibold">{task.label}</span>
+                    <span className="mt-0.5 block text-xs font-normal text-[var(--color-fg-muted)]">
+                      {task.help}
+                    </span>
+                  </span>
+                </Link>
+              </Button>
+            );
+          })}
+        </div>
+        <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-[var(--color-fg-muted)]">
+            Profile, market, and MLS details can be added whenever they become
+            useful.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-[44px] justify-start sm:shrink-0"
+            onClick={() =>
+              window.dispatchEvent(
+                new Event("realestate-ai:open-profile-setup"),
+              )
+            }
+          >
+            <Settings2 className="h-4 w-4" />
+            {hasProfile ? "Review profile" : "Add profile (optional)"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text);
@@ -92,6 +183,7 @@ function DashboardPage() {
   const rentals = useAppStore((s) => s.rentals);
   const properties = useAppStore((s) => s.properties);
   const appointments = useAppStore((s) => s.appointments);
+  const activityCount = useAppStore((s) => s.activity.length);
   const profile = useAppStore((s) => s.agentProfile);
   const completed = useAppStore((s) => s.completedPriorities);
   const completePriority = useAppStore((s) => s.completePriority);
@@ -125,6 +217,11 @@ function DashboardPage() {
   );
 
   const insight = useMemo(() => responseTimeInsight(leads), [leads]);
+  const isFreshWorkspace =
+    leads.length === 0 &&
+    properties.length === 0 &&
+    deals.length === 0 &&
+    appointments.length === 0;
   const first = profile?.name?.split(" ")[0] ?? "Agent";
 
   const markDone = (id: string) => {
@@ -186,8 +283,14 @@ function DashboardPage() {
         </div>
       </div>
 
-      <QuickStats />
-      <EdgeBriefBar />
+      {isFreshWorkspace ? (
+        <FreshWorkspaceGuide hasProfile={Boolean(profile)} />
+      ) : (
+        <>
+          <QuickStats />
+          <EdgeBriefBar />
+        </>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-5" data-tour="action-desk">
@@ -270,8 +373,9 @@ function DashboardPage() {
               {!queue.length && (
                 <Card>
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
-                    Queue clear — great work. Reset done items or sync calendars
-                    for new prep tasks.
+                    {isFreshWorkspace
+                      ? "Add one real lead, listing, or appointment above. Your ranked next action will appear here."
+                      : "Queue clear — great work. Reset done items or sync calendars for new prep tasks."}
                   </CardContent>
                 </Card>
               )}
@@ -380,13 +484,15 @@ function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-7">
+        <div className={cn(isFreshWorkspace ? "lg:col-span-12" : "lg:col-span-7")}>
           <AIAssistant />
         </div>
-        <div className="space-y-6 lg:col-span-5">
-          <RecentActivity />
-          <ModuleGrid />
-        </div>
+        {!isFreshWorkspace && (
+          <div className="space-y-6 lg:col-span-5">
+            {activityCount > 0 && <RecentActivity />}
+            <ModuleGrid />
+          </div>
+        )}
       </div>
     </div>
   );

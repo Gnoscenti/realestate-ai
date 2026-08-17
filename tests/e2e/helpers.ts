@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 
 /** Clear persisted workspace so each test starts fresh */
 export async function resetApp(page: Page) {
@@ -23,68 +24,89 @@ export async function completeOnboarding(
     brokerage?: string;
   },
 ) {
-  await page.getByText("Set up your Agent OS").waitFor({ timeout: 20_000 });
+  // New beta entry flow opens access/workspace first. Profile setup starts only
+  // when the tester chooses it from inside the app.
+  const heading = page.getByRole("heading", { name: "Finish your profile" });
+  if (!(await heading.isVisible().catch(() => false))) {
+    await grantTestAccess(page);
+    const setup = page
+      .getByRole("button", { name: /Set up profile \/ MLS|Edit profile \/ MLS/i })
+      .first();
+    await setup.waitFor({ state: "visible", timeout: 20_000 });
+    await setup.click();
+  }
+
+  await heading.waitFor({ timeout: 20_000 });
   await page.locator("#agent-name").fill(opts.name);
   if (opts.brokerage) {
     await page.locator("#brokerage").fill(opts.brokerage);
   }
-  await page.getByRole("button", { name: "Continue" }).click();
-
   await page.locator("#area").fill(opts.area);
   if (opts.website) {
     await page.locator("#website").fill(opts.website);
   }
-  await page.getByRole("button", { name: "Continue" }).click();
-
-  // MLS board step
-  await page.getByRole("button", { name: "Continue" }).click();
 }
 
-export async function unlockWithBetaCode(page: Page, code = "RSF-BETA-01") {
-  // Paywall may or may not show depending on prior state
+export async function grantTestAccess(page: Page) {
+  // Integration tests exercise the access boundary without publishing or
+  // consuming a real beta credential. Auth is disabled in Playwright, so the
+  // workspace is deterministically scoped to the documented dev-user fixture.
   await page.waitForTimeout(600);
   const body = await page.locator("body").innerText();
-  if (!/Unlock|trial|beta|\$9\.99|Access/i.test(body)) {
-    return; // already in app
-  }
+  if (!/Unlock|trial|beta|\$9\.99|Access/i.test(body)) return;
 
-  const inputs = page.locator("input");
-  const n = await inputs.count();
-  for (let i = 0; i < n; i++) {
-    const ph = (await inputs.nth(i).getAttribute("placeholder")) || "";
-    const name = (await inputs.nth(i).getAttribute("name")) || "";
-    if (/code|beta|RSF|access/i.test(ph + name)) {
-      await inputs.nth(i).fill(code);
-      break;
+  await page.evaluate((workspaceStorageBaseKey) => {
+    const key = `${workspaceStorageBaseKey}:dev-user`;
+    const raw = window.localStorage.getItem(key);
+    let persisted: { state?: Record<string, unknown>; version?: number } = {};
+    try {
+      persisted = raw ? JSON.parse(raw) : {};
+    } catch {
+      persisted = {};
     }
-  }
 
-  const buttons = page.getByRole("button");
-  const bc = await buttons.count();
-  for (let i = 0; i < bc; i++) {
-    const t = (await buttons.nth(i).innerText()).trim();
-    if (/redeem|apply|unlock|activate/i.test(t)) {
-      await buttons.nth(i).click();
-      await page.waitForTimeout(800);
-      return;
-    }
-  }
+    const now = new Date();
+    const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const currentState =
+      persisted.state && typeof persisted.state === "object"
+        ? persisted.state
+        : {};
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        ...persisted,
+        state: {
+          ...currentState,
+          billing: {
+            status: "trialing",
+            source: "demo_checkout",
+            introEndsAt: end.toISOString(),
+            currentPeriodEnd: end.toISOString(),
+            stripeCustomerId: null,
+            stripeSubscriptionId: null,
+            lastCheckoutSessionId: "playwright-fixture",
+            redeemedCode: null,
+            activatedAt: now.toISOString(),
+            isDemo: true,
+          },
+        },
+        version: persisted.version ?? 0,
+      }),
+    );
+  }, WORKSPACE_STORAGE_BASE_KEY);
 
-  // Demo intro fallback
-  for (let i = 0; i < bc; i++) {
-    const t = (await buttons.nth(i).innerText()).trim();
-    if (/intro|start|continue|\$9\.99/i.test(t)) {
-      await buttons.nth(i).click();
-      await page.waitForTimeout(800);
-      return;
-    }
-  }
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
 }
 
 export async function readWorkspaceState(page: Page) {
-  return page.evaluate(() => {
+  return page.evaluate((workspaceStorageBaseKey) => {
     const entries = Object.keys(localStorage)
-      .filter((key) => key.includes("realestate-ai"))
+      .filter(
+        (key) =>
+          key === workspaceStorageBaseKey ||
+          key.startsWith(`${workspaceStorageBaseKey}:`),
+      )
       .flatMap((key) => {
         try {
           const raw = JSON.parse(localStorage.getItem(key) || "{}");
@@ -103,6 +125,7 @@ export async function readWorkspaceState(page: Page) {
       key,
       name: s.agentProfile?.name as string | undefined,
       phone: s.agentProfile?.phone as string | undefined,
+      brokerage: s.agentProfile?.brokerage as string | undefined,
       photo: Boolean(s.agentProfile?.photoUrl),
       agentMlsId: s.agentProfile?.agentMlsId as string | undefined,
       source: s.agentProfile?.dataSource as string | undefined,
@@ -120,5 +143,5 @@ export async function readWorkspaceState(page: Page) {
       onboarded: Boolean(s.onboarded),
       access: s.billing?.status as string | undefined,
     };
-  });
+  }, WORKSPACE_STORAGE_BASE_KEY);
 }

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 import {
   SEED_ACTIVITY,
   SEED_DEALS,
@@ -523,7 +524,7 @@ export const useAppStore = create<AppState>()(
           license: sp?.license || sp?.mlsNumber || input.license,
           bio: sp?.bio || input.bio,
           title: sp?.title || input.title,
-          brokerage: sp?.brokerage || input.brokerage,
+          brokerage: input.brokerage || sp?.brokerage,
           dataSource: scrape?.ok
             ? "website"
             : input.website
@@ -1540,7 +1541,7 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: "realestate-ai-workspace-v12",
+      name: WORKSPACE_STORAGE_BASE_KEY,
       skipHydration: true,
       partialize: (s) => ({
         leads: s.leads,
@@ -1573,44 +1574,59 @@ export const useAppStore = create<AppState>()(
 
 let hydrationHooked = false;
 
+/**
+ * Register post-hydration normalization without reading any storage key.
+ * AppShell uses this before auth resolves; bindWorkspaceToUser performs the
+ * actual rehydrate only after selecting the final user-scoped key.
+ */
+export function ensureHydrationHook() {
+  const persistApi = useAppStore.persist;
+  if (hydrationHooked || !persistApi) return;
+  hydrationHooked = true;
+  persistApi.onFinishHydration(() => {
+    const st = useAppStore.getState();
+    const patch: Partial<AppState> = {};
+    patch.agentMemory = ensureAgentMemory(st.agentMemory);
+    if (!st.appointments) patch.appointments = [];
+    if (!st.calendarConnections)
+      patch.calendarConnections = DEFAULT_CONNECTIONS.map((c) => ({ ...c }));
+    if (!st.contractors) patch.contractors = [];
+    if (!st.mlsConnections) patch.mlsConnections = [];
+    if (st.tourCompleted == null) patch.tourCompleted = false;
+    if (st.tourActive == null) patch.tourActive = false;
+    if (st.tourStepIndex == null) patch.tourStepIndex = 0;
+    if (!st.emailAlerts) patch.emailAlerts = [];
+    if (st.emailConnection === undefined) patch.emailConnection = null;
+    if (!st.socialAccounts) patch.socialAccounts = defaultSocialAccounts();
+    if (!st.billing) patch.billing = emptyBilling();
+    if (!st.feedback)
+      patch.feedback = SEED_FEEDBACK.map((f) => ({
+        ...f,
+        comments: f.comments.map((c) => ({ ...c })),
+      }));
+    if (Object.keys(patch).length) useAppStore.setState(patch);
+    const after = useAppStore.getState();
+    if (
+      after.leads.some(looksLikeSeedLead) ||
+      after.properties.some(looksLikeSeedProperty)
+    ) {
+      after.purgeSeedData();
+    }
+    useAppStore.getState().setHydrated(true);
+  });
+}
+
+/** Legacy/manual entrypoint retained for tests and non-auth callers. */
 export function rehydrateStore() {
-  if (!hydrationHooked) {
-    hydrationHooked = true;
-    useAppStore.persist.onFinishHydration(() => {
-      const st = useAppStore.getState();
-      const patch: Partial<AppState> = {};
-      patch.agentMemory = ensureAgentMemory(st.agentMemory);
-      if (!st.appointments) patch.appointments = [];
-      if (!st.calendarConnections)
-        patch.calendarConnections = DEFAULT_CONNECTIONS.map((c) => ({ ...c }));
-      if (!st.contractors) patch.contractors = [];
-      if (!st.mlsConnections) patch.mlsConnections = [];
-      if (st.tourCompleted == null) patch.tourCompleted = false;
-      if (st.tourActive == null) patch.tourActive = false;
-      if (st.tourStepIndex == null) patch.tourStepIndex = 0;
-      if (!st.emailAlerts) patch.emailAlerts = [];
-      if (st.emailConnection === undefined) patch.emailConnection = null;
-      if (!st.socialAccounts) patch.socialAccounts = defaultSocialAccounts();
-      if (!st.billing) patch.billing = emptyBilling();
-      if (!st.feedback)
-        patch.feedback = SEED_FEEDBACK.map((f) => ({
-          ...f,
-          comments: f.comments.map((c) => ({ ...c })),
-        }));
-      if (Object.keys(patch).length) useAppStore.setState(patch);
-      const after = useAppStore.getState();
-      if (
-        after.leads.some(looksLikeSeedLead) ||
-        after.properties.some(looksLikeSeedProperty)
-      ) {
-        after.purgeSeedData();
-      }
-      useAppStore.getState().setHydrated(true);
-    });
-  }
-  if (useAppStore.persist.hasHydrated()) {
+  const persistApi = useAppStore.persist;
+  if (!persistApi) {
     useAppStore.getState().setHydrated(true);
     return;
   }
-  void useAppStore.persist.rehydrate();
+  ensureHydrationHook();
+  if (persistApi.hasHydrated()) {
+    useAppStore.getState().setHydrated(true);
+    return;
+  }
+  void persistApi.rehydrate();
 }

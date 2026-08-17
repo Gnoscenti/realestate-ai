@@ -1,29 +1,26 @@
 import { test, expect } from "@playwright/test";
-import {
-  completeOnboarding,
-  readWorkspaceState,
-  resetApp,
-  unlockWithBetaCode,
-} from "./helpers";
+import { readWorkspaceState, resetApp, grantTestAccess } from "./helpers";
 
-test("beta code unlocks app access", async ({ page }) => {
+test("the access gate opens the app without forcing profile setup", async ({ page }) => {
   await resetApp(page);
 
-  await completeOnboarding(page, {
-    name: "Beta Tester",
-    area: "Del Mar, CA",
-  });
-  await page.getByRole("button", { name: /Launch workspace/i }).click();
-  await page.waitForTimeout(800);
+  await expect(
+    page.getByRole("heading", { name: /Unlock RealEstate AI Pro/i }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { name: "Finish your profile" }),
+  ).toHaveCount(0);
 
-  // Should hit paywall or app — redeem either way
-  await unlockWithBetaCode(page, "RSF-BETA-01");
+  await grantTestAccess(page);
+
+  await expect(
+    page.getByText(/Command Center|Action Desk/i).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByRole("button", { name: /Set up profile \/ MLS/i }).first(),
+  ).toBeVisible();
 
   const state = await readWorkspaceState(page);
-  expect(state?.onboarded).toBe(true);
-
-  // After unlock, core nav should be usable
-  await expect(
-    page.getByText(/Command Center|Action Desk|Unlock/i).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  expect(state?.onboarded).toBe(false);
+  expect(state?.access).toBe("trialing");
 });

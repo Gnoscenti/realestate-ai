@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
@@ -27,6 +28,11 @@ import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -114,6 +120,7 @@ const TransactionsRoute = TransactionsRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -133,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesByTo {
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -153,6 +161,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -174,6 +183,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/api/auth/$'
     | '/'
     | '/alerts'
     | '/billing'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/transactions'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/api/auth/$'
     | '/'
     | '/alerts'
     | '/billing'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/transactions'
   id:
     | '__root__'
+    | '/api/auth/$'
     | '/'
     | '/alerts'
     | '/billing'
@@ -232,6 +244,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   IndexRoute: typeof IndexRoute
   AlertsRoute: typeof AlertsRoute
   BillingRoute: typeof BillingRoute
@@ -253,6 +266,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -376,6 +396,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
   IndexRoute: IndexRoute,
   AlertsRoute: AlertsRoute,
   BillingRoute: BillingRoute,

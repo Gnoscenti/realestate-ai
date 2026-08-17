@@ -2,6 +2,7 @@
  * Server-side MLS fetch — credentials never log; used by createServerFn.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
 import { z } from "zod";
 import {
   buildMlsQueryUrl,
@@ -34,30 +35,38 @@ const inputSchema = z.object({
 async function fetchJson(
   url: string,
   headers: Record<string, string>,
-): Promise<{ ok: true; data: unknown } | { ok: false; error: string; status?: number }> {
+): Promise<
+  | { ok: true; data: unknown }
+  | { ok: false; error: string; status?: number }
+> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(url, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timer);
-    const text = await res.text();
+    const { readResponseText, safeFetch } = await import(
+      "@/lib/safe-outbound-url.server"
+    );
+    const { response } = await safeFetch(
+      url,
+      {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      },
+      { allowCrossOriginRedirects: false, maxRedirects: 2 },
+    );
+    const text = await readResponseText(response, 5 * 1024 * 1024);
     let data: unknown = null;
     try {
       data = text ? JSON.parse(text) : null;
     } catch {
       return {
         ok: false,
-        error: `Non-JSON response (${res.status}) from MLS endpoint`,
-        status: res.status,
+        error: `Non-JSON response (${response.status}) from MLS endpoint`,
+        status: response.status,
       };
     }
-    if (!res.ok) {
-      const msg =
+    if (!response.ok) {
+      const message =
         (data &&
           typeof data === "object" &&
           ("error" in data || "message" in data) &&
@@ -65,15 +74,21 @@ async function fetchJson(
             (data as { error?: unknown; message?: unknown }).error ??
               (data as { message?: unknown }).message,
           )) ||
-        `HTTP ${res.status}`;
-      return { ok: false, error: String(msg).slice(0, 300), status: res.status };
+        `HTTP ${response.status}`;
+      return {
+        ok: false,
+        error: String(message).slice(0, 300),
+        status: response.status,
+      };
     }
     return { ok: true, data };
-  } catch (e) {
+  } catch (error) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : "MLS fetch failed",
+      error: error instanceof Error ? error.message : "MLS fetch failed",
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -88,33 +103,50 @@ async function resolveAccessToken(
     req.clientSecret &&
     req.baseUrl
   ) {
-    // Common Trestle token endpoint pattern
     const tokenUrl =
       process.env.TRESTLE_TOKEN_URL ||
       "https://api-trestle.corelogic.com/trestle/oidc/connect/token";
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
+      const { readResponseText, safeFetch } = await import(
+        "@/lib/safe-outbound-url.server"
+      );
       const body = new URLSearchParams({
         grant_type: "client_credentials",
         client_id: req.clientId,
         client_secret: req.clientSecret,
         scope: "api",
       });
-      const res = await fetch(tokenUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      });
-      const json = (await res.json()) as { access_token?: string; error?: string };
-      if (!res.ok || !json.access_token) {
+      const { response } = await safeFetch(
+        tokenUrl,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+          signal: controller.signal,
+        },
+        { allowCrossOriginRedirects: false, maxRedirects: 0 },
+      );
+      const text = await readResponseText(response, 1024 * 1024);
+      let json: { access_token?: string; error?: string };
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        return { error: `Non-JSON token response (${response.status})` };
+      }
+      if (!response.ok || !json.access_token) {
         return {
-          error: json.error || `Token request failed (${res.status})`,
+          error: json.error || `Token request failed (${response.status})`,
         };
       }
       return { token: json.access_token };
-    } catch (e) {
+    } catch (error) {
       return {
-        error: e instanceof Error ? e.message : "OAuth token failed",
+        error: error instanceof Error ? error.message : "OAuth token failed",
       };
+    } finally {
+      clearTimeout(timer);
     }
   }
   return { error: "Access token required for this platform" };
@@ -203,6 +235,7 @@ export async function syncMlsPlatform(
 }
 
 export const fetchMlsListings = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
   .validator(inputSchema)
   .handler(async ({ data }) => {
     return syncMlsPlatform({

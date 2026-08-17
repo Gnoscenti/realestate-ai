@@ -6,11 +6,14 @@ describe("scrapeRealtorWebsite (integration)", () => {
   let site: Awaited<ReturnType<typeof startMockRealtorSite>>;
 
   beforeAll(async () => {
+    process.env.VITE_AUTH_ENABLED = "false";
+    process.env.ALLOW_PRIVATE_SCRAPE_FOR_TESTS = "1";
     site = await startMockRealtorSite(0);
   });
 
   afterAll(async () => {
     await site.close();
+    delete process.env.ALLOW_PRIVATE_SCRAPE_FOR_TESTS;
   });
 
   it("pulls identity + multi-page listings from mock site", async () => {
@@ -27,11 +30,11 @@ describe("scrapeRealtorWebsite (integration)", () => {
     expect(result.profile.mlsNumber || result.profile.license).toBe("01888777");
     expect(result.listings.length).toBeGreaterThanOrEqual(3);
 
-    const prices = result.listings.map((l) => l.price);
+    const prices = result.listings.map((listing) => listing.price);
     expect(prices).toContain(9250000);
     expect(prices).toContain(6495000);
 
-    const low = result.listings.find((l) => l.price === 2890000);
+    const low = result.listings.find((listing) => listing.price === 2890000);
     if (low) {
       expect(low.address).toMatch(/Via del Norte/i);
       expect(low.status).toBe("pending");

@@ -3,6 +3,7 @@
  * Fetches homepage + listing/about pages and extracts identity + inventory.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
 import { z } from "zod";
 import {
   emptyScrape,
@@ -23,35 +24,50 @@ const inputSchema = z.object({
 async function fetchHtml(
   url: string,
 ): Promise<{ ok: true; url: string; html: string } | { ok: false; error: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "RealEstateAI-AgentBot/1.0 (+https://github.com/Gnoscenti/realestate-ai; workspace setup)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
+    const {
+      privateNetworkFetchAllowedForTests,
+      readResponseText,
+      safeFetch,
+    } = await import("@/lib/safe-outbound-url.server");
+    const { response, finalUrl } = await safeFetch(
+      url,
+      {
+        signal: controller.signal,
+        headers: {
+          "User-Agent":
+            "RealEstateAI-AgentBot/1.0 (+https://github.com/Gnoscenti/realestate-ai; workspace setup)",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       },
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status} for ${url}` };
+      {
+        allowPrivateNetwork: privateNetworkFetchAllowedForTests(),
+        allowCrossOriginRedirects: true,
+        maxRedirects: 3,
+      },
+    );
+    if (!response.ok) {
+      return { ok: false, error: `HTTP ${response.status} for ${url}` };
     }
-    const ctype = res.headers.get("content-type") ?? "";
-    if (ctype && !/html|xml|text/i.test(ctype)) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !/html|xml|text/i.test(contentType)) {
+      await response.body?.cancel();
       return { ok: false, error: `Non-HTML content at ${url}` };
     }
-    const html = await res.text();
+    const html = await readResponseText(response, 2 * 1024 * 1024);
     if (html.length < 80) {
       return { ok: false, error: `Empty page at ${url}` };
     }
-    return { ok: true, url: res.url || url, html };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Fetch failed";
-    return { ok: false, error: `${msg} (${url})` };
+    return { ok: true, url: finalUrl.toString(), html };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Fetch failed";
+    return { ok: false, error: `${message} (${url})` };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -215,8 +231,30 @@ export async function scrapeRealtorWebsite(opts: {
   };
 }
 
+const SCRAPE_WINDOW_MS = 10 * 60 * 1000;
+const SCRAPE_LIMIT = 10;
+const scrapeQuotaState = globalThis as typeof globalThis & {
+  __realestateAiScrapeQuota__?: Map<string, number[]>;
+};
+
+function consumeScrapeQuota(userId: string): void {
+  const now = Date.now();
+  const quotas =
+    (scrapeQuotaState.__realestateAiScrapeQuota__ ??= new Map());
+  const recent = (quotas.get(userId) ?? []).filter(
+    (timestamp) => now - timestamp < SCRAPE_WINDOW_MS,
+  );
+  if (recent.length >= SCRAPE_LIMIT) {
+    throw new Error("Website scan limit reached. Try again in a few minutes.");
+  }
+  recent.push(now);
+  quotas.set(userId, recent);
+}
+
 export const scrapeAgentWebsite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
   .validator(inputSchema)
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    consumeScrapeQuota(context.userId);
     return scrapeRealtorWebsite(data);
   });

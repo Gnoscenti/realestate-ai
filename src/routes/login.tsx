@@ -41,8 +41,8 @@ const HIGHLIGHTS = [
   },
   {
     icon: Calendar,
-    title: "One workspace, phone or desktop",
-    body: "Same login. Same profile, listings, and access — wherever you open Agent OS.",
+    title: "One focused workspace, phone or desktop",
+    body: "Use the beta app on either device. For now, profile and listings stay in each browser.",
   },
 ] as const;
 
@@ -56,7 +56,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  // Already signed in → home (shell will route onboarding/paywall)
+  // Already signed in → home (shell opens access/workspace; setup is optional)
   useEffect(() => {
     if (!isPending && user) {
       void navigate({ to: "/" });
@@ -137,7 +137,7 @@ function LoginPage() {
         <div className="space-y-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-primary)]">
             <Sparkles className="h-3.5 w-3.5" />
-            RealEstate AI · Agent OS
+            RealEstate AI · Private beta
           </div>
 
           <div>
@@ -184,7 +184,7 @@ function LoginPage() {
               Get started
             </h2>
             <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-              Sign in once. Your workspace follows you on every device.
+              Sign in to open your workspace. Profile setup can wait until you’re ready.
             </p>
           </div>
 
@@ -308,8 +308,8 @@ function LoginPage() {
           )}
 
           <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-            After sign-in we set up your profile once. MLS and website connect
-            live in onboarding — not on this screen.
+            Open the workspace first. Add your profile, MLS, or website later
+            from inside the app.
           </p>
         </div>
       </div>
