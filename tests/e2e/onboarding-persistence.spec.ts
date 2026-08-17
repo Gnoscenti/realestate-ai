@@ -34,15 +34,15 @@ test("short mobile viewport keeps required fields and launch reachable", async (
   await page.setViewportSize({ width: 390, height: 667 });
   await resetApp(page);
 
-  const name = page.locator("#agent-name");
-  await expect(name).toBeVisible();
-  const nameBox = await name.boundingBox();
-  expect(nameBox?.y ?? -1).toBeGreaterThanOrEqual(0);
-
   await completeOnboarding(page, {
     name: "Mobile Agent",
     area: "San Diego, CA",
   });
+
+  const name = page.locator("#agent-name");
+  await expect(name).toBeVisible();
+  const nameBox = await name.boundingBox();
+  expect(nameBox?.y ?? -1).toBeGreaterThanOrEqual(0);
   const launch = page.getByRole("button", { name: /Launch workspace/i });
   await launch.scrollIntoViewIfNeeded();
   await expect(launch).toBeVisible();
