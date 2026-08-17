@@ -26,9 +26,12 @@ export const authClient = createAuthClient({
 /**
  * True when sign-in UI should be shown. On by default (preview via the baked
  * preview client, deployed apps via the injected per-app client); set
- * `VITE_AUTH_ENABLED=false` to force it off (dev user — see `use-current-user`).
+ * `VITE_AUTH_ENABLED=false` disables auth only for the local dev server and
+ * E2E tests. Production and Vercel previews always require a real session so a
+ * stray environment variable cannot expose the shared dev workspace.
  */
-export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
+export const authEnabled =
+  import.meta.env.PROD || import.meta.env.VITE_AUTH_ENABLED !== "false";
 
 /** The upstream providers to render sign-in buttons for. */
 export { GROK_PROVIDERS };

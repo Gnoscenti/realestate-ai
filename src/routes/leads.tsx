@@ -79,6 +79,7 @@ function LeadsPage() {
   const [heatFilter, setHeatFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(leads[0]?.id ?? null);
   const [open, setOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -119,13 +120,18 @@ function LeadsPage() {
   }).length;
 
   const createLead = () => {
-    if (!form.name.trim() || !form.email.trim()) {
-      toast.error("Name and email are required");
+    if (!form.name.trim()) {
+      setFormError("Enter the lead’s name.");
       return;
     }
+    if (!form.email.trim() && !form.phone.trim()) {
+      setFormError("Add at least an email address or phone number.");
+      return;
+    }
+    setFormError(null);
     const lead = addLead({
       name: form.name.trim(),
-      email: form.email.trim(),
+      email: form.email.trim() || "—",
       phone: form.phone.trim() || "—",
       location: form.location.trim() || "Metro",
       budgetMin: Number(form.budgetMin) || 0,
@@ -211,32 +217,51 @@ function LeadsPage() {
               <DialogHeader>
                 <DialogTitle>Add lead</DialogTitle>
                 <DialogDescription>
-                  AI will score and heat-rank the lead automatically.
+                  Start with a name and either email or phone. You can add the
+                  rest later.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Name</Label>
+                  <Label htmlFor="lead-name">Name</Label>
                   <Input
+                    id="lead-name"
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, name: e.target.value });
+                      setFormError(null);
+                    }}
                     placeholder="Full name"
+                    required
+                    aria-required="true"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Email</Label>
+                  <Label htmlFor="lead-email">Email</Label>
                   <Input
+                    id="lead-email"
+                    type="email"
                     value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, email: e.target.value });
+                      setFormError(null);
+                    }}
                     placeholder="email@example.com"
+                    autoComplete="email"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Phone</Label>
+                  <Label htmlFor="lead-phone">Phone</Label>
                   <Input
+                    id="lead-phone"
+                    type="tel"
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, phone: e.target.value });
+                      setFormError(null);
+                    }}
                     placeholder="(555) 000-0000"
+                    autoComplete="tel"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -289,11 +314,28 @@ function LeadsPage() {
                   />
                 </div>
               </div>
+              {formError && (
+                <p
+                  className="text-sm text-[var(--color-danger)]"
+                  role="alert"
+                >
+                  {formError}
+                </p>
+              )}
               <DialogFooter>
-                <Button variant="secondary" onClick={() => setOpen(false)}>
+                <Button
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  onClick={() => {
+                    setFormError(null);
+                    setOpen(false);
+                  }}
+                >
                   Cancel
                 </Button>
-                <Button onClick={createLead}>Create lead</Button>
+                <Button className="min-h-[44px]" onClick={createLead}>
+                  Create lead
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -557,13 +599,34 @@ function LeadRow({
               Last contact <RelativeTime iso={lead.lastContact} />
             </span>
             <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-              <Button size="icon-sm" variant="outline" onClick={onCall} aria-label="Call">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                className="min-h-[44px] min-w-[44px]"
+                onClick={onCall}
+                aria-label="Call"
+                disabled={!lead.phone || lead.phone === "—"}
+              >
                 <Phone className="h-3.5 w-3.5" />
               </Button>
-              <Button size="icon-sm" variant="outline" onClick={onMail} aria-label="Email">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                className="min-h-[44px] min-w-[44px]"
+                onClick={onMail}
+                aria-label="Email"
+                disabled={!lead.email || lead.email === "—"}
+              >
                 <Mail className="h-3.5 w-3.5" />
               </Button>
-              <Button size="icon-sm" variant="outline" onClick={onMsg} aria-label="Message">
+              <Button
+                size="icon-sm"
+                variant="outline"
+                className="min-h-[44px] min-w-[44px]"
+                onClick={onMsg}
+                aria-label="Message"
+                disabled={!lead.phone || lead.phone === "—"}
+              >
                 <MessageSquare className="h-3.5 w-3.5" />
               </Button>
             </div>

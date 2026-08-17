@@ -77,10 +77,10 @@ export const COMPETITORS: CompetitorProfile[] = [
   {
     id: "boldtrail",
     name: "BoldTrail",
-    category: "Modern agent OS",
+    category: "Modern agent workspace",
     theirEdge: "Slick UX and marketing automation for growth-minded agents.",
     ourCounter:
-      "Glass tour + Action Desk + local RSF knowledge + contractor/calendar layer BoldTrail-style polish without locking your book into one franchise stack.",
+      "Glass tour + Action Desk + local market knowledge + contractor/calendar layer BoldTrail-style polish without locking your book into one franchise stack.",
     useModules: [
       { label: "Command Center", href: "/" },
       { label: "Market Knowledge", href: "/knowledge" },
@@ -136,7 +136,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "Consumer portals",
     theirEdge: "Buyer demand + rented leads; market-facing search UX.",
     ourCounter:
-      "Own the relationship after the portal: SLA response, local knowledge (RSF+), CMA value proof, and transaction hub so portal leads don’t leak to the next agent.",
+      "Own the relationship after the portal: SLA response, local knowledge for your market, CMA value proof, and transaction hub so portal leads don’t leak to the next agent.",
     useModules: [
       { label: "Instant Response", href: "/outreach" },
       { label: "CMA Studio", href: "/cma" },
@@ -151,7 +151,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "Consumer portals",
     theirEdge: "Listing syndication reach and buyer inquiries.",
     ourCounter:
-      "MLS Hub + website inventory as system of record inside the agent OS; Content Agent amplifies listings you already control.",
+      "MLS Hub + website inventory as system of record inside the agent workspace; Content Agent amplifies listings you already control.",
     useModules: [
       { label: "MLS Hub", href: "/mls" },
       { label: "Content Agent", href: "/marketing" },
@@ -164,7 +164,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "AI dialer / capture",
     theirEdge: "Aggressive dialer + website AI for high-volume teams.",
     ourCounter:
-      "Quality over spray: ranked priorities, adaptive memory, RSF-specific knowledge, and vendor/calendar ops for luxury/service-heavy markets where pure dial volume loses.",
+      "Quality over spray: ranked priorities, adaptive memory, market-specific knowledge, and vendor/calendar ops for luxury/service-heavy markets where pure dial volume loses.",
     useModules: [
       { label: "Command Center", href: "/" },
       { label: "Calendar & Vendors", href: "/calendar" },
@@ -213,7 +213,7 @@ export const EDGE_PILLARS: EdgePillar[] = [
     id: "local",
     title: "Hyperlocal intelligence",
     beats: "Generic national AI",
-    body: "Rancho Santa Fe + corridor knowledge with adaptive memory that learns the individual agent.",
+    body: "Local market knowledge with adaptive memory that learns the individual agent.",
     href: "/knowledge",
     hrefLabel: "Market Knowledge",
   },

@@ -43,11 +43,11 @@ const modules = [
   },
   {
     to: "/knowledge",
-    title: "RSF Market Knowledge",
+    title: "Market Knowledge",
     description:
-      "Rancho Santa Fe corridor database + AI that learns your practice over time.",
+      "Local market knowledge plus AI memory that learns your practice over time.",
     icon: BookOpen,
-    features: ["Covenant", "Comps rules", "Memory"],
+    features: ["Neighborhoods", "Comps rules", "Memory"],
     highlight: true,
   },
   {
@@ -118,7 +118,7 @@ export function ModuleGrid() {
           Workspace modules
         </h2>
         <p className="text-sm text-[var(--color-fg-muted)]">
-          Full agent OS — knowledge, pipeline, and content in one place
+          Full agent workspace — knowledge, pipeline, and content in one place
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

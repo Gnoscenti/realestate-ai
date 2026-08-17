@@ -20,7 +20,7 @@ export type TourStep = {
 export const PRODUCT_TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
-    title: "Welcome to your Agent OS",
+    title: "Welcome to your workspace",
     body: "This short tour points out the buttons that matter. Skip anytime — you can replay it from Help.",
     placement: "center",
     tip: "Nothing here is fake demo data. Your book is yours.",

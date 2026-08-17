@@ -1,8 +1,9 @@
 /**
- * Optional live Gmail scan when GMAIL_ACCESS_TOKEN is configured.
- * Falls back to empty so the client can run demo classification.
+ * Optional live Gmail scan using the signed-in caller's in-app token.
+ * No process-wide mailbox credential is ever shared across beta users.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
 import { z } from "zod";
 import type { RawEmailMessage } from "@/lib/email-alerts";
 
@@ -69,16 +70,12 @@ export async function scanGmailInbox(opts: {
   accessToken?: string;
   maxResults?: number;
 }): Promise<{ ok: boolean; messages: RawEmailMessage[]; error?: string; mode: string }> {
-  const token =
-    opts.accessToken?.trim() ||
-    process.env.GMAIL_ACCESS_TOKEN ||
-    process.env.GOOGLE_ACCESS_TOKEN ||
-    "";
+  const token = opts.accessToken?.trim() || "";
   if (!token) {
     return {
       ok: false,
       messages: [],
-      error: "No Gmail token — connect inbox in-app or set GMAIL_ACCESS_TOKEN",
+      error: "No Gmail token — connect your inbox in the app",
       mode: "none",
     };
   }
@@ -96,6 +93,7 @@ export async function scanGmailInbox(opts: {
 }
 
 export const scanConnectedEmail = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
   .validator(inputSchema)
   .handler(async ({ data }) => {
     return scanGmailInbox({

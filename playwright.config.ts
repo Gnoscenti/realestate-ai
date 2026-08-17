@@ -32,8 +32,14 @@ export default defineConfig({
     ? undefined
     : {
         command: "npm run dev",
+        env: {
+          ...process.env,
+          VITE_AUTH_ENABLED: process.env.VITE_AUTH_ENABLED ?? "false",
+          ALLOW_PRIVATE_SCRAPE_FOR_TESTS:
+            process.env.ALLOW_PRIVATE_SCRAPE_FOR_TESTS ?? "1",
+        },
         url: baseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
 });
