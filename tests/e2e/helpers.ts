@@ -99,6 +99,14 @@ export async function grantTestAccess(page: Page) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * Backward-compatible alias for older specs. The optional code is deliberately
+ * ignored so CI never needs or consumes a live beta credential.
+ */
+export async function unlockWithBetaCode(page: Page, _code?: string) {
+  await grantTestAccess(page);
+}
+
 export async function readWorkspaceState(page: Page) {
   return page.evaluate((workspaceStorageBaseKey) => {
     const entries = Object.keys(localStorage)
