@@ -30,7 +30,7 @@ export async function completeOnboarding(
   if (!(await heading.isVisible().catch(() => false))) {
     await grantTestAccess(page);
     const setup = page
-      .getByRole("button", { name: /Set up profile \/ MLS|Edit profile \/ MLS/i })
+      .getByRole("button", { name: /Add profile \(optional\)|Set up profile \/ MLS|Edit profile \/ MLS/i })
       .first();
     await setup.waitFor({ state: "visible", timeout: 20_000 });
     await setup.click();

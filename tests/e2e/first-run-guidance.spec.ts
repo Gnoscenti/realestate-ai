@@ -78,5 +78,5 @@ test("new field user can add a phone-only lead and get a next action", async ({
   await expect(page.getByText("Field Test Lead").first()).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText("Action pack")).toBeVisible();
+  await expect(page.getByText("Action pack", { exact: true })).toBeVisible();
 });

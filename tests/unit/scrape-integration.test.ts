@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMockRealtorSite } from "../fixtures/mock-realtor-site.mjs";
-import { scrapeRealtorWebsite } from "@/lib/scrape-site";
+import { scrapeRealtorWebsite } from "@/lib/scrape-site.server";
 
 describe("scrapeRealtorWebsite (integration)", () => {
   let site: Awaited<ReturnType<typeof startMockRealtorSite>>;
