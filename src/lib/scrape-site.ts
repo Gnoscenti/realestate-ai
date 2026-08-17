@@ -242,7 +242,7 @@ function consumeScrapeQuota(userId: string): void {
   const quotas =
     (scrapeQuotaState.__realestateAiScrapeQuota__ ??= new Map());
   const recent = (quotas.get(userId) ?? []).filter(
-    (timestamp) => now - timestamp < SCRAPE_WINDOW_MS,
+    (timestamp: number) => now - timestamp < SCRAPE_WINDOW_MS,
   );
   if (recent.length >= SCRAPE_LIMIT) {
     throw new Error("Website scan limit reached. Try again in a few minutes.");
