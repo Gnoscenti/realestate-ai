@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowRight,
   BarChart3,
   Check,
   Loader2,
@@ -14,12 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  authClient,
-  authEnabled,
-  signIn,
-  GROK_PROVIDERS,
-} from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { cn } from "@/lib/utils";
@@ -50,7 +44,6 @@ function LoginPage() {
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
   const [busy, setBusy] = useState<string | null>(null);
-  const [showEmail, setShowEmail] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,20 +55,6 @@ function LoginPage() {
       void navigate({ to: "/" });
     }
   }, [user, isPending, navigate]);
-
-  const onGoogleOrX = async (providerId: string) => {
-    if (!authEnabled) {
-      toast.message("Auth is disabled in this environment");
-      return;
-    }
-    setBusy(providerId);
-    try {
-      await signIn(providerId, { callbackURL: "/", errorCallbackURL: "/login" });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sign-in failed");
-      setBusy(null);
-    }
-  };
 
   const onEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,124 +167,103 @@ function LoginPage() {
             </p>
           </div>
 
-          <div className="space-y-3">
-            {GROK_PROVIDERS.map((p) => (
-              <Button
-                key={p.providerId}
-                type="button"
-                className="min-h-[48px] w-full text-base"
-                variant={p.idp === "google" ? "default" : "secondary"}
-                disabled={Boolean(busy)}
-                onClick={() => void onGoogleOrX(p.providerId)}
-              >
-                {busy === p.providerId ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
-                Continue with {p.label}
-              </Button>
-            ))}
-          </div>
-
-          {emailAndPasswordEnabled && (
-            <>
-              <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                <div className="h-px flex-1 bg-[var(--color-border)]" />
-                or email
-                <div className="h-px flex-1 bg-[var(--color-border)]" />
+          {emailAndPasswordEnabled ? (
+            <form className="space-y-4" onSubmit={(e) => void onEmailSubmit(e)}>
+              <div className="flex gap-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-1">
+                {(["signin", "signup"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={cn(
+                      "flex-1 rounded-[var(--radius-sm)] py-2.5 text-sm font-medium transition-colors",
+                      mode === m
+                        ? "bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm"
+                        : "text-[var(--color-fg-muted)]",
+                    )}
+                    onClick={() => setMode(m)}
+                  >
+                    {m === "signin" ? "Sign in" : "Create account"}
+                  </button>
+                ))}
               </div>
 
-              {!showEmail ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-[44px] w-full"
-                  onClick={() => setShowEmail(true)}
-                >
-                  Use email & password
-                </Button>
-              ) : (
-                <form className="space-y-3" onSubmit={(e) => void onEmailSubmit(e)}>
-                  <div className="flex gap-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-1">
-                    {(["signin", "signup"] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        className={cn(
-                          "flex-1 rounded-[var(--radius-sm)] py-2 text-xs font-medium transition-colors",
-                          mode === m
-                            ? "bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm"
-                            : "text-[var(--color-fg-muted)]",
-                        )}
-                        onClick={() => setMode(m)}
-                      >
-                        {m === "signin" ? "Sign in" : "Create account"}
-                      </button>
-                    ))}
-                  </div>
-
-                  {mode === "signup" && (
-                    <div>
-                      <Label htmlFor="login-name">Name</Label>
-                      <Input
-                        id="login-name"
-                        className="mt-1.5 h-11"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Alex Rivera"
-                        autoComplete="name"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      className="mt-1.5 h-11"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@brokerage.com"
-                      autoComplete="email"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input
-                      id="login-password"
-                      type="password"
-                      className="mt-1.5 h-11"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="At least 8 characters"
-                      autoComplete={
-                        mode === "signup" ? "new-password" : "current-password"
-                      }
-                      minLength={8}
-                      required
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="min-h-[48px] w-full"
-                    disabled={Boolean(busy)}
-                  >
-                    {busy === "email" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-                    {mode === "signup" ? "Create account" : "Sign in"}
-                  </Button>
-                </form>
+              {mode === "signup" && (
+                <div>
+                  <Label htmlFor="login-name">Name</Label>
+                  <Input
+                    id="login-name"
+                    className="mt-1.5 h-11"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Alex Rivera"
+                    autoComplete="name"
+                  />
+                </div>
               )}
-            </>
+
+              <div>
+                <Label htmlFor="login-email">Email</Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  className="mt-1.5 h-11"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@brokerage.com"
+                  autoComplete="email"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="login-password">Password</Label>
+                <Input
+                  id="login-password"
+                  type="password"
+                  className="mt-1.5 h-11"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  autoComplete={
+                    mode === "signup" ? "new-password" : "current-password"
+                  }
+                  minLength={8}
+                  required
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="min-h-[48px] w-full text-base"
+                disabled={Boolean(busy)}
+              >
+                {busy === "email" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                {mode === "signup"
+                  ? "Create account with email"
+                  : "Sign in with email"}
+              </Button>
+
+              <p className="text-center text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                First time here? Choose Create account above. No profile or MLS
+                setup is required to enter the workspace.
+              </p>
+            </form>
+          ) : (
+            <div
+              role="status"
+              className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-4 text-sm text-[var(--color-fg-muted)]"
+            >
+              Sign-in is temporarily unavailable. Please try again shortly.
+            </div>
           )}
+
+          {/* Broker OAuth buttons stay hidden until the server exposes a
+              same-origin capability confirming that federation is configured. */}
 
           <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
             Open the workspace first. Add your profile, MLS, or website later
