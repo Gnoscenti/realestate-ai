@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { VOICE_BETA_ALLOWANCE_SECONDS } from "./policy.server";
+import { withVoiceWorkspaceMutationLease } from "./workspace-mutation-lease.server";
 
 export const VOICE_BILLING_PRODUCT = "voice_assistant" as const;
 export const VOICE_MONTHLY_PRICE_CENTS = 7_900 as const;
@@ -223,7 +224,7 @@ export async function getVoiceBillingAvailability(
   const checkoutAvailable = configured && !existingSubscription;
 
   let message =
-    "$79 per month includes 200 inbound AI minutes. Calls stop at the included limit; overage billing is not enabled.";
+    "$79 per month includes 200 completed inbound AI minutes. New calls pause after completed-call usage reaches 200 minutes; calls already in progress may finish. No overage is charged.";
   if (!configured) {
     message =
       "Checkout is not configured. An administrator must add the Stripe voice price and verified webhook secrets.";
@@ -674,11 +675,10 @@ async function recordIgnoredEvent(
   return rows[0] ? "ignored" : "duplicate";
 }
 
-export async function applyResolvedVoiceBillingEvent(
+async function applyResolvedVoiceBillingEventUnlocked(
   resolution: VoiceBillingResolution,
-  sqlOverride?: Sql,
+  sql: Sql,
 ): Promise<{ state: "processed" | "ignored" | "duplicate"; outcomeCode: string }> {
-  const sql = sqlOverride ?? (await getSql());
   if (resolution.kind === "ignore") {
     const state = await recordIgnoredEvent(resolution, sql);
     return { state, outcomeCode: resolution.outcomeCode };
@@ -826,6 +826,27 @@ export async function applyResolvedVoiceBillingEvent(
   const row = rows[0];
   if (!row) return { state: "duplicate", outcomeCode: "DUPLICATE_EVENT" };
   return { state: row.processing_state, outcomeCode: row.outcome_code };
+}
+
+/**
+ * Billing truth and provider mutations share the same workspace lease. This
+ * prevents a canceled entitlement from racing a Retell bind/activation and
+ * prevents an older unbind from completing after a newer reactivation.
+ */
+export async function applyResolvedVoiceBillingEvent(
+  resolution: VoiceBillingResolution,
+  sqlOverride?: Sql,
+): Promise<{ state: "processed" | "ignored" | "duplicate"; outcomeCode: string }> {
+  const sql = sqlOverride ?? (await getSql());
+  if (resolution.kind === "ignore") {
+    return applyResolvedVoiceBillingEventUnlocked(resolution, sql);
+  }
+  return withVoiceWorkspaceMutationLease(
+    resolution.update.workspaceId,
+    `stripe:${resolution.update.eventId}`,
+    sql,
+    () => applyResolvedVoiceBillingEventUnlocked(resolution, sql),
+  );
 }
 
 export async function processVoiceStripeEvent(

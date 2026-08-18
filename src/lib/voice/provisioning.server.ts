@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { createLiveVoiceProviders } from "./live-providers.server";
-import { getVoiceAllowanceStatus } from "./policy.server";
+import {
+  getVoiceAllowanceStatus,
+  type VoiceAllowanceStatus,
+} from "./policy.server";
 import { composeAndSaveVoicePrompt } from "./prompt.server";
 import type { TelephonyProvider, VoiceRuntimeProvider } from "./providers.server";
 import {
@@ -16,6 +19,10 @@ import {
   type VoicePromptCustomization,
   type VoiceSetup,
 } from "./types";
+import {
+  VoiceWorkspaceMutationBusyError,
+  withVoiceWorkspaceMutationLease,
+} from "./workspace-mutation-lease.server";
 
 const RETELL_ORIGINATION_URI = "sip:sip.retellai.com";
 const JOB_LEASE_MINUTES = 5;
@@ -64,6 +71,7 @@ interface ProvisioningJobRow {
   twilio_trunk_sid: string | null;
   twilio_termination_uri: string | null;
   failure_count: number;
+  requested_by_user_id: string;
   assistant_id: string;
   assistant_display_name: string;
   provisioning_identity: string;
@@ -148,6 +156,7 @@ async function loadJob(id: string, workspaceId: string, sql: Sql) {
             j.retell_agent_id,
             j.retell_agent_version, j.twilio_phone_number_sid,
             j.twilio_trunk_sid, j.twilio_termination_uri, j.failure_count,
+            j.requested_by_user_id,
             a.id as assistant_id, a.display_name as assistant_display_name,
             a.provisioning_identity,
             a.provider_agent_id as current_agent_id,
@@ -275,12 +284,87 @@ async function blockJobForPolicy(
   );
   await sql.query(
     `update voice_assistants
-        set status = case when status = 'active' then status else 'paused' end,
+        set status = case when status = 'draft' then status else 'paused' end,
             blocked_reason = $1, paused_at = coalesce(paused_at, now()),
             updated_at = now()
       where id = $2 and workspace_id = $3`,
     [reason, job.assistant_id, job.workspace_id],
   );
+}
+
+async function pauseJobForPolicy(
+  job: ProvisioningJobRow,
+  allowance: VoiceAllowanceStatus,
+  providers: VoiceProviders,
+  sql: Sql,
+): Promise<void> {
+  const phone = await activeOrProvisioningPhone(
+    job.workspace_id,
+    job.assistant_id,
+    sql,
+  );
+  if (phone?.retell_imported_at && phone.status !== "paused") {
+    await providers.voice.unbindInboundNumber({ e164: phone.e164 });
+  }
+  if (phone) {
+    await sql.query(
+      `update voice_phone_numbers set status = 'paused', updated_at = now()
+        where id = $1 and workspace_id = $2
+          and status in ('provisioning','active','paused')`,
+      [phone.id, job.workspace_id],
+    );
+  }
+  await blockJobForPolicy(
+    job,
+    allowance.state === "setup_required" ? "setup_required" : "blocked",
+    allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE",
+    sql,
+  );
+  if (phone?.retell_imported_at && job.step === "activate") {
+    await sql.query(
+      `update voice_provisioning_jobs set step = 'bind_number', updated_at = now()
+        where id = $1 and workspace_id = $2 and step = 'activate'`,
+      [job.id, job.workspace_id],
+    );
+  }
+}
+
+async function deferJobForWorkspaceLease(
+  job: ProvisioningJobRow,
+  sql: Sql,
+): Promise<void> {
+  await sql.query(
+    `update voice_provisioning_jobs
+        set state = 'pending', lease_expires_at = null,
+            next_attempt_at = now() + interval '5 seconds', updated_at = now()
+      where id = $1 and workspace_id = $2 and state = 'running'`,
+    [job.id, job.workspace_id],
+  );
+}
+
+async function queuePromptSyncJob(
+  workspaceId: string,
+  requestedByUserId: string,
+  promptVersionId: string,
+  sql: Sql,
+): Promise<string> {
+  const idempotencyKey = `prompt-sync:${promptVersionId}`;
+  const jobId = `voice_job_${randomUUID()}`;
+  await sql.query(
+    `insert into voice_provisioning_jobs (
+       id, workspace_id, idempotency_key, request_idempotency_key, state,
+       operation, step, requested_by_user_id, prompt_version_id
+     ) values ($1,$2,$3,$3,'pending','prompt_sync','create_llm',$4,$5)
+     on conflict (workspace_id, idempotency_key) do nothing`,
+    [jobId, workspaceId, idempotencyKey, requestedByUserId, promptVersionId],
+  );
+  const jobs = await sql.query<{ id: string }>(
+    `select id from voice_provisioning_jobs
+      where workspace_id = $1 and idempotency_key = $2 limit 1`,
+    [workspaceId, idempotencyKey],
+  );
+  if (!jobs[0]) throw new Error("Prompt synchronization job could not be queued");
+  return jobs[0].id;
 }
 
 /** Initial activation is DB-only; no provider request is made here. */
@@ -376,7 +460,9 @@ async function claimJobs(
               from voice_provisioning_jobs earlier
              where earlier.workspace_id = voice_provisioning_jobs.workspace_id
                and earlier.step <> 'completed'
-               and earlier.state <> 'canceled'
+               and earlier.state in (
+                 'pending','running','failed','setup_required','blocked'
+               )
                and (earlier.created_at, earlier.id) <
                    (voice_provisioning_jobs.created_at, voice_provisioning_jobs.id)
           )
@@ -405,12 +491,7 @@ async function advanceJobOneStep(
 ): Promise<"advanced" | "blocked"> {
   const allowance = await getVoiceAllowanceStatus(job.workspace_id, sql);
   if (allowance.state !== "active") {
-    await blockJobForPolicy(
-      job,
-      allowance.state === "setup_required" ? "setup_required" : "blocked",
-      allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE",
-      sql,
-    );
+    await pauseJobForPolicy(job, allowance, providers, sql);
     return "blocked";
   }
   await sql.query(
@@ -658,6 +739,21 @@ async function advanceJobOneStep(
   if (!job.retell_agent_id || !job.retell_llm_id) {
     throw new Error("Provisioning job has no published Retell resources");
   }
+  const newerPrompt = await sql.query<{ id: string }>(
+    `select id from voice_prompt_versions
+      where workspace_id = $1 and assistant_id = $2
+        and provider_sync_state = 'pending' and id <> $3
+      order by version desc limit 1`,
+    [job.workspace_id, job.assistant_id, job.prompt_version_id],
+  );
+  if (newerPrompt[0]) {
+    await queuePromptSyncJob(
+      job.workspace_id,
+      job.requested_by_user_id,
+      newerPrompt[0].id,
+      sql,
+    );
+  }
   await sql.query(
     `update voice_phone_numbers
         set status = 'active', assigned_at = coalesce(assigned_at, now()), updated_at = now()
@@ -719,9 +815,23 @@ export async function processVoiceProvisioningBatch(
   for (const job of jobs) {
     try {
       providers ??= createLiveVoiceProviders();
-      const state = await advanceJobOneStep(job, providers, sql);
+      const state = await withVoiceWorkspaceMutationLease(
+        job.workspace_id,
+        `provisioning:${job.id}:${job.step}`,
+        sql,
+        async () => {
+          const current = await loadJob(job.id, job.workspace_id, sql);
+          if (!current || current.state !== "running") return "blocked" as const;
+          return advanceJobOneStep(current, providers as VoiceProviders, sql);
+        },
+      );
       result[state] += 1;
     } catch (error) {
+      if (error instanceof VoiceWorkspaceMutationBusyError) {
+        await deferJobForWorkspaceLease(job, sql);
+        result.retried += 1;
+        continue;
+      }
       const state = await failJob(job, error, sql);
       if (state === "dead_letter") result.deadLettered += 1;
       else result.retried += 1;
@@ -763,32 +873,37 @@ export async function saveAndSyncVoicePrompt(
   const saved = await composeAndSaveVoicePrompt(
     userId, workspaceId, customization, sql,
   );
-  if (setup.assistant.status !== "active" || !setup.phoneNumber) {
-    return { ...saved, providerSynced: false };
-  }
   const allowance = await getVoiceAllowanceStatus(workspaceId, sql);
   if (allowance.state !== "active") {
     return { ...saved, providerSynced: false };
   }
-  const jobId = `voice_job_${randomUUID()}`;
-  await sql.query(
-    `insert into voice_provisioning_jobs (
-       id, workspace_id, idempotency_key, request_idempotency_key, state,
-       operation, step, requested_by_user_id, prompt_version_id
-     ) values ($1,$2,$3,$3,'pending','prompt_sync','create_llm',$4,$5)
-     on conflict (workspace_id, idempotency_key) do nothing`,
-    [jobId, workspaceId, `prompt-sync:${saved.id}`, userId, saved.id],
-  );
-  const jobs = await sql.query<{ id: string }>(
+  const initialProvisioning = await sql.query<{ id: string }>(
     `select id from voice_provisioning_jobs
-      where workspace_id = $1 and idempotency_key = $2 limit 1`,
-    [workspaceId, `prompt-sync:${saved.id}`],
+      where workspace_id = $1 and operation = 'provision_number'
+        and step <> 'completed'
+        and state in ('pending','running','failed','setup_required','blocked')
+      order by created_at desc limit 1`,
+    [workspaceId],
   );
-  if (!jobs[0]) throw new Error("Prompt synchronization job could not be queued");
+  if (
+    (setup.assistant.status !== "active" || !setup.phoneNumber) &&
+    !initialProvisioning[0]
+  ) {
+    return { ...saved, providerSynced: false };
+  }
+  const promptJobId = await queuePromptSyncJob(
+    workspaceId,
+    userId,
+    saved.id,
+    sql,
+  );
   await sql.query(
-    `update voice_assistants set provisioning_job_id = $1, updated_at = now()
+    `update voice_assistants
+        set provisioning_job_id = case when status = 'active' then $1
+                                       else provisioning_job_id end,
+            updated_at = now()
       where id = $2 and workspace_id = $3`,
-    [jobs[0].id, setup.assistant.id, workspaceId],
+    [promptJobId, setup.assistant.id, workspaceId],
   );
   return { ...saved, providerSynced: false, jobState: "queued" };
 }

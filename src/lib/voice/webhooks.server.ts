@@ -63,7 +63,6 @@ function redactRetellContent(payload: unknown): unknown {
   const keep = [
     "call_id",
     "agent_id",
-    "from_number",
     "to_number",
     "call_status",
     "start_timestamp",
@@ -407,7 +406,10 @@ async function processEvent(
      )
      on conflict (retell_call_id) do update set
        phone_number_id = coalesce(excluded.phone_number_id, voice_calls.phone_number_id),
-       from_number = coalesce(excluded.from_number, voice_calls.from_number),
+       from_number = case when excluded.consent_state = 'accepted'
+                          then coalesce(excluded.from_number, voice_calls.from_number)
+                          when excluded.consent_state in ('declined','not_recorded') then null
+                          else voice_calls.from_number end,
        to_number = coalesce(excluded.to_number, voice_calls.to_number),
        status = case
          when voice_calls.status = 'analyzed' then voice_calls.status
@@ -474,7 +476,7 @@ async function processEvent(
       target.assistant_id,
       target.phone_number_id,
       call.callId,
-      call.fromNumber,
+      accepted ? call.fromNumber : null,
       call.toNumber,
       status,
       persistedConsentState,
@@ -513,8 +515,8 @@ async function processEvent(
     );
 
     // The usage write is idempotent, so a retried signed webhook can safely
-    // re-run this gate. Enforce the 200-minute hard stop immediately instead
-    // of waiting for the daily maintenance safety net.
+    // re-run this gate. Once completed-call usage reaches the allowance, new
+    // inbound calls are paused immediately; calls already underway may finish.
     const { reconcileWorkspaceVoicePolicy } = await import(
       "./maintenance.server"
     );

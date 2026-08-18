@@ -259,9 +259,10 @@ function VoiceBillingPanel({
           Voice Assistant billing
         </CardTitle>
         <CardDescription>
-          $79 USD each month includes {state.billing.includedMinutes} inbound
-          AI minutes for this workspace. Calls stop at the included limit;
-          metered overage is not enabled.
+          $79 USD each month includes {state.billing.includedMinutes} completed
+          inbound AI minutes for this workspace. New calls pause after that
+          completed-call usage threshold; calls already in progress may finish.
+          No metered overage is charged.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -414,7 +415,7 @@ function ProvisioningPanel({
             {state.entitlement.state === "setup_required"
               ? "Voice billing is not fully connected yet. Number purchase remains locked until a verified Stripe event activates this workspace."
               : state.entitlement.state === "allowance_exhausted"
-                ? "This workspace has used its 200 included minutes for the verified billing period."
+                ? "This workspace has reached 200 completed inbound minutes for the verified billing period, so new calls are paused."
                 : "The premium add-on must be active and current before a number can be purchased."}
             <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
               Use the billing panel above. A completed checkout never unlocks
