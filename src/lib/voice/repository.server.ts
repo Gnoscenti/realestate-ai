@@ -36,7 +36,12 @@ export async function ensureVoiceAssistantDraft(
   sqlOverride?: Sql,
 ): Promise<VoiceAssistantRecord> {
   const sql = sqlOverride ?? (await getSql());
-  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    ["owner", "admin"],
+    sql,
+  );
   const id = `voice_${randomUUID()}`;
   const rows = await sql.query<AssistantRow>(
     `insert into voice_assistants (
@@ -45,7 +50,7 @@ export async function ensureVoiceAssistantDraft(
      on conflict (workspace_id) do update set updated_at = voice_assistants.updated_at
      returning id, workspace_id, provider, provider_agent_id, status,
                display_name, language`,
-    [id, workspaceId],
+    [id, workspace.id],
   );
   const row = rows[0];
   if (!row) throw new Error("Voice assistant initialization failed");
@@ -64,13 +69,13 @@ export async function getVoiceSetup(
       where workspace_id = $1 and assistant_id = $2
         and status in ('provisioning', 'active', 'paused')
       order by created_at desc limit 1`,
-    [workspaceId, assistant.id],
+    [assistant.workspaceId, assistant.id],
   );
   const prompt = await sql.query<{ version: number }>(
     `select version from voice_prompt_versions
       where workspace_id = $1 and assistant_id = $2
       order by version desc limit 1`,
-    [workspaceId, assistant.id],
+    [assistant.workspaceId, assistant.id],
   );
   return {
     assistant,
@@ -106,7 +111,7 @@ export async function savePromptVersion(
          returning id, version`,
         [
           id,
-          workspaceId,
+          assistant.workspaceId,
           assistant.id,
           data.systemPrompt,
           data.greeting,

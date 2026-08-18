@@ -31,10 +31,15 @@ interface AgentProfileRow {
 
 function requireIdentifier(value: string, label: string): string {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > 240 || /[\u0000-\u001f]/.test(trimmed)) {
+  if (
+    value !== trimmed ||
+    !value ||
+    value.length > 240 ||
+    /[\u0000-\u001f]/.test(value)
+  ) {
     throw new Error(`Invalid ${label}`);
   }
-  return trimmed;
+  return value;
 }
 
 export function personalWorkspaceId(userId: string): string {
@@ -100,14 +105,19 @@ export async function getAgentProfile(
   sqlOverride?: Sql,
 ): Promise<AgentProfileRecord | null> {
   const sql = sqlOverride ?? (await getSql());
-  await requireWorkspaceAccess(userId, workspaceId, undefined, sql);
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    undefined,
+    sql,
+  );
   const rows = await sql.query<AgentProfileRow>(
     `select workspace_id, display_name, business_name, brokerage,
             business_phone, website_url, area_of_operations, mls_board,
             mls_agent_id, license_number, timezone, provenance
        from agent_profiles
       where workspace_id = $1`,
-    [workspaceId],
+    [workspace.id],
   );
   const row = rows[0];
   if (!row) return null;
@@ -134,7 +144,12 @@ export async function saveAgentProfile(
   sqlOverride?: Sql,
 ): Promise<AgentProfileRecord> {
   const sql = sqlOverride ?? (await getSql());
-  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    ["owner", "admin"],
+    sql,
+  );
   const data = agentProfileInputSchema.parse(input);
   await sql.query(
     `insert into agent_profiles (
@@ -157,7 +172,7 @@ export async function saveAgentProfile(
        updated_by_user_id = excluded.updated_by_user_id,
        updated_at = now()`,
     [
-      workspaceId,
+      workspace.id,
       data.displayName ?? null,
       data.businessName ?? null,
       data.brokerage ?? null,
@@ -171,7 +186,7 @@ export async function saveAgentProfile(
       userId,
     ],
   );
-  const saved = await getAgentProfile(userId, workspaceId, sql);
+  const saved = await getAgentProfile(userId, workspace.id, sql);
   if (!saved) throw new Error("Profile save failed");
   return saved;
 }

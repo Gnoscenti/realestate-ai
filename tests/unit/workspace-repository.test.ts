@@ -28,6 +28,18 @@ describe("server-owned workspaces", () => {
     ).rejects.toThrow("Workspace not found");
   });
 
+  it("rejects whitespace variants instead of authorizing one tenant and querying another", async () => {
+    const userId = `opaque-id-${randomUUID()}`;
+    const workspace = await ensurePersonalWorkspace(userId);
+
+    await expect(
+      requireWorkspaceAccess(userId, ` ${workspace.id}`),
+    ).rejects.toThrow("Invalid workspace id");
+    await expect(
+      requireWorkspaceAccess(` ${userId}`, workspace.id),
+    ).rejects.toThrow("Invalid user id");
+  });
+
   it("persists an authenticated workspace profile", async () => {
     const userId = `profile-${randomUUID()}`;
     const workspace = await ensurePersonalWorkspace(userId);
