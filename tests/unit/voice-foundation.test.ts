@@ -34,7 +34,7 @@ describe("voice assistant foundation", () => {
       allowedCapabilities: {
         collectLead: true,
         requestAppointment: true,
-        transferToHuman: true,
+        transferToHuman: false,
         sendTransactionalText: false,
       },
     };
@@ -49,6 +49,70 @@ describe("voice assistant foundation", () => {
     expect(second.version).toBe(first.version + 1);
     expect(setup.promptVersion).toBe(second.version);
     expect(setup.phoneNumber).toBeNull();
+
+    const sql = await getSql();
+    await expect(
+      sql.query(
+        `update voice_prompt_versions
+            set provider_agent_id = 'shared-history-agent',
+                provider_llm_id = 'shared-history-llm'
+          where id in ($1, $2)`,
+        [first.id, second.id],
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects cross-workspace provisioning and prompt references", async () => {
+    const ownerA = `fk-a-${randomUUID()}`;
+    const ownerB = `fk-b-${randomUUID()}`;
+    const workspaceA = await ensurePersonalWorkspace(ownerA);
+    const workspaceB = await ensurePersonalWorkspace(ownerB);
+    const assistantA = await ensureVoiceAssistantDraft(ownerA, workspaceA.id);
+    const assistantB = await ensureVoiceAssistantDraft(ownerB, workspaceB.id);
+    const prompt = await savePromptVersion(ownerA, workspaceA.id, {
+      systemPrompt:
+        "You are a disclosed inbound assistant. Ask for consent before collecting any information and never call, text, transfer, or provide regulated advice.",
+      greeting: "Thanks for calling. How may I help with your real-estate inquiry?",
+      recordingDisclosure: disclosure,
+      allowedCapabilities: {
+        collectLead: true,
+        requestAppointment: true,
+        transferToHuman: false,
+        sendTransactionalText: false,
+      },
+    });
+    const sql = await getSql();
+    const jobId = `voice_job_${randomUUID()}`;
+    await sql.query(
+      `insert into voice_provisioning_jobs (
+         id, workspace_id, idempotency_key, requested_by_user_id,
+         prompt_version_id
+       ) values ($1,$2,$3,$4,$5)`,
+      [jobId, workspaceA.id, `key_${randomUUID()}`, ownerA, prompt.id],
+    );
+    await expect(
+      sql.query(
+        `update voice_assistants set provisioning_job_id = $1
+          where id = $2 and workspace_id = $3`,
+        [jobId, assistantB.id, workspaceB.id],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      sql.query(
+        `insert into voice_provisioning_jobs (
+           id, workspace_id, idempotency_key, requested_by_user_id,
+           prompt_version_id
+         ) values ($1,$2,$3,$4,$5)`,
+        [
+          `voice_job_${randomUUID()}`,
+          workspaceB.id,
+          `key_${randomUUID()}`,
+          ownerB,
+          prompt.id,
+        ],
+      ),
+    ).rejects.toThrow();
+    expect(assistantA.workspaceId).toBe(workspaceA.id);
   });
 
   it("deletes a workspace after all linked inventory and voice rows cascade", async () => {

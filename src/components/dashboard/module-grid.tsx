@@ -11,6 +11,7 @@ import {
   Zap,
   BookOpen,
   Calendar,
+  PhoneCall,
 } from "lucide-react";
 import {
   Card,
@@ -23,6 +24,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 const modules = [
+  {
+    to: "/voice",
+    title: "Missed-call Assistant",
+    description:
+      "A disclosed inbound receptionist for missed calls, with verified setup steps and call logs.",
+    icon: PhoneCall,
+    features: ["Inbound only", "Call intake", "Consent"],
+    highlight: true,
+  },
   {
     to: "/outreach",
     title: "Instant Response",

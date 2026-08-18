@@ -47,6 +47,7 @@ export const PAGE_MODULE_MAP: Record<string, { title: string; module: string }> 
     "/feedback": { title: "Feedback Board", module: "feedback" },
     "/edge": { title: "Edge Playbook", module: "edge" },
     "/alerts": { title: "Email Alerts", module: "alerts" },
+    "/voice": { title: "Missed-call Assistant", module: "voice" },
   };
 
 export function resolvePageMeta(pathname: string): {
