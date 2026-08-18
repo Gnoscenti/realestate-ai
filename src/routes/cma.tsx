@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SoldDataLibraryPanel } from "@/components/cma/sold-data-library";
 import {
   Card,
   CardContent,
@@ -99,9 +100,11 @@ function CmaPage() {
             Comparison planning
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Uses properties saved in this browser workspace
-            {profile ? ` for ${profile.areaOfOperations}` : ""}. This planning
-            beta does not retrieve or verify Closed/Sold comps automatically.
+            Compare properties saved in this browser workspace
+            {profile ? ` for ${profile.areaOfOperations}` : ""}, and keep
+            authorized Closed/Sold source records in your private server
+            workspace. This planning beta does not choose comparable sales or
+            recommend a price.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -121,6 +124,8 @@ function CmaPage() {
           </Select>
         </div>
       </div>
+
+      <SoldDataLibraryPanel />
 
       {myListings(properties).length > 0 && (
         <div className="flex flex-wrap gap-2">

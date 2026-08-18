@@ -31,6 +31,7 @@ import {
   listVerifiedSoldComps,
   reserveAssistantQuota,
 } from "@/lib/assistant/repository.server";
+import { SOLD_DATA_EMPTY_ASSISTANT_MESSAGE } from "@/lib/sold-comps/types";
 
 const inputSchema = z.object({
   requestId: z.uuid(),
@@ -139,10 +140,7 @@ function soldRecordSummary(
   totalCount: number,
 ): string {
   if (!records.length) {
-    return [
-      "No authorized Closed/Sold records are available in this workspace yet.",
-      "Sold-data import is not available in this beta yet. Ask your administrator to load an authorized MLS export or licensed RESO feed. Public websites and active listings are not substitutes.",
-    ].join("\n\n");
+    return SOLD_DATA_EMPTY_ASSISTANT_MESSAGE;
   }
   const lines = records.map((record, index) => {
     const source = [record.sourceKind, record.provider, record.dataset]
