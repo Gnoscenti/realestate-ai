@@ -45,7 +45,8 @@ create table if not exists listings (
   updated_at timestamptz not null default now(),
   unique (id, workspace_id),
   foreign key (source_id, workspace_id)
-    references data_sources(id, workspace_id) on delete restrict
+    references data_sources(id, workspace_id)
+    on delete no action deferrable initially deferred
 );
 
 create unique index if not exists listings_external_source_idx

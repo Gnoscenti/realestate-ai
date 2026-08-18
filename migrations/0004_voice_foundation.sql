@@ -104,7 +104,8 @@ create table if not exists voice_calls (
   foreign key (assistant_id, workspace_id)
     references voice_assistants(id, workspace_id) on delete cascade,
   foreign key (phone_number_id, workspace_id)
-    references voice_phone_numbers(id, workspace_id) on delete restrict
+    references voice_phone_numbers(id, workspace_id)
+    on delete no action deferrable initially deferred
 );
 
 create index if not exists voice_calls_workspace_idx
