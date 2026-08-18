@@ -52,8 +52,8 @@ export async function receiveRetellWebhook(request: Request): Promise<Response> 
       ),
     );
     // The event is already durable. Provider-side privacy deletion is deferred
-    // to maintenance, but usage reconciliation runs inline so the 200-minute
-    // hard stop cannot drift until the daily recovery job.
+    // to maintenance, but completed-call usage reconciliation runs inline so
+    // new calls pause promptly at the included threshold.
     const processing = await processAcceptedRetellWebhook(accepted.eventKey);
     if (processing.retried > 0) {
       throw new Error("Voice webhook processing is pending retry");

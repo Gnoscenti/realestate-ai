@@ -189,7 +189,7 @@ describe("Retell webhook inbox", () => {
     ).rejects.toThrow("Workspace not found");
   });
 
-  it("unbinds immediately when idempotent call usage reaches the hard cap", async () => {
+  it("pauses new calls when completed-call usage reaches the allowance", async () => {
     const target = await voiceTarget();
     const raw = JSON.stringify({
       event: "call_ended",
@@ -364,14 +364,16 @@ describe("Retell webhook inbox", () => {
       [accepted.eventKey],
     );
     expect(JSON.stringify(inbox[0]?.payload)).not.toContain(secretTranscript);
+    expect(JSON.stringify(inbox[0]?.payload)).not.toContain("+19715550199");
 
     await processAcceptedRetellWebhook(accepted.eventKey, target.sql);
     const calls = await listVoiceCalls(target.userId, target.workspace.id, {}, target.sql);
     const stored = await target.sql.query<{
       provider_delete_required: boolean;
       provider_deleted_at: string | null;
+      from_number: string | null;
     }>(
-      `select provider_delete_required, provider_deleted_at from voice_calls
+      `select provider_delete_required, provider_deleted_at, from_number from voice_calls
         where retell_call_id = $1`,
       [providerCallId],
     );
@@ -388,6 +390,7 @@ describe("Retell webhook inbox", () => {
     expect(stored[0]).toMatchObject({
       provider_delete_required: true,
       provider_deleted_at: null,
+      from_number: null,
     });
 
     let deletedCallId: string | null = null;
@@ -397,6 +400,89 @@ describe("Retell webhook inbox", () => {
       },
     });
     expect(deletedCallId).toBe(providerCallId);
+  });
+
+  it("does not retain unknown-consent ANI and clears accepted ANI at 90 days", async () => {
+    const target = await voiceTarget();
+    const runtime = new RetellVoiceRuntime({ apiKey, voiceId: "unused" });
+    const unknownCallId = `call_${randomUUID()}`;
+    const unknownAni = "+19715550201";
+    const unknownRaw = JSON.stringify({
+      event: "call_ended",
+      call: {
+        call_id: unknownCallId,
+        agent_id: target.agentId,
+        from_number: unknownAni,
+        to_number: target.e164,
+        duration_ms: 2_000,
+      },
+    });
+    const unknown = await acceptRetellWebhook(
+      unknownRaw,
+      signed(unknownRaw),
+      runtime,
+      target.sql,
+    );
+    const unknownInbox = await target.sql.query<{ payload: unknown }>(
+      `select payload from voice_webhook_events where event_key = $1`,
+      [unknown.eventKey],
+    );
+    expect(JSON.stringify(unknownInbox[0]?.payload)).not.toContain(unknownAni);
+    await processAcceptedRetellWebhook(unknown.eventKey, target.sql);
+
+    const acceptedCallId = `call_${randomUUID()}`;
+    const acceptedAni = "+19715550202";
+    const acceptedRaw = JSON.stringify({
+      event: "call_analyzed",
+      call: {
+        call_id: acceptedCallId,
+        agent_id: target.agentId,
+        from_number: acceptedAni,
+        to_number: target.e164,
+        transcript: "Please call me tomorrow.",
+        call_analysis: {
+          custom_analysis_data: {
+            caller_name: "Retention Caller",
+            callback_urgency: "normal",
+            recording_consent: "accepted",
+          },
+        },
+      },
+    });
+    const accepted = await acceptRetellWebhook(
+      acceptedRaw,
+      signed(acceptedRaw),
+      runtime,
+      target.sql,
+    );
+    await processAcceptedRetellWebhook(accepted.eventKey, target.sql);
+    await target.sql.query(
+      `update voice_calls set transcript_delete_after = now() - interval '1 second'
+        where retell_call_id = $1`,
+      [acceptedCallId],
+    );
+    await sweepVoiceRetention(target.sql, { async deleteCall() {} });
+
+    const rows = await target.sql.query<{
+      retell_call_id: string;
+      from_number: string | null;
+      transcript: string | null;
+      caller_name: string | null;
+    }>(
+      `select retell_call_id, from_number, transcript, caller_name
+         from voice_calls
+        where retell_call_id in ($1,$2)
+        order by retell_call_id`,
+      [unknownCallId, acceptedCallId],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.from_number === null)).toBe(true);
+    const acceptedRow = rows.find((row) => row.retell_call_id === acceptedCallId);
+    expect(acceptedRow).toMatchObject({
+      from_number: null,
+      transcript: null,
+      caller_name: null,
+    });
   });
 
   it("quarantines conflicting agent and phone targets without retaining content", async () => {

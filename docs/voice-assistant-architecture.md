@@ -37,14 +37,15 @@ signed Stripe lifecycle webhook may write the trusted billing fields. Checkout
 return navigation never grants access, and provisioning stays fail-closed with
 `VOICE_BILLING_SETUP_REQUIRED` until a verified supported event is applied.
 
-The beta allowance is 200 minutes per verified billing period. Every provider
-step rechecks the allowance; the number-purchase step checks again immediately
-before calling Twilio. Accepted call usage invokes a workspace-scoped policy
-reconciliation immediately after its idempotent ledger write, so a call that
-reaches 12,000 seconds pauses the assistant and unbinds Retell without waiting
-for cron. Stripe lifecycle changes run the same reconciliation. Retell is
-rebound only after billing is verified and allowance is available. Twilio
-ownership is retained while paused.
+The beta includes 200 completed inbound minutes per verified billing period.
+Every provider step rechecks the allowance; the number-purchase step checks
+again immediately before calling Twilio. Accepted completed-call usage invokes
+a workspace-scoped policy reconciliation after its idempotent ledger write.
+Once ledger usage reaches 12,000 seconds, new calls are paused without waiting
+for cron. A call already in progress may finish, so this is not represented as
+a real-time hard cap; no overage is charged. Stripe lifecycle changes run the
+same reconciliation. Retell is rebound only after billing is verified and the
+allowance is available. Twilio ownership is retained while paused.
 
 ### Stripe subscription lifecycle
 
@@ -53,7 +54,7 @@ one-time $9.99 checkout. `STRIPE_VOICE_PRICE_ID` is server-only. Before opening
 Checkout, the server retrieves that Price and requires an active, licensed,
 per-unit, $79 USD monthly price. Checkout receives only the configured Price ID
 and binds Better Auth `user_id`, the authorized `workspace_id`, product, and the
-12,000-second hard allowance into both Checkout and Subscription metadata.
+12,000-second completed-call allowance into Checkout and Subscription metadata.
 Checkout creation uses a server-owned Stripe idempotency key derived from the
 workspace, product, configured Price, and trusted webhook billing generation.
 A verified cancellation advances that generation so a later resubscribe does
@@ -72,7 +73,9 @@ before it may change `workspace_entitlements`. The signed metadata user must be
 an owner/admin of the exact workspace. Customer, subscription, configured
 Price, quantity, and Stripe test/live mode must agree. Canonical Stripe objects
 are re-retrieved, including subscription state for deletion and invoice events.
-The entitlement always stores 12,000 included and hard-limit seconds with
+The entitlement stores 12,000 seconds in both the included-unit and legacy
+`hard_limit_units` fields; runtime semantics are the completed-call admission
+threshold described above, not real-time call termination.
 `overage_authorized = false`; there is no metered-overage path in this release.
 
 Production billing setup still requires all of the following before activation:
@@ -101,9 +104,14 @@ to the assistant's stable `provisioning_identity`. Authenticated UI polling via
 7. `bind_number`
 8. `activate`
 
-Each returned provider ID/version is persisted before the next step. Leases
-recover crashed workers. Jobs within one workspace are serialized. Failures use
-bounded retries and terminal dead-letter state with an owner/admin alert.
+Each returned provider ID/version is persisted before the next step. A durable,
+expiring workspace mutation lease serializes every provisioning/bind step,
+Stripe entitlement write, and policy bind/unbind reconciliation. Opposite
+cancel/reactivate events therefore retry instead of crossing provider calls,
+and every reconciliation reloads the newest durable allowance under the lease.
+Leases recover crashed workers. Jobs within one workspace are serialized;
+terminal dead letters alert owner/admins but do not head-of-line block newer
+authorized work.
 
 Retell LLM creation has no documented idempotency key or safe list/reconcile
 field. An ambiguous timeout therefore dead-letters for manual inventory review
@@ -113,9 +121,11 @@ Publishing treats Retell's successful empty response as `void` and retains the
 submitted version. Twilio number purchase uses a stable FriendlyName and lists
 before/after ambiguous purchase attempts.
 
-Prompt edits create immutable server-composed prompt versions. Sync updates the
-existing Retell LLM, creates/configures/publishes a draft version of the same
-agent, and rebinds the existing number. It never purchases another number.
+Prompt edits create immutable server-composed prompt versions. Edits made while
+initial provisioning is running queue behind that job, so the newest saved
+version is eventually synchronized after activation. Sync updates the existing
+Retell LLM, creates/configures/publishes a draft version of the same agent, and
+rebinds the existing number. It never purchases another number.
 
 The daily Vercel cron is only a Hobby-compatible safety net. It retries expired
 leases and webhook work, reconciles billing/allowance, and runs retention. A
@@ -181,9 +191,11 @@ skip rows. Outputs defensively suppress all content unless consent is accepted.
 Recording playback is explicitly ephemeral: a Retell signed URL is returned
 only before the conservative local expiry marker and is never described as a
 durable recording. The retention sweep clears expired URLs, clears consented
-transcript/extractions after 90 days, redacts any accidental non-consented
-content, retries provider deletion, and deletes scrubbed webhook audit rows
-after 30 days. Durable playback stays setup-required until a separately
+transcript, caller identifiers (including ANI), and extractions after 90 days;
+declined/unknown ANI and content are removed before the durable inbox write.
+The sweep also redacts accidental non-consented content, retries provider
+deletion, and deletes scrubbed webhook audit rows after 30 days. Durable
+playback stays setup-required until a separately
 approved private-ingest design supplies authenticated short-lived links.
 
 ## Field activation console

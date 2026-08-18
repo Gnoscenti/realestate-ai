@@ -5,6 +5,7 @@ import {
   applyResolvedVoiceBillingEvent,
   assertVoicePrice,
   createVoiceCheckoutForBinding,
+  getVoiceBillingAvailability,
   processVoiceStripeEvent,
   resolveVoiceBillingEvent,
   type ResolvedVoiceBillingEvent,
@@ -111,6 +112,39 @@ function event(
 }
 
 describe("Voice Assistant Stripe billing", () => {
+  it("describes the 200-minute threshold without promising real-time call termination", async () => {
+    const userId = `voice-copy-${randomUUID()}`;
+    const workspace = await ensurePersonalWorkspace(userId);
+    const sql = await getSql();
+    const previous = {
+      secret: process.env.STRIPE_SECRET_KEY,
+      webhook: process.env.STRIPE_WEBHOOK_SECRET,
+      price: process.env.STRIPE_VOICE_PRICE_ID,
+    };
+    process.env.STRIPE_SECRET_KEY = "sk_test_voice_copy";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_voice_copy";
+    process.env.STRIPE_VOICE_PRICE_ID = config.priceId;
+    try {
+      const availability = await getVoiceBillingAvailability(
+        userId,
+        workspace.id,
+        sql,
+      );
+      expect(availability.message).toContain(
+        "calls already in progress may finish",
+      );
+      expect(availability.message).toContain("No overage is charged");
+      expect(availability.message).not.toMatch(/hard stop|calls stop/i);
+    } finally {
+      if (previous.secret === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = previous.secret;
+      if (previous.webhook === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+      else process.env.STRIPE_WEBHOOK_SECRET = previous.webhook;
+      if (previous.price === undefined) delete process.env.STRIPE_VOICE_PRICE_ID;
+      else process.env.STRIPE_VOICE_PRICE_ID = previous.price;
+    }
+  });
+
   it("accepts only the configured active $79 USD monthly licensed price", () => {
     expect(() =>
       assertVoicePrice(price, config.priceId, false),
