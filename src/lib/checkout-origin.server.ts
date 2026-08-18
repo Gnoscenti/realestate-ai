@@ -21,6 +21,10 @@ function validateReturnUrl(rawUrl: string, expectedOrigin: string): string {
   return url.toString();
 }
 
+export function assertCheckoutReturnUrl(rawUrl: string): string {
+  return validateReturnUrl(rawUrl, appOrigin());
+}
+
 export function assertCheckoutReturnUrls(input: {
   successUrl: string;
   cancelUrl: string;

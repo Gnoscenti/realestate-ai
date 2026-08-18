@@ -10,6 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiInternalVoiceProcessWebhooksRouteImport } from './routes/api/internal/voice/process-webhooks'
+import { Route as ApiVoiceCallsRouteImport } from './routes/api/voice/calls'
+import { Route as ApiWebhooksRetellRouteImport } from './routes/api/webhooks/retell'
+import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
@@ -27,10 +31,32 @@ import { Route as OutreachRouteImport } from './routes/outreach'
 import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as VoiceRouteImport } from './routes/voice'
 
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalVoiceProcessWebhooksRoute =
+  ApiInternalVoiceProcessWebhooksRouteImport.update({
+    id: '/api/internal/voice/process-webhooks',
+    path: '/api/internal/voice/process-webhooks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiVoiceCallsRoute = ApiVoiceCallsRouteImport.update({
+  id: '/api/voice/calls',
+  path: '/api/voice/calls',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksRetellRoute = ApiWebhooksRetellRouteImport.update({
+  id: '/api/webhooks/retell',
+  path: '/api/webhooks/retell',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksStripeRoute = ApiWebhooksStripeRouteImport.update({
+  id: '/api/webhooks/stripe',
+  path: '/api/webhooks/stripe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -118,9 +144,18 @@ const TransactionsRoute = TransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VoiceRoute = VoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -138,9 +173,14 @@ export interface FileRoutesByFullPath {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
 }
 export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -158,10 +198,15 @@ export interface FileRoutesByTo {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
   '/': typeof IndexRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
@@ -179,11 +224,16 @@ export interface FileRoutesById {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/api/auth/$'
+    | '/api/internal/voice/process-webhooks'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/stripe'
     | '/'
     | '/alerts'
     | '/billing'
@@ -201,9 +251,14 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/api/auth/$'
+    | '/api/internal/voice/process-webhooks'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/stripe'
     | '/'
     | '/alerts'
     | '/billing'
@@ -221,9 +276,14 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
   id:
     | '__root__'
     | '/api/auth/$'
+    | '/api/internal/voice/process-webhooks'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/stripe'
     | '/'
     | '/alerts'
     | '/billing'
@@ -241,10 +301,15 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiInternalVoiceProcessWebhooksRoute: typeof ApiInternalVoiceProcessWebhooksRoute
+  ApiVoiceCallsRoute: typeof ApiVoiceCallsRoute
+  ApiWebhooksRetellRoute: typeof ApiWebhooksRetellRoute
+  ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
   IndexRoute: typeof IndexRoute
   AlertsRoute: typeof AlertsRoute
   BillingRoute: typeof BillingRoute
@@ -262,6 +327,7 @@ export interface RootRouteChildren {
   PropertiesRoute: typeof PropertiesRoute
   SearchRoute: typeof SearchRoute
   TransactionsRoute: typeof TransactionsRoute
+  VoiceRoute: typeof VoiceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -271,6 +337,34 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/voice/process-webhooks': {
+      id: '/api/internal/voice/process-webhooks'
+      path: '/api/internal/voice/process-webhooks'
+      fullPath: '/api/internal/voice/process-webhooks'
+      preLoaderRoute: typeof ApiInternalVoiceProcessWebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/voice/calls': {
+      id: '/api/voice/calls'
+      path: '/api/voice/calls'
+      fullPath: '/api/voice/calls'
+      preLoaderRoute: typeof ApiVoiceCallsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/retell': {
+      id: '/api/webhooks/retell'
+      path: '/api/webhooks/retell'
+      fullPath: '/api/webhooks/retell'
+      preLoaderRoute: typeof ApiWebhooksRetellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/stripe': {
+      id: '/api/webhooks/stripe'
+      path: '/api/webhooks/stripe'
+      fullPath: '/api/webhooks/stripe'
+      preLoaderRoute: typeof ApiWebhooksStripeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -392,11 +486,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TransactionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/voice': {
+      id: '/voice'
+      path: '/voice'
+      fullPath: '/voice'
+      preLoaderRoute: typeof VoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiInternalVoiceProcessWebhooksRoute: ApiInternalVoiceProcessWebhooksRoute,
+  ApiVoiceCallsRoute: ApiVoiceCallsRoute,
+  ApiWebhooksRetellRoute: ApiWebhooksRetellRoute,
+  ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
   IndexRoute: IndexRoute,
   AlertsRoute: AlertsRoute,
   BillingRoute: BillingRoute,
@@ -414,6 +519,7 @@ const rootRouteChildren: RootRouteChildren = {
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
+  VoiceRoute: VoiceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
