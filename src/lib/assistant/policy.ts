@@ -59,7 +59,6 @@ const VALUATION_PATTERNS = [
   /\b(list|ask|offer)\s+(at|for)\s+\$?[\d,.]+/i,
   /\b(is|would|should|could)\s+\$?[\d,.]+\s+(be\s+)?(fair|right|reasonable|competitive|high|low)\b/i,
   /\bhow much\s+(should|could|would|can)\b/i,
-  /\bclosed?\s+prices?\b/i,
   /\bwhat\s+(?:number|figure)\s+.{0,40}\b(?:sign|listing|market)\b/i,
   /\bwhere\s+(?:would|should|could)\s+(?:you|we|i)\s+start.{0,40}\b(?:price|listing|sign|offer)\b/i,
   /\b(?:what|which|how\s+much)\s+(?:discount|premium|percentage|percent)\b.{0,60}\b(?:ask|asking|list|listing|price)\b/i,

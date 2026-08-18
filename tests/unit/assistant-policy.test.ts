@@ -89,6 +89,12 @@ describe("assistant valuation policy", () => {
     expect(isVerifiedSoldRecordBrowseRequest(question)).toBe(true);
   });
 
+  it("allows factual close prices when browsing authorized sold records", () => {
+    const question = "Show my verified sold records with close prices";
+    expect(isPropertyValuationRequest(question)).toBe(false);
+    expect(isVerifiedSoldRecordBrowseRequest(question)).toBe(true);
+  });
+
   it("refuses valuation even when the workspace has three records", () => {
     const message = valuationUnavailableMessage(3);
     expect(message).toContain("record count alone");
