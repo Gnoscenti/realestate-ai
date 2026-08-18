@@ -30,7 +30,7 @@ const QUICK = [
   {
     label: "Calendar",
     icon: Calendar,
-    query: "What's on my calendar and what reminders did AI pick up?",
+    query: "What's on my calendar and what reminders are saved?",
   },
   {
     label: "Who needs a reply?",
@@ -48,7 +48,7 @@ const QUICK = [
     query: "Analyze my top leads and suggest next actions",
   },
   {
-    label: "RSF comps",
+    label: "RSF comp rules",
     icon: BookOpen,
     query: "Covenant vs Bridges comps rules for Rancho Santa Fe",
   },
@@ -82,20 +82,17 @@ export function AIAssistant({ className }: { className?: string }) {
   const contractors = useAppStore((s) => s.contractors);
   const recordSignal = useAppStore((s) => s.recordSignal);
   const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, thinking]);
+  }, [chat]);
 
-  const send = async (text: string) => {
+  const send = (text: string) => {
     const q = text.trim();
-    if (!q || thinking) return;
+    if (!q) return;
     setInput("");
     pushChat({ role: "user", content: q });
-    setThinking(true);
-    await new Promise((r) => setTimeout(r, 450 + Math.random() * 400));
     const mem = useAppStore.getState().agentMemory;
     const apts = useAppStore.getState().appointments;
     const ctrs = useAppStore.getState().contractors;
@@ -110,7 +107,6 @@ export function AIAssistant({ className }: { className?: string }) {
       contractors: ctrs,
     });
     pushChat({ role: "assistant", content: reply });
-    setThinking(false);
   };
 
   return (
@@ -124,10 +120,13 @@ export function AIAssistant({ className }: { className?: string }) {
         <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-primary-soft)]">
           <Bot className="h-4 w-4 text-[var(--color-primary)]" />
         </div>
-        <CardTitle className="flex-1">AI assistant</CardTitle>
-        <Badge variant="success" title="Learns from your usage">
+        <CardTitle className="flex-1">Workspace assistant</CardTitle>
+        <Badge
+          variant="success"
+          title="Rules-based beta using records saved in this browser"
+        >
           <Sparkles className="h-3 w-3" />
-          {memory.familiarityScore}/100
+          Rules beta
         </Badge>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-4">
@@ -181,16 +180,6 @@ export function AIAssistant({ className }: { className?: string }) {
                 </div>
               </div>
             ))}
-            {thinking && (
-              <div className="flex justify-start">
-                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-muted)]">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent" />
-                    Thinking with calendar + memory…
-                  </span>
-                </div>
-              </div>
-            )}
             <div ref={bottomRef} />
           </div>
         </ScrollArea>
@@ -203,7 +192,6 @@ export function AIAssistant({ className }: { className?: string }) {
               size="sm"
               variant="outline"
               className="h-7 text-[11px]"
-              disabled={thinking}
               onClick={() => send(a.query)}
             >
               <a.icon className="h-3 w-3" />
@@ -216,20 +204,19 @@ export function AIAssistant({ className }: { className?: string }) {
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            void send(input);
+            send(input);
           }}
         >
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Calendar, contractors, RSF, or “remember that …”"
-            disabled={thinking}
+            placeholder="Search records saved in this workspace…"
             className="flex-1"
           />
           <Button
             type="submit"
             size="icon"
-            disabled={thinking || !input.trim()}
+            disabled={!input.trim()}
             aria-label="Send"
           >
             <Send className="h-4 w-4" />

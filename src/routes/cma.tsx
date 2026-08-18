@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   BarChart3,
   Copy,
@@ -52,6 +52,7 @@ function CmaPage() {
     () => (subject ? generateCmaReport(subject, properties) : null),
     [subject, properties],
   );
+  const hasEnoughComparisons = (report?.comps.length ?? 0) >= 3;
 
   const exportText = () => {
     if (!report || !subject) return "";
@@ -62,9 +63,9 @@ function CmaPage() {
       profile ? `Prepared by ${profile.name} · ${profile.areaOfOperations}` : "",
       profile?.website ? profile.website : "",
       "",
-      `Suggested list: ${formatCurrency(report.suggestedList)}`,
+      `Illustrative planning estimate: ${formatCurrency(report.suggestedList)}`,
       "",
-      "Comparables:",
+      "Workspace comparison set (not verified sold comps):",
       ...report.comps.map(
         (c) =>
           `• ${c.title} | ${c.address} | ${formatCurrency(c.price)} | ${c.sqft} sqft | ${formatCurrency(c.ppsf)}/sf | ${c.adj}`,
@@ -100,9 +101,9 @@ function CmaPage() {
             Comparative market analysis
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Built on your MLS-synced inventory
-            {profile ? ` for ${profile.areaOfOperations}` : ""}. Subject
-            properties and comps include MLS numbers from your feed.
+            Uses properties saved in this workspace
+            {profile ? ` for ${profile.areaOfOperations}` : ""}. This beta does
+            not yet retrieve verified sold comps automatically.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -139,7 +140,46 @@ function CmaPage() {
         </div>
       )}
 
-      {report && subject && (
+      {!subject && (
+        <Card>
+          <CardHeader>
+            <CardTitle>No subject property yet</CardTitle>
+            <CardDescription>
+              CMA Studio needs a real property in this workspace before it can
+              build a comparison set. Connect your MLS or add a property first.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && subject && !hasEnoughComparisons && (
+        <Card>
+          <CardHeader>
+            <CardTitle>More comparison data needed</CardTitle>
+            <CardDescription>
+              Only {report.comps.length} other saved {report.comps.length === 1 ? "property is" : "properties are"} available. Add at least three before creating a planning estimate. Verified Closed/Sold MLS comp search is not connected yet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && subject && hasEnoughComparisons && (
         <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Card className="md:col-span-2">
@@ -164,13 +204,14 @@ function CmaPage() {
             <Card>
               <CardContent className="flex h-full flex-col justify-center p-6">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                  Suggested list price
+                  Planning estimate
                 </div>
                 <div className="mt-2 font-display text-3xl font-semibold tabular text-[var(--color-success)]">
                   {formatCurrency(report.suggestedList)}
                 </div>
                 <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
-                  Derived from weighted MLS comps · current ask{" "}
+                  Formula based on saved workspace properties—not a verified
+                  appraisal or sold-comp analysis · current ask{" "}
                   {formatCurrency(subject.price)}
                 </p>
               </CardContent>
@@ -180,10 +221,10 @@ function CmaPage() {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle>Comparable sales & actives</CardTitle>
+                <CardTitle>Workspace comparison set</CardTitle>
                 <CardDescription>
-                  Ranked by type, neighborhood, and size proximity from your MLS
-                  pull
+                  Other saved properties ranked by type, neighborhood, and size.
+                  Verify status, source, and closing data before client use.
                 </CardDescription>
               </div>
               <FileSpreadsheet className="h-5 w-5 text-[var(--color-fg-subtle)]" />
