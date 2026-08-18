@@ -159,31 +159,15 @@ export function generateAvm(input: {
   );
   const spread = 0.04 + (100 - confidence) * 0.0015;
 
-  const comps = [
-    {
-      address: input.address
-        ? input.address.replace(/\d+/, (n) => String(parseInt(n, 10) + 12))
-        : "6122 El Apajo",
-      price: Math.round(value * 0.98),
-      sqft: Math.round(input.sqft * 0.96),
-      distance: "0.4 mi",
-      days: 15,
-    },
-    {
-      address: isRsf ? "Nearby Covenant comparable" : "Nearby comparable B",
-      price: Math.round(value * 1.04),
-      sqft: Math.round(input.sqft * 1.05),
-      distance: "0.7 mi",
-      days: 8,
-    },
-    {
-      address: isRsf ? "Fairbanks Ranch estate comp" : "Nearby comparable C",
-      price: Math.round(value * 0.95),
-      sqft: Math.round(input.sqft * 0.92),
-      distance: "1.2 mi",
-      days: 22,
-    },
-  ];
+  // Never synthesize comparable addresses or sale facts. Real comps must come
+  // from an authorized MLS/RESO source or a validated sold-listing import.
+  const comps: {
+    address: string;
+    price: number;
+    sqft: number;
+    distance: string;
+    days: number;
+  }[] = [];
 
   return {
     value,
@@ -192,11 +176,8 @@ export function generateAvm(input: {
     confidence,
     ppsf,
     comps,
-    insight: isRsf
-      ? "RSF corridor: weight lot, association (Covenant vs Bridges vs non-assoc), and guest house quality over raw $/sf."
-      : input.condition >= 4
-        ? "Condition premium supported by recent renovated sales within 0.3 mi."
-        : "Value sensitive to finish quality — renovations could lift mid-band estimate 4–7%.",
+    insight:
+      "Illustrative formula only. No live AI model or verified MLS sales are connected; confirm value with an authorized CMA before client use.",
   };
 }
 
