@@ -63,7 +63,7 @@ function CmaPage() {
       profile ? `Prepared by ${profile.name} · ${profile.areaOfOperations}` : "",
       profile?.website ? profile.website : "",
       "",
-      `Suggested list: ${formatCurrency(report.suggestedList)}`,
+      `Illustrative planning estimate: ${formatCurrency(report.suggestedList)}`,
       "",
       "Workspace comparison set (not verified sold comps):",
       ...report.comps.map(
