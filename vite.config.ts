@@ -137,7 +137,18 @@ export default defineConfig(({ command }) => ({
     authPopupPlugin(),
     tailwindcss(),
     tanstackStart(),
-    ...(command === "build" ? [nitro({ preset: "vercel" })] : []),
+    ...(command === "build"
+      ? [
+          nitro({
+            preset: "vercel",
+            // PGlite loads its WASM/data files relative to the package at
+            // runtime. Nitro otherwise bundles only its JS entry, leaving a
+            // Vercel function without pglite.data. The trailing `*` requests
+            // Nitro's full-package dependency trace so those assets ship too.
+            traceDeps: ["@electric-sql/pglite*"],
+          }),
+        ]
+      : []),
     viteReact(),
   ],
 }));
