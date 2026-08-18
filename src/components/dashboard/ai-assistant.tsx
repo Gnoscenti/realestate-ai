@@ -99,6 +99,7 @@ export function AIAssistant({ className }: { className?: string }) {
     const ctrs = useAppStore.getState().contractors;
 
     let reply: string | null = null;
+    let liveError: string | null = null;
     try {
       const { askLiveAssistant } = await import("@/lib/assistant-api");
       const live = await askLiveAssistant({
@@ -124,21 +125,27 @@ export function AIAssistant({ className }: { className?: string }) {
             .filter((l) => l.heat === "hot")
             .slice(0, 8)
             .map((l) => l.name),
-          memoryNotes: mem?.learnedFacts?.slice(0, 8).join("; "),
+          memoryNotes: mem?.learnedFacts
+            ?.slice(0, 8)
+            .map((f) => f.text)
+            .filter(Boolean)
+            .join("; "),
         },
       });
       if (live.ok) {
         reply = live.usedWebSearch
-          ? `${live.answer}\n\n— _Live web-connected assistant_`
+          ? `${live.answer}\n\n— Live web search`
           : live.answer;
+      } else {
+        liveError = live.error;
       }
-    } catch {
-      /* local fallback */
+    } catch (e) {
+      liveError =
+        e instanceof Error ? e.message : "Live assistant request failed";
     }
 
     if (!reply) {
-      await new Promise((r) => setTimeout(r, 350 + Math.random() * 250));
-      reply = answerAssistant(q, {
+      const local = answerAssistant(q, {
         leads,
         properties,
         deals,
@@ -148,6 +155,9 @@ export function AIAssistant({ className }: { className?: string }) {
         appointments: apts,
         contractors: ctrs,
       });
+      reply = liveError
+        ? `Live web search didn't run: ${liveError}\n\nWorkspace notes:\n${local}`
+        : local;
     }
 
     pushChat({ role: "assistant", content: reply });
@@ -227,7 +237,7 @@ export function AIAssistant({ className }: { className?: string }) {
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-muted)]">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent" />
-                    Thinking — web + your book…
+                    Searching the web…
                   </span>
                 </div>
               </div>
