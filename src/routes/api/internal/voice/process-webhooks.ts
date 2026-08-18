@@ -6,6 +6,7 @@ import {
   sweepVoiceRetention,
 } from "@/lib/voice/maintenance.server";
 import { processVoiceProvisioningBatch } from "@/lib/voice/provisioning.server";
+import { drainPendingVoiceStripePolicies } from "@/lib/voice/billing.server";
 
 async function safeRun<T>(work: () => Promise<T>): Promise<T | { error: string }> {
   try {
@@ -28,9 +29,12 @@ async function runWebhookProcessor(request: Request): Promise<Response> {
   // server function, so activation does not wait for this maintenance run.
   const provisioning = await safeRun(() => processVoiceProvisioningBatch());
   const webhooks = await safeRun(() => processVoiceWebhookBatch());
+  const stripePolicies = await safeRun(() => drainPendingVoiceStripePolicies());
   const policies = await safeRun(() => reconcileVoicePolicies());
   const retention = await safeRun(() => sweepVoiceRetention());
-  return Response.json({ provisioning, webhooks, policies, retention }, {
+  return Response.json({
+    provisioning, webhooks, stripePolicies, policies, retention,
+  }, {
     headers: { "cache-control": "no-store" },
   });
 }

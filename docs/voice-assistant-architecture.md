@@ -105,32 +105,53 @@ to the assistant's stable `provisioning_identity`. Authenticated UI polling via
 8. `activate`
 
 Each returned provider ID/version is persisted before the next step. A durable,
-expiring workspace mutation lease serializes every provisioning/bind step,
-Stripe entitlement write, and policy bind/unbind reconciliation. Opposite
-cancel/reactivate events therefore retry instead of crossing provider calls,
-and every reconciliation reloads the newest durable allowance under the lease.
-Leases recover crashed workers. Jobs within one workspace are serialized;
-terminal dead letters alert owner/admins but do not head-of-line block newer
-authorized work.
+expiring workspace mutation lease with a heartbeat and token fence serializes
+every provisioning/bind and policy bind/unbind step. Verified Stripe events
+commit their monotonically ordered entitlement truth immediately, even while a
+provider lease is busy; the event retains durable pending reconciliation work.
+The lease holder reloads that truth after every provider mutation and
+compensates a now-disallowed bind/unbind before committing local state. The
+daily worker drains any remaining pending Stripe policy work. Per-claim worker
+tokens prevent a reclaimed job from accepting a late state write. Jobs within
+one workspace are serialized; terminal dead letters alert owner/admins but do
+not head-of-line block newer authorized work.
 
-Retell LLM creation has no documented idempotency key or safe list/reconcile
-field. An ambiguous timeout therefore dead-letters for manual inventory review
-instead of automatically creating a possible duplicate. Initial agent creation
-uses a stable `agent_name` marker and reconciles it with Retell's list/get APIs.
+Retell LLM creation and prompt-sync draft creation have no documented
+idempotency key or safe list/reconcile field. The job records a durable provider
+mutation intent before either call, then atomically stores the returned
+ID/version and clears the intent before checking billing again. A crash, lost
+lease, or ambiguous timeout that leaves an intent therefore dead-letters for
+manual inventory review instead of blindly creating a possible duplicate.
+Initial agent creation uses a stable `agent_name` marker and reconciles it with
+Retell's list/get APIs.
 Publishing treats Retell's successful empty response as `void` and retains the
 submitted version. Twilio number purchase uses a stable FriendlyName and lists
-before/after ambiguous purchase attempts.
+before/after ambiguous purchase attempts. Before any Retell number bind, the
+phone row records a bind intent. Cancellation and retry therefore issue an
+idempotent, 404-tolerant unbind even if Retell succeeded but the completion
+marker could not be written.
 
-Prompt edits create immutable server-composed prompt versions. Edits made while
-initial provisioning is running queue behind that job, so the newest saved
-version is eventually synchronized after activation. Sync updates the existing
+Prompt edits create immutable server-composed prompt versions. When durable
+provider/provisioning evidence exists, every edit queues its own idempotent sync
+job, including an edit at the final activation boundary or while billing is
+paused. The job waits behind initial provisioning or policy blocking and is
+resumed after reactivation. Sync updates the existing
 Retell LLM, creates/configures/publishes a draft version of the same agent, and
 rebinds the existing number. It never purchases another number.
 
+An initial terminal dead letter is never retried by the normal provision
+button. After checking Retell and Twilio inventory and resolving or deleting
+any ambiguous provider resource, an owner/admin may invoke
+`retryMyReviewedVoiceDeadLetter` with the exact confirmation
+`RETRY_AFTER_PROVIDER_INVENTORY_REVIEW`; this resets the same job and stable
+provider identity instead of silently creating a second job or number.
+
 The daily Vercel cron is only a Hobby-compatible safety net. It retries expired
-leases and webhook work, reconciles billing/allowance, and runs retention. A
-future deployment may move the same durable steps to a queue or Workflow
-without changing the state model.
+leases and webhook work, reconciles billing/allowance, and runs retention. Beta
+launch requires a production queue or protected internal-worker schedule with
+a reviewed cancellation SLO; otherwise a pending policy row left by a crashed
+provider worker may wait for the daily safety net. The same durable steps can
+move to a queue or Workflow without changing the state model.
 
 ## Prompt and consent controls
 

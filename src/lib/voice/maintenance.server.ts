@@ -22,6 +22,7 @@ interface PolicyRow {
   phone_status: "provisioning" | "active" | "paused" | "failed" | null;
   e164: string | null;
   retell_imported_at: string | Date | null;
+  retell_binding_intent_at: string | Date | null;
 }
 
 export interface VoicePolicyReconciliationResult {
@@ -36,7 +37,7 @@ async function loadPolicyRows(workspaceId: string, sql: Sql): Promise<PolicyRow[
     `select a.workspace_id, a.id as assistant_id,
             a.status as assistant_status, a.provider_agent_id, a.blocked_reason,
             p.id as phone_id, p.status as phone_status, p.e164,
-            p.retell_imported_at
+            p.retell_imported_at, p.retell_binding_intent_at
        from voice_assistants a
        left join voice_phone_numbers p
          on p.workspace_id = a.workspace_id and p.assistant_id = a.id
@@ -59,113 +60,274 @@ async function reconcileOneWorkspace(
     workspaceId,
     "policy-reconciliation",
     sql,
-    async () => {
-      // Reload after taking the lease; the initial worker scan is only a hint.
-      const rows = await loadPolicyRows(workspaceId, sql);
+    async (lease) => {
       const result: VoicePolicyReconciliationResult = {
-        checked: rows.length,
-        paused: 0,
-        resumed: 0,
-        failed: 0,
+        checked: 0, paused: 0, resumed: 0, failed: 0,
       };
-      if (!rows.length) return result;
+      let provider = providerOverride;
+      // Billing events are ordered and durable outside this provider lease.
+      // Re-read after each provider mutation; if policy flips, compensate in
+      // the same lease and converge to the newest entitlement truth.
+      for (let pass = 0; pass < 4; pass += 1) {
+        const rows = await loadPolicyRows(workspaceId, sql);
+        result.checked = Math.max(result.checked, rows.length);
+        if (!rows.length) return result;
 
-      const allowance = await getVoiceAllowanceStatus(workspaceId, sql);
-      const shouldBeActive = allowance.state === "active";
-      if (!shouldBeActive) {
-        let provider = providerOverride;
-        for (const row of rows) {
-          if (
-            row.phone_id &&
-            row.e164 &&
-            row.retell_imported_at &&
-            row.phone_status !== "paused"
-          ) {
-            provider ??= policyRuntime();
-            await provider.unbindInboundNumber({ e164: row.e164 });
-          }
-          if (row.phone_id) {
+        // A surviving intent means Retell may have accepted a bind whose DB
+        // completion marker never committed. Fail closed before considering
+        // billing: unbind it even when allowance is active, then let only a
+        // recoverable provisioning job (never a dead letter) retry explicitly.
+        const ambiguousBindings = rows.filter(
+          (row) => row.phone_id && row.e164 && row.retell_binding_intent_at,
+        );
+        if (ambiguousBindings.length) {
+          for (const row of ambiguousBindings) {
+            await lease.assertOwned();
             await sql.query(
-              `update voice_phone_numbers set status = 'paused', updated_at = now()
+              `update voice_phone_numbers
+                  set status = 'paused', updated_at = now()
                 where id = $1 and workspace_id = $2
-                  and status in ('provisioning','active','paused')`,
+                  and retell_binding_intent_at is not null`,
+              [row.phone_id, workspaceId],
+            );
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_assistants
+                  set status = case when status = 'draft' then status else 'paused' end,
+                      blocked_reason = case
+                        when blocked_reason = 'VOICE_PROVISIONING_DEAD_LETTER'
+                          then blocked_reason
+                        else 'PROVIDER_BIND_REVIEW_REQUIRED'
+                      end,
+                      paused_at = case when status = 'draft' then paused_at
+                                       else coalesce(paused_at, now()) end,
+                      updated_at = now()
+                where id = $1 and workspace_id = $2`,
+              [row.assistant_id, workspaceId],
+            );
+            provider ??= policyRuntime();
+            await lease.assertOwned();
+            await provider.unbindInboundNumber({ e164: row.e164 as string });
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_phone_numbers
+                  set retell_binding_intent_at = null, updated_at = now()
+                where id = $1 and workspace_id = $2
+                  and status = 'paused'`,
               [row.phone_id, workspaceId],
             );
           }
-          await sql.query(
-            `update voice_assistants
-                set status = case when status = 'draft' then status else 'paused' end,
-                    blocked_reason = $1,
-                    paused_at = case when status = 'draft' then paused_at
-                                     else coalesce(paused_at, now()) end,
-                    updated_at = now()
-              where id = $2 and workspace_id = $3`,
-            [allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE", row.assistant_id,
-              workspaceId],
-          );
+          result.paused = 1;
+          continue;
         }
+
+        const allowance = await getVoiceAllowanceStatus(workspaceId, sql);
+        if (allowance.state !== "active") {
+          const unboundRows = rows.filter((row) => {
+            const possibleBinding =
+              row.retell_imported_at || row.retell_binding_intent_at;
+            return Boolean(
+              row.phone_id && row.e164 && possibleBinding &&
+              (row.phone_status !== "paused" || row.retell_binding_intent_at),
+            );
+          });
+          for (const row of rows) {
+            const willUnbind = unboundRows.some(
+              (candidate) => candidate.phone_id === row.phone_id,
+            );
+            if (row.phone_id) {
+              await lease.assertOwned();
+              await sql.query(
+                `update voice_phone_numbers
+                    set status = 'paused',
+                        retell_binding_intent_at = case
+                          when $3 then coalesce(retell_binding_intent_at, now())
+                          else retell_binding_intent_at
+                        end,
+                        updated_at = now()
+                  where id = $1 and workspace_id = $2
+                    and status in ('provisioning','active','paused')`,
+                [row.phone_id, workspaceId, willUnbind],
+              );
+            }
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_assistants
+                  set status = case when status = 'draft' then status else 'paused' end,
+                      blocked_reason = case
+                        when blocked_reason = 'VOICE_PROVISIONING_DEAD_LETTER'
+                          then blocked_reason
+                        else $1
+                      end,
+                      paused_at = case when status = 'draft' then paused_at
+                                       else coalesce(paused_at, now()) end,
+                      updated_at = now()
+                where id = $2 and workspace_id = $3`,
+              [allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE",
+                row.assistant_id, workspaceId],
+            );
+          }
+          for (const row of unboundRows) {
+            provider ??= policyRuntime();
+            await lease.assertOwned();
+            await provider.unbindInboundNumber({ e164: row.e164 as string });
+            await lease.assertOwned();
+          }
+          if ((await getVoiceAllowanceStatus(workspaceId, sql)).state === "active") {
+            for (const row of unboundRows) {
+              if (
+                !row.phone_id || !row.e164 || !row.provider_agent_id ||
+                row.blocked_reason === "VOICE_PROVISIONING_DEAD_LETTER"
+              ) {
+                if (row.phone_id) {
+                  await lease.assertOwned();
+                  await sql.query(
+                    `update voice_phone_numbers
+                        set retell_binding_intent_at = null, updated_at = now()
+                      where id = $1 and workspace_id = $2`,
+                    [row.phone_id, workspaceId],
+                  );
+                }
+                continue;
+              }
+              provider ??= policyRuntime();
+              await lease.assertOwned();
+              await provider.bindInboundNumber({
+                e164: row.e164,
+                providerAgentId: row.provider_agent_id,
+              });
+              await lease.assertOwned();
+              await sql.query(
+                `update voice_phone_numbers
+                    set status = 'active', retell_binding_intent_at = null,
+                        updated_at = now()
+                  where id = $1 and workspace_id = $2`,
+                [row.phone_id, workspaceId],
+              );
+              await lease.assertOwned();
+              await sql.query(
+                `update voice_assistants
+                    set status = 'active', blocked_reason = null,
+                        paused_at = null, updated_at = now()
+                  where id = $1 and workspace_id = $2`,
+                [row.assistant_id, workspaceId],
+              );
+              result.resumed += 1;
+            }
+            continue;
+          }
+          for (const row of rows) {
+            if (row.phone_id) {
+              await lease.assertOwned();
+              await sql.query(
+                `update voice_phone_numbers
+                    set status = 'paused', retell_binding_intent_at = null,
+                        updated_at = now()
+                  where id = $1 and workspace_id = $2
+                    and status in ('provisioning','active','paused')`,
+                [row.phone_id, workspaceId],
+              );
+            }
+            await lease.assertOwned();
+              await sql.query(
+                `update voice_assistants
+                    set status = case when status = 'draft' then status else 'paused' end,
+                      blocked_reason = case
+                        when blocked_reason = 'VOICE_PROVISIONING_DEAD_LETTER'
+                          then blocked_reason
+                        else $1
+                      end,
+                      paused_at = case when status = 'draft' then paused_at
+                                       else coalesce(paused_at, now()) end,
+                      updated_at = now()
+                where id = $2 and workspace_id = $3`,
+              [allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE",
+                row.assistant_id, workspaceId],
+            );
+          }
+          await lease.assertOwned();
+          await sql.query(
+            `update voice_provisioning_jobs
+                set state = 'blocked', worker_token = null,
+                    step = case when step = 'activate' then 'bind_number' else step end,
+                    error_code = $1,
+                    error_message = 'Voice billing or allowance must be resolved before setup can continue.',
+                    lease_expires_at = null,
+                    next_attempt_at = now() + interval '15 minutes',
+                    updated_at = now()
+              where workspace_id = $2 and step <> 'completed'
+                and state in ('pending','running','failed','setup_required','blocked')`,
+            [allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE", workspaceId],
+          );
+          result.paused = rows.some(
+            (row) => row.assistant_status !== "draft" && row.assistant_status !== "paused",
+          ) ? 1 : 0;
+          return result;
+        }
+
+        await lease.assertOwned();
         await sql.query(
           `update voice_provisioning_jobs
-              set state = 'blocked',
-                  step = case when step = 'activate' then 'bind_number' else step end,
-                  error_code = $1,
-                  error_message = 'Voice billing or allowance must be resolved before setup can continue.',
-                  lease_expires_at = null,
-                  next_attempt_at = now() + interval '15 minutes',
-                  updated_at = now()
-            where workspace_id = $2 and step <> 'completed'
-              and state in ('pending','running','failed','setup_required','blocked')`,
-          [allowance.reason ?? "VOICE_ENTITLEMENT_INACTIVE", workspaceId],
+              set state = 'pending', worker_token = null, next_attempt_at = now(),
+                  lease_expires_at = null, error_code = null,
+                  error_message = null, updated_at = now()
+            where workspace_id = $1 and step <> 'completed'
+              and state in ('setup_required','blocked')
+              and coalesce(error_code, '') like 'VOICE_%'`,
+          [workspaceId],
         );
-        result.paused = rows.some(
-          (row) => row.assistant_status !== "draft" && row.assistant_status !== "paused",
-        ) ? 1 : 0;
+        let policyChanged = false;
+        for (const row of rows) {
+          if (
+            row.assistant_status === "paused" && row.provider_agent_id &&
+            row.phone_id && row.e164 && row.retell_imported_at &&
+            row.blocked_reason?.startsWith("VOICE_") &&
+            row.blocked_reason !== "VOICE_PROVISIONING_DEAD_LETTER"
+          ) {
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_phone_numbers
+                  set retell_binding_intent_at = now(), updated_at = now()
+                where id = $1 and workspace_id = $2`,
+              [row.phone_id, workspaceId],
+            );
+            provider ??= policyRuntime();
+            await lease.assertOwned();
+            await provider.bindInboundNumber({
+              e164: row.e164,
+              providerAgentId: row.provider_agent_id,
+            });
+            await lease.assertOwned();
+            if ((await getVoiceAllowanceStatus(workspaceId, sql)).state !== "active") {
+              await lease.assertOwned();
+              await provider.unbindInboundNumber({ e164: row.e164 });
+              await lease.assertOwned();
+              policyChanged = true;
+              break;
+            }
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_phone_numbers
+                  set status = 'active', retell_binding_intent_at = null,
+                      updated_at = now()
+                where id = $1 and workspace_id = $2`,
+              [row.phone_id, workspaceId],
+            );
+            await lease.assertOwned();
+            await sql.query(
+              `update voice_assistants
+                  set status = 'active', blocked_reason = null, paused_at = null,
+                      updated_at = now()
+                where id = $1 and workspace_id = $2`,
+              [row.assistant_id, workspaceId],
+            );
+            result.resumed += 1;
+          }
+        }
+        if (policyChanged) continue;
         return result;
       }
-
-      // A renewed entitlement makes policy-blocked work immediately eligible.
-      // Initial provisioning owns its own bind/activation; only an already
-      // active provider identity is rebound here.
-      await sql.query(
-        `update voice_provisioning_jobs
-            set state = 'pending', next_attempt_at = now(), lease_expires_at = null,
-                error_code = null, error_message = null, updated_at = now()
-          where workspace_id = $1 and step <> 'completed'
-            and state in ('setup_required','blocked')
-            and coalesce(error_code, '') like 'VOICE_%'`,
-        [workspaceId],
-      );
-      let provider = providerOverride;
-      for (const row of rows) {
-        if (
-          row.assistant_status === "paused" &&
-          row.provider_agent_id &&
-          row.phone_id &&
-          row.e164 &&
-          row.retell_imported_at &&
-          row.blocked_reason?.startsWith("VOICE_")
-        ) {
-          provider ??= policyRuntime();
-          await provider.bindInboundNumber({
-            e164: row.e164,
-            providerAgentId: row.provider_agent_id,
-          });
-          await sql.query(
-            `update voice_phone_numbers set status = 'active', updated_at = now()
-              where id = $1 and workspace_id = $2`,
-            [row.phone_id, workspaceId],
-          );
-          await sql.query(
-            `update voice_assistants
-                set status = 'active', blocked_reason = null, paused_at = null,
-                    updated_at = now()
-              where id = $1 and workspace_id = $2`,
-            [row.assistant_id, workspaceId],
-          );
-          result.resumed += 1;
-        }
-      }
-      return result;
+      throw new Error("Voice policy changed too frequently to converge");
     },
   );
 }

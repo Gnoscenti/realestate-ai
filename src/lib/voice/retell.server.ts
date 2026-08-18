@@ -524,18 +524,25 @@ export class RetellVoiceRuntime implements VoiceRuntimeProvider {
   }
 
   async unbindInboundNumber(input: { e164: string }): Promise<void> {
-    await this.request(
-      `/update-phone-number/${encodeURIComponent(input.e164)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          inbound_agents: [],
-          outbound_agents: [],
-          inbound_sms_agents: [],
-          outbound_sms_agents: [],
-        }),
-      },
-    );
+    try {
+      await this.request(
+        `/update-phone-number/${encodeURIComponent(input.e164)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            inbound_agents: [],
+            outbound_agents: [],
+            inbound_sms_agents: [],
+            outbound_sms_agents: [],
+          }),
+        },
+      );
+    } catch (error) {
+      // A pre-bind intent can outlive an import that never committed. Treat a
+      // missing number as already unbound so compensation remains idempotent.
+      if (error instanceof VoiceProviderError && error.status === 404) return;
+      throw error;
+    }
   }
 
   async deleteCall(providerCallId: string): Promise<void> {

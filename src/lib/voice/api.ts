@@ -83,6 +83,27 @@ export const progressMyVoiceProvisioning = createServerFn({ method: "POST" })
     return advanceMyVoiceProvisioning(context.userId, data.workspaceId);
   });
 
+export const retryMyReviewedVoiceDeadLetter = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    z.object({
+      workspaceId: z.string().trim().min(1).max(240),
+      jobId: z.string().trim().min(1).max(240),
+      confirmation: z.literal("RETRY_AFTER_PROVIDER_INVENTORY_REVIEW"),
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { retryReviewedVoiceDeadLetter } = await import(
+      "./provisioning.server"
+    );
+    return retryReviewedVoiceDeadLetter(
+      context.userId,
+      data.workspaceId,
+      data.jobId,
+      data.confirmation,
+    );
+  });
+
 export const listMyVoiceCalls = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator(

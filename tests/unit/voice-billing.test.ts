@@ -5,6 +5,7 @@ import {
   applyResolvedVoiceBillingEvent,
   assertVoicePrice,
   createVoiceCheckoutForBinding,
+  drainPendingVoiceStripePolicies,
   getVoiceBillingAvailability,
   processVoiceStripeEvent,
   resolveVoiceBillingEvent,
@@ -15,6 +16,7 @@ import {
   type StripeSubscriptionLike,
   type VoiceStripeConfig,
 } from "../../src/lib/voice/billing.server";
+import { withVoiceWorkspaceMutationLease } from "../../src/lib/voice/workspace-mutation-lease.server";
 import { ensurePersonalWorkspace } from "../../src/lib/workspaces/repository.server";
 
 const config: VoiceStripeConfig = {
@@ -109,6 +111,14 @@ function event(
     data: { object },
     ...overrides,
   };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe("Voice Assistant Stripe billing", () => {
@@ -417,6 +427,93 @@ describe("Voice Assistant Stripe billing", () => {
       [workspace.id],
     );
     expect(grants[0]?.count).toBe(0);
+  });
+
+  it("durably retains a verified event while provider policy is busy, then drains it", async () => {
+    const userId = `voice-busy-billing-${randomUUID()}`;
+    const workspace = await ensurePersonalWorkspace(userId);
+    const sql = await getSql();
+    const current = subscription({
+      product: "voice_assistant",
+      workspace_id: workspace.id,
+      user_id: userId,
+    });
+    const stripe = fakeStripe({
+      subscriptions: { retrieve: vi.fn(async () => current) },
+    });
+    const signedEvent = event("customer.subscription.updated", {
+      id: current.id,
+    });
+    const leaseStarted = deferred();
+    const releaseLease = deferred();
+    const heldLease = withVoiceWorkspaceMutationLease(
+      workspace.id,
+      "test-provider-mutation",
+      sql,
+      async () => {
+        leaseStarted.resolve();
+        await releaseLease.promise;
+      },
+    );
+    await leaseStarted.promise;
+
+    let applied: Awaited<ReturnType<typeof processVoiceStripeEvent>> | undefined;
+    try {
+      applied = await processVoiceStripeEvent(
+        signedEvent,
+        "signed-busy-body",
+        { sql, config, stripe },
+      );
+    } finally {
+      releaseLease.resolve();
+      await heldLease;
+    }
+    expect(applied).toEqual({
+      state: "processed",
+      outcomeCode: "ENTITLEMENT_SYNCED",
+    });
+    const durable = await sql.query<{
+      processing_state: string;
+      policy_reconciliation_state: string;
+      policy_reconcile_attempts: number;
+      entitlement_status: string;
+    }>(
+      `select e.processing_state, e.policy_reconciliation_state,
+              e.policy_reconcile_attempts, w.status as entitlement_status
+         from voice_stripe_events e
+         join workspace_entitlements w
+           on w.workspace_id = e.workspace_id
+          and w.product = 'voice_assistant'
+        where e.event_id = $1`,
+      [signedEvent.id],
+    );
+    expect(durable[0]).toEqual({
+      processing_state: "processed",
+      policy_reconciliation_state: "pending",
+      policy_reconcile_attempts: 1,
+      entitlement_status: "active",
+    });
+
+    await sql.query(
+      `update voice_stripe_events set policy_reconcile_after = now()
+        where event_id = $1`,
+      [signedEvent.id],
+    );
+    expect(await drainPendingVoiceStripePolicies(sql)).toEqual({
+      checked: 1,
+      completed: 1,
+      pending: 0,
+    });
+    const converged = await sql.query<{
+      policy_reconciliation_state: string;
+      policy_reconciled_at: string | Date | null;
+    }>(
+      `select policy_reconciliation_state, policy_reconciled_at
+         from voice_stripe_events where event_id = $1`,
+      [signedEvent.id],
+    );
+    expect(converged[0]?.policy_reconciliation_state).toBe("completed");
+    expect(converged[0]?.policy_reconciled_at).toBeTruthy();
   });
 
   it("reconciles only the event workspace after commit and on duplicate retry", async () => {
