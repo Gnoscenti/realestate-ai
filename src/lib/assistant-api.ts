@@ -23,6 +23,7 @@ import {
 } from "@/lib/assistant/gateway.server";
 import {
   assistantQuotaLimitsFromEnv,
+  blockAssistantGeneration,
   countVerifiedSoldComps,
   createAssistantGeneration,
   finishAssistantGeneration,
@@ -140,7 +141,7 @@ function soldRecordSummary(
   if (!records.length) {
     return [
       "No authorized Closed/Sold records are available in this workspace yet.",
-      "Import an MLS Closed/Sold export or connect a licensed RESO feed in MLS & Data. Public websites and active listings are not substitutes.",
+      "Sold-data import is not available in this beta yet. Ask your administrator to load an authorized MLS export or licensed RESO feed. Public websites and active listings are not substitutes.",
     ].join("\n\n");
   }
   const lines = records.map((record, index) => {
@@ -294,6 +295,25 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
     }
 
     const inputChars = data.question.length;
+    const model = configuredModel();
+    // Claim the client UUID before charging quota so sequential and concurrent
+    // transport retries cannot consume the user's allowance more than once.
+    const claimed = await createAssistantGeneration(sql, {
+      id: data.requestId,
+      workspaceId: workspace.id,
+      userId: context.userId,
+      model,
+      status: "started",
+      inputChars,
+    });
+    if (!claimed) {
+      return {
+        ok: false,
+        error: "That request was already received. Send a new message to continue.",
+        code: "duplicate_request",
+      };
+    }
+
     const quota = await reserveAssistantQuota(
       sql,
       context.userId,
@@ -301,17 +321,19 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
       assistantQuotaLimitsFromEnv(),
     );
     if (!quota.allowed) {
+      const code = quota.reason === "minute" ? "minute_limit" : "daily_limit";
+      await blockAssistantGeneration(sql, { id: data.requestId, errorCode: code });
       return quota.reason === "minute"
         ? {
             ok: false,
             error: "Too many requests at once. Wait one minute and try again.",
-            code: "minute_limit",
+            code,
           }
         : {
             ok: false,
             error:
               "You reached today’s AI usage limit. It resets automatically at midnight UTC.",
-            code: "daily_limit",
+            code,
           };
     }
 
@@ -330,22 +352,6 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
       verifiedSoldRecordCount: 0,
       verifiedSoldRecords: [],
     };
-    const model = configuredModel();
-    const claimed = await createAssistantGeneration(sql, {
-      id: data.requestId,
-      workspaceId: workspace.id,
-      userId: context.userId,
-      model,
-      status: "started",
-      inputChars,
-    });
-    if (!claimed) {
-      return {
-        ok: false,
-        error: "That request was already received. Send a new message to continue.",
-        code: "duplicate_request",
-      };
-    }
 
     try {
       const answer = await requestGatewayAnswer({

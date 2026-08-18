@@ -51,10 +51,12 @@ Optional settings:
 
 Every accepted provider attempt reserves durable minute/day buckets and records
 an idempotent `assistant_generations` row keyed by the client request UUID.
-Policy-blocked, unconfigured, and quota-rejected requests do not create audit
-rows. Provider token usage is stored after completion. A best-effort per-instance
-burst guard runs before Postgres; configure Vercel Firewall as the deployment-wide
-outer limit.
+Policy-blocked and unconfigured requests do not create audit rows. Ordinary
+requests first claim their client UUID, before quota reservation, so retries
+cannot consume allowance twice. Quota-rejected claims are retained as bounded
+`blocked` audit rows. Provider token usage is stored after completion. A
+best-effort per-instance burst guard runs before Postgres; configure Vercel
+Firewall as the deployment-wide outer limit.
 
 The request is capped at 800 output tokens and 25 seconds. Gateway
 `disallowPromptTraining` is always required. Per-request zero-data-retention is

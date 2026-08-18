@@ -274,6 +274,23 @@ export async function createAssistantGeneration(
   return rows[0]?.inserted === 1;
 }
 
+export async function blockAssistantGeneration(
+  sql: Sql,
+  input: {
+    id: string;
+    errorCode: "minute_limit" | "daily_limit";
+  },
+): Promise<void> {
+  await sql.query(
+    `update assistant_generations
+        set status = 'blocked',
+            error_code = $2,
+            completed_at = now()
+      where id = $1 and status = 'started'`,
+    [input.id, input.errorCode],
+  );
+}
+
 export async function finishAssistantGeneration(
   sql: Sql,
   input: {

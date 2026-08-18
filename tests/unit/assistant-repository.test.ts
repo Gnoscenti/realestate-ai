@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Sql } from "@/lib/db";
 import {
   assistantQuotaLimitsFromEnv,
+  blockAssistantGeneration,
   createAssistantGeneration,
   reserveAssistantQuota,
 } from "@/lib/assistant/repository.server";
@@ -126,5 +127,20 @@ describe("assistant request idempotency", () => {
     expect(String(first.query.mock.calls[0]?.[0])).toContain(
       "on conflict (id) do nothing",
     );
+  });
+
+  it("records a claimed request as blocked when durable quota rejects", async () => {
+    const { sql, query } = fakeSql([]);
+
+    await blockAssistantGeneration(sql, {
+      id: "c47984b7-6df0-46e1-b9d4-2f318c01cb39",
+      errorCode: "minute_limit",
+    });
+
+    expect(String(query.mock.calls[0]?.[0])).toContain("status = 'blocked'");
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      "c47984b7-6df0-46e1-b9d4-2f318c01cb39",
+      "minute_limit",
+    ]);
   });
 });
