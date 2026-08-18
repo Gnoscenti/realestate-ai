@@ -66,7 +66,6 @@ function MarketPage() {
 
   const runAvm = async () => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 700));
     const avm = generateAvm({
       address,
       type,
@@ -80,11 +79,11 @@ function MarketPage() {
     setLoading(false);
     pushActivity({
       type: "valuation",
-      title: "AVM generated",
-      description: `${address || "Property"} valued at ${formatCurrency(avm.value)} (${avm.confidence}% confidence)`,
-      badge: "Valuation",
+      title: "Planning estimate calculated",
+      description: `${address || "Property"} · illustrative estimate ${formatCurrency(avm.value)}`,
+      badge: "Planning",
     });
-    toast.success(`Estimated value ${formatCurrency(avm.value)}`);
+    toast.success(`Planning estimate ${formatCurrency(avm.value)}`);
   };
 
   const forecast = useMemo(() => {
@@ -124,12 +123,12 @@ function MarketPage() {
             Market & valuation
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Hybrid AVM, price forecasting, and scenario modeling
+            Illustrative pricing formulas and what-if scenarios—not live MLS data
           </p>
         </div>
         <Badge variant="default">
           <TrendingUp className="h-3 w-3" />
-          Live suite
+          Planning beta
         </Badge>
       </div>
 
@@ -150,7 +149,7 @@ function MarketPage() {
                     Property valuation
                   </CardTitle>
                   <CardDescription>
-                    Enter details for an AI-assisted hybrid AVM
+                    Enter details for an illustrative formula. No live AI model or verified MLS sales are connected.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -223,7 +222,7 @@ function MarketPage() {
                     disabled={loading}
                   >
                     <Zap className="h-4 w-4" />
-                    {loading ? "Running model…" : "Generate AI valuation"}
+                    {loading ? "Calculating…" : "Calculate planning estimate"}
                   </Button>
                 </CardContent>
               </Card>
@@ -232,7 +231,7 @@ function MarketPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Comparable sales</CardTitle>
-                    <CardDescription>Recent sales used by the model</CardDescription>
+                    <CardDescription>Verified records only</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {result!.comps.map((c) => (
@@ -268,7 +267,7 @@ function MarketPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <DollarSign className="h-5 w-5 text-[var(--color-success)]" />
-                    Estimated value
+                    Illustrative estimate
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-center">
@@ -280,7 +279,7 @@ function MarketPage() {
                   {result && (
                     <>
                       <div className="text-sm text-[var(--color-fg-muted)]">
-                        Confidence {result.confidence}%
+                        Input completeness {result.confidence}%
                       </div>
                       <Progress value={result.confidence} />
                       <div className="text-xs text-[var(--color-fg-subtle)]">
@@ -297,7 +296,7 @@ function MarketPage() {
                   )}
                   {!result && (
                     <p className="text-sm text-[var(--color-fg-subtle)]">
-                      Run the valuation to see estimate, confidence, and comps.
+                      Calculate an illustrative range. Confirm it with an authorized CMA before client use.
                     </p>
                   )}
                 </CardContent>
@@ -305,7 +304,7 @@ function MarketPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Market snapshot</CardTitle>
+                  <CardTitle>Example market assumptions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <Row
@@ -339,7 +338,7 @@ function MarketPage() {
             <CardHeader>
               <CardTitle>12-month price paths</CardTitle>
               <CardDescription>
-                Scenario fan chart from current AVM baseline
+                Illustrative scenario paths from the current planning baseline
                 {result ? ` (${formatCurrency(result.value)})` : " — run AVM for custom base"}
               </CardDescription>
             </CardHeader>
