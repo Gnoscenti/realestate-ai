@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { getSql } from "../../src/lib/db";
+import { getSql, type Sql } from "../../src/lib/db";
 import type {
   SipRoutingResult,
   VoiceRuntimeAgentInput,
@@ -9,15 +9,17 @@ import type {
 } from "../../src/lib/voice/providers.server";
 import {
   applyResolvedVoiceBillingEvent,
+  drainPendingVoiceStripePolicies,
   type ResolvedVoiceBillingEvent,
 } from "../../src/lib/voice/billing.server";
 import { reconcileVoicePolicies } from "../../src/lib/voice/maintenance.server";
 import {
   advanceMyVoiceProvisioning,
   provisionVoiceAssistant,
+  retryReviewedVoiceDeadLetter,
   saveAndSyncVoicePrompt,
 } from "../../src/lib/voice/provisioning.server";
-import { VoiceWorkspaceMutationBusyError } from "../../src/lib/voice/workspace-mutation-lease.server";
+import { withVoiceWorkspaceMutationLease } from "../../src/lib/voice/workspace-mutation-lease.server";
 import {
   ensurePersonalWorkspace,
   saveAgentProfile,
@@ -316,6 +318,407 @@ describe("voice provisioning policy", () => {
     expect(calls.reserveKeys).toHaveLength(1);
   });
 
+  it("never replays a prompt draft with a surviving provider intent", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-draft-intent-review",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    const prompt = await saveAndSyncVoicePrompt(
+      userId,
+      workspace.id,
+      {
+        greeting: "Jordan Realty draft review. How can I help?",
+        additionalInstructions: "Ask for the listing address.",
+      },
+      providers,
+      sql,
+    );
+    await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    await sql.query(
+      `update voice_provisioning_jobs
+          set provider_mutation_intent = 'create_agent_draft',
+              provider_mutation_intent_at = now()
+        where workspace_id = $1 and prompt_version_id = $2
+          and step = 'create_agent'`,
+      [workspace.id, prompt.id],
+    );
+
+    await expect(
+      advanceMyVoiceProvisioning(userId, workspace.id, providers, sql),
+    ).resolves.toMatchObject({
+      worker: { claimed: 1, deadLettered: 1, advanced: 0 },
+    });
+    expect(calls.drafts).toBe(0);
+    const terminal = await sql.query<{
+      state: string;
+      provider_mutation_intent: string | null;
+      alert_state: string;
+      notifications: number;
+    }>(
+      `select j.state, j.provider_mutation_intent, j.alert_state,
+              (select count(*)::int from app_notifications n
+                where n.workspace_id = j.workspace_id
+                  and n.kind = 'voice_provisioning_attention') as notifications
+         from voice_provisioning_jobs j
+        where j.workspace_id = $1 and j.prompt_version_id = $2`,
+      [workspace.id, prompt.id],
+    );
+    expect(terminal[0]).toEqual({
+      state: "dead_letter",
+      provider_mutation_intent: "create_agent_draft",
+      alert_state: "sent",
+      notifications: 1,
+    });
+  });
+
+  it("compensates a bind whose durable marker fails and safely retries its intent", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-bind-compensation",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    for (let step = 0; step < 6; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+
+    let failCompletionMarker = true;
+    let failIntentCleanup = true;
+    const failingSql = (async <T = Record<string, unknown>>(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => sql<T>(strings, ...values)) as Sql;
+    failingSql.query = async <T = Record<string, unknown>>(
+      text: string,
+      params: unknown[] = [],
+    ): Promise<T[]> => {
+      if (
+        failCompletionMarker &&
+        text.includes("set retell_imported_at = coalesce")
+      ) {
+        failCompletionMarker = false;
+        throw new Error("injected bind completion write failure");
+      }
+      if (
+        failIntentCleanup &&
+        text.includes("set retell_binding_intent_at = null")
+      ) {
+        failIntentCleanup = false;
+        throw new Error("injected bind intent cleanup failure");
+      }
+      return sql.query<T>(text, params);
+    };
+
+    const failed = await advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      failingSql,
+    );
+    expect(failed.worker).toMatchObject({ claimed: 1, retried: 1 });
+    expect(calls.import).toBe(1);
+    expect(calls.unbind).toBe(1);
+    const pendingIntent = await sql.query<{
+      retell_imported_at: string | null;
+      retell_binding_intent_at: string | null;
+    }>(
+      `select retell_imported_at, retell_binding_intent_at
+         from voice_phone_numbers where workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(pendingIntent[0]?.retell_imported_at).toBeNull();
+    expect(pendingIntent[0]?.retell_binding_intent_at).toBeTruthy();
+
+    await sql.query(
+      `update voice_provisioning_jobs set next_attempt_at = now()
+        where workspace_id = $1 and step = 'bind_number'`,
+      [workspace.id],
+    );
+    const retried = await advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      sql,
+    );
+    expect(retried.worker).toMatchObject({ claimed: 1, advanced: 1 });
+    expect(calls.unbind).toBe(2);
+    expect(calls.import).toBe(2);
+    const recovered = await sql.query<{
+      retell_imported_at: string | null;
+      retell_binding_intent_at: string | null;
+    }>(
+      `select retell_imported_at, retell_binding_intent_at
+         from voice_phone_numbers where workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(recovered[0]?.retell_imported_at).toBeTruthy();
+    expect(recovered[0]?.retell_binding_intent_at).toBeNull();
+  });
+
+  it("keeps a prompt-sync route locally paused when bind compensation times out", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-prompt-bind-timeout",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    const prompt = await saveAndSyncVoicePrompt(
+      userId,
+      workspace.id,
+      {
+        greeting: "Jordan Realty route update. How can I help?",
+        additionalInstructions: "Ask when the caller wants a showing.",
+      },
+      providers,
+      sql,
+    );
+    for (let step = 0; step < 4; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+    const ambiguousBind = vi.fn(async () => {
+      const error = new Error("injected ambiguous bind timeout") as Error & {
+        code: string;
+      };
+      error.code = "AMBIGUOUS_PROVIDER_MUTATION";
+      throw error;
+    });
+    const failedCompensation = vi.fn(async () => {
+      throw new Error("injected compensating unbind timeout");
+    });
+    providers.voice.bindInboundNumber = ambiguousBind;
+    providers.voice.unbindInboundNumber = failedCompensation;
+
+    await expect(
+      advanceMyVoiceProvisioning(userId, workspace.id, providers, sql),
+    ).resolves.toMatchObject({
+      worker: { claimed: 1, deadLettered: 1, advanced: 0 },
+    });
+    expect(ambiguousBind).toHaveBeenCalledTimes(1);
+    expect(failedCompensation).toHaveBeenCalledTimes(1);
+    const offline = await sql.query<{
+      assistant_status: string;
+      phone_status: string;
+      retell_binding_intent_at: string | null;
+      job_state: string;
+      job_step: string;
+    }>(
+      `select a.status as assistant_status, p.status as phone_status,
+              p.retell_binding_intent_at, j.state as job_state,
+              j.step as job_step
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+         join voice_provisioning_jobs j
+           on j.workspace_id = a.workspace_id and j.prompt_version_id = $2
+        where a.workspace_id = $1`,
+      [workspace.id, prompt.id],
+    );
+    expect(offline[0]).toMatchObject({
+      assistant_status: "paused",
+      phone_status: "paused",
+      job_state: "dead_letter",
+      job_step: "bind_number",
+    });
+    expect(offline[0]?.retell_binding_intent_at).toBeTruthy();
+  });
+
+  it("unbinds an ambiguous bind under active billing and keeps dead letters offline", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-bind-intent-review",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    await sql.query(
+      `update voice_phone_numbers
+          set retell_binding_intent_at = now()
+        where workspace_id = $1 and status = 'active'`,
+      [workspace.id],
+    );
+    await sql.query(
+      `update voice_provisioning_jobs
+          set state = 'dead_letter', step = 'bind_number',
+              dead_lettered_at = now()
+        where workspace_id = $1 and operation = 'provision_number'`,
+      [workspace.id],
+    );
+    await sql.query(
+      `update voice_assistants
+          set status = 'failed', blocked_reason = 'VOICE_PROVISIONING_DEAD_LETTER'
+        where workspace_id = $1`,
+      [workspace.id],
+    );
+
+    await reconcileVoicePolicies(sql, providers.voice, workspace.id);
+    await reconcileVoicePolicies(sql, providers.voice, workspace.id);
+    expect(calls.unbind).toBe(1);
+    expect(calls.bind).toBe(0);
+    const offline = await sql.query<{
+      assistant_status: string;
+      blocked_reason: string | null;
+      phone_status: string;
+      retell_binding_intent_at: string | null;
+      job_state: string;
+    }>(
+      `select a.status as assistant_status, a.blocked_reason,
+              p.status as phone_status, p.retell_binding_intent_at,
+              j.state as job_state
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+         join voice_provisioning_jobs j
+           on j.workspace_id = a.workspace_id and j.operation = 'provision_number'
+        where a.workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(offline[0]).toEqual({
+      assistant_status: "paused",
+      blocked_reason: "VOICE_PROVISIONING_DEAD_LETTER",
+      phone_status: "paused",
+      retell_binding_intent_at: null,
+      job_state: "dead_letter",
+    });
+  });
+
+  it("shows an ambiguous bind as paused while an active-billing unbind retries", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-bind-intent-timeout",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    await sql.query(
+      `update voice_phone_numbers
+          set retell_binding_intent_at = now()
+        where workspace_id = $1 and status = 'active'`,
+      [workspace.id],
+    );
+    const failedUnbind = vi.fn(async () => {
+      throw new Error("injected Retell unbind timeout");
+    });
+    providers.voice.unbindInboundNumber = failedUnbind;
+
+    await expect(
+      reconcileVoicePolicies(sql, providers.voice, workspace.id),
+    ).resolves.toMatchObject({ failed: 1 });
+    expect(failedUnbind).toHaveBeenCalledTimes(1);
+    expect(calls.bind).toBe(0);
+    const pending = await sql.query<{
+      assistant_status: string;
+      blocked_reason: string | null;
+      phone_status: string;
+      retell_binding_intent_at: string | null;
+    }>(
+      `select a.status as assistant_status, a.blocked_reason,
+              p.status as phone_status, p.retell_binding_intent_at
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+        where a.workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(pending[0]).toMatchObject({
+      assistant_status: "paused",
+      blocked_reason: "PROVIDER_BIND_REVIEW_REQUIRED",
+      phone_status: "paused",
+    });
+    expect(pending[0]?.retell_binding_intent_at).toBeTruthy();
+  });
+
+  it("pre-pauses a canceled route while its ordinary unbind retries", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-cancel-unbind-timeout",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    await sql.query(
+      `update workspace_entitlements
+          set status = 'canceled', updated_at = now()
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    const failedUnbind = vi.fn(async () => {
+      throw new Error("injected canceled-route unbind timeout");
+    });
+    providers.voice.unbindInboundNumber = failedUnbind;
+
+    await expect(
+      reconcileVoicePolicies(sql, providers.voice, workspace.id),
+    ).resolves.toMatchObject({ failed: 1 });
+    expect(failedUnbind).toHaveBeenCalledTimes(1);
+    expect(calls.bind).toBe(0);
+    const pending = await sql.query<{
+      assistant_status: string;
+      blocked_reason: string | null;
+      phone_status: string;
+      retell_binding_intent_at: string | null;
+    }>(
+      `select a.status as assistant_status, a.blocked_reason,
+              p.status as phone_status, p.retell_binding_intent_at
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+        where a.workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(pending[0]).toMatchObject({
+      assistant_status: "paused",
+      phone_status: "paused",
+    });
+    expect(pending[0]?.blocked_reason).toMatch(/^VOICE_/);
+    expect(pending[0]?.retell_binding_intent_at).toBeTruthy();
+  });
+
   it("synchronizes a prompt saved while initial provisioning is still running", async () => {
     const { userId, workspace, sql } = await entitledWorkspace();
     const { providers, calls } = mockProviders();
@@ -370,6 +773,133 @@ describe("voice provisioning policy", () => {
     );
   });
 
+  it("queues a prompt saved at the final activation boundary", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-activation-prompt",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    for (let step = 0; step < 7; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+    const scanStarted = deferred();
+    const releaseActivation = deferred();
+    const gatedSql = (async (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => sql(strings, ...values)) as Sql;
+    gatedSql.query = async <T>(text: string, params: unknown[] = []) => {
+      if (
+        text.includes("select id from voice_prompt_versions") &&
+        text.includes("provider_sync_state = 'pending'")
+      ) {
+        const rows = await sql.query<T>(text, params);
+        scanStarted.resolve();
+        await releaseActivation.promise;
+        return rows;
+      }
+      return sql.query<T>(text, params);
+    };
+
+    const activating = advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      gatedSql,
+    );
+    await scanStarted.promise;
+    const changed = await saveAndSyncVoicePrompt(
+      userId,
+      workspace.id,
+      {
+        greeting: "Jordan Realty activation desk. How can I help?",
+        additionalInstructions: "Ask for the property address first.",
+      },
+      providers,
+      sql,
+    );
+    expect(changed).toMatchObject({ providerSynced: false, jobState: "queued" });
+    releaseActivation.resolve();
+    await activating;
+
+    for (let step = 0; step < 8; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+    const versions = await sql.query<{
+      version: number;
+      provider_sync_state: string;
+    }>(
+      `select version, provider_sync_state from voice_prompt_versions
+        where workspace_id = $1 order by version`,
+      [workspace.id],
+    );
+    expect(versions.at(-1)).toEqual({ version: 2, provider_sync_state: "synced" });
+    expect(calls.llmInputs.at(-1)?.greeting).toBe(
+      "Jordan Realty activation desk. How can I help?",
+    );
+  });
+
+  it("syncs a prompt saved while billing is inactive after reactivation", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-paused-prompt",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    await sql.query(
+      `update workspace_entitlements set status = 'canceled', updated_at = now()
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    await reconcileVoicePolicies(sql, providers.voice, workspace.id);
+
+    const changed = await saveAndSyncVoicePrompt(
+      userId,
+      workspace.id,
+      {
+        greeting: "Jordan Realty is back online. How can I help?",
+        additionalInstructions: "Confirm callback urgency.",
+      },
+      providers,
+      sql,
+    );
+    expect(changed).toMatchObject({ providerSynced: false, jobState: "queued" });
+    await sql.query(
+      `update workspace_entitlements set status = 'active', updated_at = now()
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    await reconcileVoicePolicies(sql, providers.voice, workspace.id);
+    for (let step = 0; step < 8; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+    const rows = await sql.query<{ provider_sync_state: string }>(
+      `select provider_sync_state from voice_prompt_versions
+        where id = $1 and workspace_id = $2`,
+      [changed.id, workspace.id],
+    );
+    expect(rows[0]?.provider_sync_state).toBe("synced");
+    expect(calls.llmInputs.at(-1)?.greeting).toBe(
+      "Jordan Realty is back online. How can I help?",
+    );
+  });
+
   it("allows newer workspace work to proceed past an earlier dead letter", async () => {
     const { userId, workspace, sql } = await entitledWorkspace();
     const { providers } = mockProviders();
@@ -420,6 +950,43 @@ describe("voice provisioning policy", () => {
     );
     expect(advanced.worker).toMatchObject({ claimed: 1, advanced: 1 });
     expect(rows[0]).toMatchObject({ state: "pending", step: "create_agent" });
+  });
+
+  it("requires explicit provider-inventory review to retry terminal initial setup", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers } = mockProviders();
+    const input = {
+      workspaceId: workspace.id,
+      idempotencyKey: "purchase-request-reviewed-dead-letter",
+      areaCode: "503",
+      confirmation: "PROVISION_NUMBER" as const,
+    };
+    await provisionVoiceAssistant(userId, input, providers, sql);
+    const jobs = await sql.query<{ id: string }>(
+      `update voice_provisioning_jobs
+          set state = 'dead_letter', dead_lettered_at = now()
+        where workspace_id = $1 and operation = 'provision_number'
+        returning id`,
+      [workspace.id],
+    );
+    await expect(
+      provisionVoiceAssistant(userId, input, providers, sql),
+    ).rejects.toMatchObject({ code: "VOICE_PROVISIONING_REVIEW_REQUIRED" });
+
+    await expect(
+      retryReviewedVoiceDeadLetter(
+        userId,
+        workspace.id,
+        jobs[0]!.id,
+        "RETRY_AFTER_PROVIDER_INVENTORY_REVIEW",
+        sql,
+      ),
+    ).resolves.toMatchObject({ state: "queued" });
+    const recovered = await sql.query<{ state: string; failure_count: number }>(
+      `select state, failure_count from voice_provisioning_jobs where id = $1`,
+      [jobs[0]!.id],
+    );
+    expect(recovered[0]).toEqual({ state: "pending", failure_count: 0 });
   });
 
   it("serializes cancel/reactivate provider work and converges to the newest entitlement", async () => {
@@ -493,11 +1060,20 @@ describe("voice provisioning policy", () => {
     const reactivate = makeUpdate(200, "active", "b");
     await expect(
       applyResolvedVoiceBillingEvent({ kind: "apply", update: reactivate }, sql),
-    ).rejects.toBeInstanceOf(VoiceWorkspaceMutationBusyError);
+    ).resolves.toMatchObject({ state: "processed" });
     unbindGate.resolve();
-    await expect(cancelReconcile).resolves.toMatchObject({ paused: 1, failed: 0 });
+    await expect(cancelReconcile).resolves.toMatchObject({ failed: 0 });
+    expect(policyProvider.bindInboundNumber).toHaveBeenCalledTimes(1);
 
-    await applyResolvedVoiceBillingEvent({ kind: "apply", update: reactivate }, sql);
+    const secondCancel = makeUpdate(250, "canceled", "d");
+    await applyResolvedVoiceBillingEvent({ kind: "apply", update: secondCancel }, sql);
+    await reconcileVoicePolicies(sql, policyProvider, workspace.id);
+
+    const secondReactivate = makeUpdate(275, "active", "e");
+    await applyResolvedVoiceBillingEvent(
+      { kind: "apply", update: secondReactivate },
+      sql,
+    );
     const bindGate = deferred();
     const bindStarted = deferred();
     policyProvider.bindInboundNumber.mockImplementationOnce(async () => {
@@ -514,12 +1090,9 @@ describe("voice provisioning policy", () => {
     const newestCancel = makeUpdate(300, "canceled", "c");
     await expect(
       applyResolvedVoiceBillingEvent({ kind: "apply", update: newestCancel }, sql),
-    ).rejects.toBeInstanceOf(VoiceWorkspaceMutationBusyError);
+    ).resolves.toMatchObject({ state: "processed" });
     bindGate.resolve();
-    await expect(reactivateReconcile).resolves.toMatchObject({ resumed: 1, failed: 0 });
-
-    await applyResolvedVoiceBillingEvent({ kind: "apply", update: newestCancel }, sql);
-    await reconcileVoicePolicies(sql, policyProvider, workspace.id);
+    await expect(reactivateReconcile).resolves.toMatchObject({ failed: 0 });
     const final = await sql.query<{
       entitlement_status: string;
       assistant_status: string;
@@ -538,6 +1111,384 @@ describe("voice provisioning policy", () => {
       entitlement_status: "canceled",
       assistant_status: "paused",
       phone_status: "paused",
+    });
+  });
+
+  it("pauses and dead-letters an ambiguous provider error racing cancellation", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-provider-error-cancel",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    await finishProvisioning(userId, workspace.id, providers, sql);
+    const prompt = await saveAndSyncVoicePrompt(
+      userId,
+      workspace.id,
+      {
+        greeting: "Jordan Realty service desk. How can I help?",
+        additionalInstructions: "Confirm the best callback number.",
+      },
+      providers,
+      sql,
+    );
+
+    const providerStarted = deferred();
+    const rejectProvider = deferred();
+    providers.voice.updateLlm = vi.fn(async () => {
+      providerStarted.resolve();
+      await rejectProvider.promise;
+      throw new Error("injected Retell update failure");
+    });
+    const runningWorker = advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      sql,
+    );
+    await providerStarted.promise;
+
+    const binding = await sql.query<{
+      stripe_subscription_id: string;
+      stripe_price_id: string;
+    }>(
+      `select stripe_subscription_id, stripe_price_id
+         from workspace_entitlements
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    const cancellation: ResolvedVoiceBillingEvent = {
+      eventId: `evt_${randomUUID().replaceAll("-", "")}`,
+      eventType: "customer.subscription.deleted",
+      eventCreated: 1_900_000_000,
+      eventOrder: 19_000_000_000,
+      livemode: false,
+      apiVersion: "2026-02-25.clover",
+      objectId: binding[0]!.stripe_subscription_id,
+      workspaceId: workspace.id,
+      userId,
+      customerId: `cus_${workspace.id.replaceAll(":", "_")}`,
+      subscriptionId: binding[0]!.stripe_subscription_id,
+      priceId: binding[0]!.stripe_price_id,
+      status: "canceled",
+      periodStart: new Date(Date.now() - 60_000).toISOString(),
+      periodEnd: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      payloadSha256: "9".repeat(64),
+    };
+    await expect(
+      applyResolvedVoiceBillingEvent(
+        { kind: "apply", update: cancellation },
+        sql,
+        true,
+      ),
+    ).resolves.toEqual({
+      state: "processed",
+      outcomeCode: "ENTITLEMENT_SYNCED",
+    });
+    const queuedPolicy = await sql.query<{
+      policy_reconciliation_state: string;
+      entitlement_status: string;
+    }>(
+      `select e.policy_reconciliation_state,
+              w.status as entitlement_status
+         from voice_stripe_events e
+         join workspace_entitlements w
+           on w.workspace_id = e.workspace_id
+          and w.product = 'voice_assistant'
+        where e.event_id = $1`,
+      [cancellation.eventId],
+    );
+    expect(queuedPolicy[0]).toEqual({
+      policy_reconciliation_state: "pending",
+      entitlement_status: "canceled",
+    });
+
+    rejectProvider.resolve();
+    await expect(runningWorker).resolves.toMatchObject({
+      worker: { claimed: 1, blocked: 0, deadLettered: 1 },
+    });
+    expect(calls.unbind).toBe(1);
+    const paused = await sql.query<{
+      assistant_status: string;
+      phone_status: string;
+      job_state: string;
+      failure_count: number;
+    }>(
+      `select a.status as assistant_status, p.status as phone_status,
+              j.state as job_state, j.failure_count
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+         join voice_provisioning_jobs j
+           on j.workspace_id = a.workspace_id and j.prompt_version_id = $2
+        where a.workspace_id = $1`,
+      [workspace.id, prompt.id],
+    );
+    expect(paused[0]).toEqual({
+      assistant_status: "paused",
+      phone_status: "paused",
+      job_state: "dead_letter",
+      failure_count: 6,
+    });
+
+    await sql.query(
+      `update voice_stripe_events set policy_reconcile_after = now()
+        where event_id = $1`,
+      [cancellation.eventId],
+    );
+    const drained = await drainPendingVoiceStripePolicies(
+      sql,
+      25,
+      async (workspaceId, sqlOverride) =>
+        reconcileVoicePolicies(sqlOverride ?? sql, providers.voice, workspaceId),
+    );
+    expect(drained).toMatchObject({ checked: 1, completed: 1, pending: 0 });
+    const eventState = await sql.query<{
+      policy_reconciliation_state: string;
+    }>(
+      `select policy_reconciliation_state
+         from voice_stripe_events where event_id = $1`,
+      [cancellation.eventId],
+    );
+    expect(eventState[0]?.policy_reconciliation_state).toBe("completed");
+  });
+
+  it("persists a provider result before applying a concurrent cancellation", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers, calls } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-provider-result-cancel",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+
+    const persistStarted = deferred();
+    const releasePersistence = deferred();
+    let gated = false;
+    const gatedSql = (async <T = Record<string, unknown>>(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => sql<T>(strings, ...values)) as Sql;
+    gatedSql.query = async <T = Record<string, unknown>>(
+      text: string,
+      params: unknown[] = [],
+    ): Promise<T[]> => {
+      if (
+        !gated && text.includes("with updated_job as") &&
+        text.includes("set retell_llm_id = $1")
+      ) {
+        gated = true;
+        persistStarted.resolve();
+        await releasePersistence.promise;
+      }
+      return sql.query<T>(text, params);
+    };
+
+    const runningWorker = advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      gatedSql,
+    );
+    await persistStarted.promise;
+    const binding = await sql.query<{
+      stripe_subscription_id: string;
+      stripe_price_id: string;
+    }>(
+      `select stripe_subscription_id, stripe_price_id
+         from workspace_entitlements
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    const customerId = `cus_${workspace.id.replaceAll(":", "_")}`;
+    const makeUpdate = (
+      order: number,
+      status: "active" | "canceled",
+      digest: string,
+    ): ResolvedVoiceBillingEvent => ({
+      eventId: `evt_${randomUUID().replaceAll("-", "")}`,
+      eventType:
+        status === "canceled"
+          ? "customer.subscription.deleted"
+          : "customer.subscription.updated",
+      eventCreated: 1_900_000_000 + order,
+      eventOrder: 19_000_000_000 + order,
+      livemode: false,
+      apiVersion: "2026-02-25.clover",
+      objectId: binding[0]!.stripe_subscription_id,
+      workspaceId: workspace.id,
+      userId,
+      customerId,
+      subscriptionId: binding[0]!.stripe_subscription_id,
+      priceId: binding[0]!.stripe_price_id,
+      status,
+      periodStart: new Date(Date.now() - 60_000).toISOString(),
+      periodEnd: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      payloadSha256: digest.repeat(64),
+    });
+    await applyResolvedVoiceBillingEvent(
+      { kind: "apply", update: makeUpdate(1, "canceled", "7") },
+      sql,
+    );
+    releasePersistence.resolve();
+    await expect(runningWorker).resolves.toMatchObject({
+      worker: { claimed: 1, blocked: 1, deadLettered: 0 },
+    });
+
+    const persisted = await sql.query<{
+      state: string;
+      step: string;
+      retell_llm_id: string | null;
+      provider_mutation_intent: string | null;
+      provider_llm_id: string | null;
+    }>(
+      `select j.state, j.step, j.retell_llm_id,
+              j.provider_mutation_intent, p.provider_llm_id
+         from voice_provisioning_jobs j
+         join voice_prompt_versions p
+           on p.id = j.prompt_version_id and p.workspace_id = j.workspace_id
+        where j.workspace_id = $1 and j.operation = 'provision_number'`,
+      [workspace.id],
+    );
+    expect(persisted[0]).toMatchObject({
+      state: "blocked",
+      step: "create_llm",
+      provider_mutation_intent: null,
+    });
+    expect(persisted[0]?.retell_llm_id).toBeTruthy();
+    expect(persisted[0]?.provider_llm_id).toBe(persisted[0]?.retell_llm_id);
+    expect(calls.llmInputs).toHaveLength(1);
+
+    await applyResolvedVoiceBillingEvent(
+      { kind: "apply", update: makeUpdate(2, "active", "8") },
+      sql,
+    );
+    await reconcileVoicePolicies(sql, providers.voice, workspace.id);
+    await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    const resumed = await sql.query<{ state: string; step: string }>(
+      `select state, step from voice_provisioning_jobs
+        where workspace_id = $1 and operation = 'provision_number'`,
+      [workspace.id],
+    );
+    expect(resumed[0]).toEqual({ state: "pending", step: "create_agent" });
+    expect(calls.llmInputs).toHaveLength(1);
+  });
+
+  it("fences a stale provider result and sends its successor to review", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-lease-takeover",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    const providerStarted = deferred();
+    const releaseProvider = deferred();
+    providers.voice.createLlm = vi.fn(async () => {
+      providerStarted.resolve();
+      await releaseProvider.promise;
+      return { providerLlmId: "llm_stale", providerLlmVersion: 0 };
+    });
+    const staleWorker = advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      sql,
+    );
+    await providerStarted.promise;
+    await sql.query(
+      `update voice_workspace_mutation_leases
+          set lease_expires_at = now() - interval '1 second'
+        where workspace_id = $1`,
+      [workspace.id],
+    );
+    const successorStarted = deferred();
+    const releaseSuccessor = deferred();
+    const successor = withVoiceWorkspaceMutationLease(
+      workspace.id,
+      "policy-successor",
+      sql,
+      async (lease) => {
+        await lease.assertOwned();
+        await sql.query(
+          `update voice_provisioning_jobs
+              set state = 'blocked', worker_token = null,
+                  error_code = 'VOICE_ENTITLEMENT_INACTIVE'
+            where workspace_id = $1 and state = 'running'`,
+          [workspace.id],
+        );
+        successorStarted.resolve();
+        await releaseSuccessor.promise;
+      },
+    );
+    await successorStarted.promise;
+    releaseProvider.resolve();
+    await expect(staleWorker).resolves.toMatchObject({
+      worker: { claimed: 1, retried: 1, deadLettered: 0 },
+    });
+    const fenced = await sql.query<{
+      state: string;
+      failure_count: number;
+      retell_llm_id: string | null;
+      provider_mutation_intent: string | null;
+    }>(
+      `select state, failure_count, retell_llm_id, provider_mutation_intent
+         from voice_provisioning_jobs where workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(fenced[0]).toEqual({
+      state: "blocked",
+      failure_count: 0,
+      retell_llm_id: null,
+      provider_mutation_intent: "create_llm",
+    });
+    releaseSuccessor.resolve();
+    await successor;
+
+    await sql.query(
+      `update voice_provisioning_jobs
+          set state = 'pending', next_attempt_at = now(), error_code = null
+        where workspace_id = $1 and operation = 'provision_number'`,
+      [workspace.id],
+    );
+    await expect(
+      advanceMyVoiceProvisioning(userId, workspace.id, providers, sql),
+    ).resolves.toMatchObject({
+      worker: { claimed: 1, deadLettered: 1, advanced: 0 },
+    });
+    expect(providers.voice.createLlm).toHaveBeenCalledTimes(1);
+    const reviewed = await sql.query<{
+      state: string;
+      failure_count: number;
+      provider_mutation_intent: string | null;
+    }>(
+      `select state, failure_count, provider_mutation_intent
+         from voice_provisioning_jobs where workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(reviewed[0]).toEqual({
+      state: "dead_letter",
+      failure_count: 6,
+      provider_mutation_intent: "create_llm",
     });
   });
 
@@ -578,6 +1529,95 @@ describe("voice provisioning policy", () => {
       step: "bind_number",
       state: "blocked",
     });
+  });
+
+  it("pre-pauses a final-activation cancellation when unbind times out", async () => {
+    const { userId, workspace, sql } = await entitledWorkspace();
+    const { providers } = mockProviders();
+    await provisionVoiceAssistant(
+      userId,
+      {
+        workspaceId: workspace.id,
+        idempotencyKey: "purchase-request-final-activation-timeout",
+        areaCode: "503",
+        confirmation: "PROVISION_NUMBER",
+      },
+      providers,
+      sql,
+    );
+    for (let step = 0; step < 7; step += 1) {
+      await advanceMyVoiceProvisioning(userId, workspace.id, providers, sql);
+    }
+    const completionCommitted = deferred();
+    const releaseCompletion = deferred();
+    let gated = false;
+    const gatedSql = (async <T = Record<string, unknown>>(
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => sql<T>(strings, ...values)) as Sql;
+    gatedSql.query = async <T = Record<string, unknown>>(
+      text: string,
+      params: unknown[] = [],
+    ): Promise<T[]> => {
+      const rows = await sql.query<T>(text, params);
+      if (
+        !gated && text.includes("set state = 'completed'") &&
+        text.includes("worker_token = null")
+      ) {
+        gated = true;
+        completionCommitted.resolve();
+        await releaseCompletion.promise;
+      }
+      return rows;
+    };
+    const failedUnbind = vi.fn(async () => {
+      throw new Error("injected final-activation unbind timeout");
+    });
+    providers.voice.unbindInboundNumber = failedUnbind;
+    const activating = advanceMyVoiceProvisioning(
+      userId,
+      workspace.id,
+      providers,
+      gatedSql,
+    );
+    await completionCommitted.promise;
+    await sql.query(
+      `update workspace_entitlements
+          set status = 'canceled', updated_at = now()
+        where workspace_id = $1 and product = 'voice_assistant'`,
+      [workspace.id],
+    );
+    releaseCompletion.resolve();
+
+    await expect(activating).resolves.toMatchObject({
+      worker: { claimed: 1, blocked: 1, deadLettered: 0 },
+    });
+    expect(failedUnbind).toHaveBeenCalledTimes(1);
+    const safe = await sql.query<{
+      assistant_status: string;
+      phone_status: string;
+      retell_binding_intent_at: string | null;
+      job_state: string;
+      job_step: string;
+    }>(
+      `select a.status as assistant_status, p.status as phone_status,
+              p.retell_binding_intent_at, j.state as job_state,
+              j.step as job_step
+         from voice_assistants a
+         join voice_phone_numbers p
+           on p.workspace_id = a.workspace_id and p.assistant_id = a.id
+         join voice_provisioning_jobs j
+           on j.workspace_id = a.workspace_id and j.operation = 'provision_number'
+        where a.workspace_id = $1`,
+      [workspace.id],
+    );
+    expect(safe[0]).toMatchObject({
+      assistant_status: "paused",
+      phone_status: "paused",
+      job_state: "completed",
+      job_step: "completed",
+    });
+    expect(safe[0]?.retell_binding_intent_at).toBeTruthy();
   });
 
   it("does not purchase a number after an inactive entitlement fence", async () => {

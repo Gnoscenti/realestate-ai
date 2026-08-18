@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { VOICE_BETA_ALLOWANCE_SECONDS } from "./policy.server";
-import { withVoiceWorkspaceMutationLease } from "./workspace-mutation-lease.server";
 
 export const VOICE_BILLING_PRODUCT = "voice_assistant" as const;
 export const VOICE_MONTHLY_PRICE_CENTS = 7_900 as const;
@@ -678,6 +677,7 @@ async function recordIgnoredEvent(
 async function applyResolvedVoiceBillingEventUnlocked(
   resolution: VoiceBillingResolution,
   sql: Sql,
+  queuePolicyReconciliation = false,
 ): Promise<{ state: "processed" | "ignored" | "duplicate"; outcomeCode: string }> {
   if (resolution.kind === "ignore") {
     const state = await recordIgnoredEvent(resolution, sql);
@@ -781,7 +781,8 @@ async function applyResolvedVoiceBillingEventUnlocked(
        insert into voice_stripe_events (
          event_id, event_type, event_created, event_order, livemode,
          api_version, object_id, workspace_id, stripe_customer_id,
-         stripe_subscription_id, payload_sha256, processing_state, outcome_code
+         stripe_subscription_id, payload_sha256, processing_state, outcome_code,
+         policy_reconciliation_state, policy_reconcile_after
        )
        select $1,$2,$3,$4,$5,$6,$7,$8,$10,$11,$12,
               case
@@ -797,7 +798,11 @@ async function applyResolvedVoiceBillingEventUnlocked(
                      and billing_event_order > $4
                 ) then 'STALE_EVENT'
                 else 'BINDING_CONFLICT'
-              end
+              end,
+              case when exists (select 1 from entitlement) and $18::boolean
+                   then 'pending' else 'not_required' end,
+              case when exists (select 1 from entitlement) and $18::boolean
+                   then now() else null end
          from allowed
        on conflict (event_id) do nothing
        returning processing_state, outcome_code
@@ -821,6 +826,7 @@ async function applyResolvedVoiceBillingEventUnlocked(
       VOICE_BETA_ALLOWANCE_SECONDS,
       update.periodStart,
       update.periodEnd,
+      queuePolicyReconciliation,
     ],
   );
   const row = rows[0];
@@ -829,24 +835,91 @@ async function applyResolvedVoiceBillingEventUnlocked(
 }
 
 /**
- * Billing truth and provider mutations share the same workspace lease. This
- * prevents a canceled entitlement from racing a Retell bind/activation and
- * prevents an older unbind from completing after a newer reactivation.
+ * Commit the verified, monotonically ordered billing truth before provider
+ * reconciliation. A contended Retell/Twilio step can then observe and
+ * compensate to the newest policy without requiring Stripe redelivery.
  */
 export async function applyResolvedVoiceBillingEvent(
   resolution: VoiceBillingResolution,
   sqlOverride?: Sql,
+  queuePolicyReconciliation = false,
 ): Promise<{ state: "processed" | "ignored" | "duplicate"; outcomeCode: string }> {
   const sql = sqlOverride ?? (await getSql());
   if (resolution.kind === "ignore") {
-    return applyResolvedVoiceBillingEventUnlocked(resolution, sql);
+    return applyResolvedVoiceBillingEventUnlocked(
+      resolution, sql, queuePolicyReconciliation,
+    );
   }
-  return withVoiceWorkspaceMutationLease(
-    resolution.update.workspaceId,
-    `stripe:${resolution.update.eventId}`,
-    sql,
-    () => applyResolvedVoiceBillingEventUnlocked(resolution, sql),
+  return applyResolvedVoiceBillingEventUnlocked(
+    resolution, sql, queuePolicyReconciliation,
   );
+}
+
+async function recordVoiceStripePolicyResult(
+  eventId: string,
+  success: boolean,
+  error: string | null,
+  sql: Sql,
+): Promise<void> {
+  await sql.query(
+    `update voice_stripe_events
+        set policy_reconciliation_state = case when $2 then 'completed' else 'pending' end,
+            policy_reconcile_attempts = policy_reconcile_attempts + 1,
+            policy_reconcile_after = case when $2 then null
+                                          else now() + interval '1 minute' end,
+            policy_reconciled_at = case when $2 then now() else null end,
+            policy_error = case when $2 then null else $3 end
+      where event_id = $1 and processing_state = 'processed'`,
+    [eventId, success, error?.slice(0, 1_000) ?? null],
+  );
+}
+
+export async function drainPendingVoiceStripePolicies(
+  sqlOverride?: Sql,
+  limit = 25,
+  reconcileOverride?: (
+    workspaceId: string,
+    sqlOverride?: Sql,
+  ) => Promise<{ failed: number }>,
+): Promise<{ checked: number; completed: number; pending: number }> {
+  const sql = sqlOverride ?? (await getSql());
+  const rows = await sql.query<{ event_id: string; workspace_id: string }>(
+    `select distinct on (workspace_id) event_id, workspace_id
+       from voice_stripe_events
+      where policy_reconciliation_state = 'pending'
+        and workspace_id is not null
+        and (policy_reconcile_after is null or policy_reconcile_after <= now())
+      order by workspace_id, event_order desc
+      limit $1`,
+    [Math.max(1, Math.min(100, Math.trunc(limit)))],
+  );
+  const result = { checked: rows.length, completed: 0, pending: 0 };
+  const reconcile =
+    reconcileOverride ??
+    (await import("./maintenance.server")).reconcileWorkspaceVoicePolicy;
+  for (const row of rows) {
+    try {
+      const policy = await reconcile(row.workspace_id, sql);
+      const success = policy.failed === 0;
+      await recordVoiceStripePolicyResult(
+        row.event_id,
+        success,
+        success ? null : "Voice provider policy reconciliation is still pending",
+        sql,
+      );
+      if (success) result.completed += 1;
+      else result.pending += 1;
+    } catch (error) {
+      await recordVoiceStripePolicyResult(
+        row.event_id,
+        false,
+        error instanceof Error ? error.message : "Unknown policy error",
+        sql,
+      );
+      result.pending += 1;
+    }
+  }
+  return result;
 }
 
 export async function processVoiceStripeEvent(
@@ -872,14 +945,31 @@ export async function processVoiceStripeEvent(
     config,
     stripe,
   );
-  const applied = await applyResolvedVoiceBillingEvent(resolution, deps.sql);
-  if (resolution.kind === "apply") {
+  const applied = await applyResolvedVoiceBillingEvent(resolution, deps.sql, true);
+  if (resolution.kind === "apply" && applied.state !== "ignored") {
     const reconcile =
       deps.reconcileWorkspacePolicy ??
       (await import("./maintenance.server")).reconcileWorkspaceVoicePolicy;
-    const policy = await reconcile(resolution.update.workspaceId, deps.sql);
-    if (policy.failed > 0) {
-      throw new Error("Voice provider policy reconciliation failed");
+    try {
+      const policy = await reconcile(resolution.update.workspaceId, deps.sql);
+      await recordVoiceStripePolicyResult(
+        resolution.update.eventId,
+        policy.failed === 0,
+        policy.failed === 0
+          ? null
+          : "Voice provider policy reconciliation is still pending",
+        deps.sql ?? (await getSql()),
+      );
+    } catch (error) {
+      // The signed event and entitlement are already durable. Leave its policy
+      // work pending for the internal worker instead of depending on Stripe to
+      // redeliver the original event.
+      await recordVoiceStripePolicyResult(
+        resolution.update.eventId,
+        false,
+        error instanceof Error ? error.message : "Unknown policy error",
+        deps.sql ?? (await getSql()),
+      );
     }
   }
   return applied;

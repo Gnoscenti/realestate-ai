@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Sql } from "@/lib/db";
 
 const LEASE_SECONDS = 5 * 60;
+const LEASE_HEARTBEAT_MS = 30_000;
 
 export class VoiceWorkspaceMutationBusyError extends Error {
   readonly code = "VOICE_WORKSPACE_MUTATION_BUSY";
@@ -10,6 +11,24 @@ export class VoiceWorkspaceMutationBusyError extends Error {
     super("Another voice policy or provider operation is still in progress");
     this.name = "VoiceWorkspaceMutationBusyError";
   }
+}
+
+export class VoiceWorkspaceMutationLeaseLostError extends Error {
+  readonly code = "VOICE_WORKSPACE_MUTATION_LEASE_LOST";
+
+  constructor(readonly workspaceId: string) {
+    super("Voice policy mutation lease ownership was lost");
+    this.name = "VoiceWorkspaceMutationLeaseLostError";
+  }
+}
+
+export interface VoiceWorkspaceMutationLease {
+  readonly workspaceId: string;
+  readonly token: string;
+  /** Renew only while this exact token still owns an unexpired lease. */
+  renew(): Promise<void>;
+  /** Fence every provider follow-up and durable state transition. */
+  assertOwned(): Promise<void>;
 }
 
 /**
@@ -22,7 +41,7 @@ export async function withVoiceWorkspaceMutationLease<T>(
   workspaceId: string,
   purpose: string,
   sql: Sql,
-  operation: () => Promise<T>,
+  operation: (lease: VoiceWorkspaceMutationLease) => Promise<T>,
 ): Promise<T> {
   if (!workspaceId.trim() || workspaceId.length > 240) {
     throw new Error("Invalid voice policy workspace");
@@ -44,9 +63,55 @@ export async function withVoiceWorkspaceMutationLease<T>(
   if (rows[0]?.lease_token !== token) {
     throw new VoiceWorkspaceMutationBusyError(workspaceId);
   }
+  const lease: VoiceWorkspaceMutationLease = {
+    workspaceId,
+    token,
+    async renew() {
+      const renewed = await sql.query<{ lease_token: string }>(
+        `update voice_workspace_mutation_leases
+            set lease_expires_at = now() + $3::int * interval '1 second'
+          where workspace_id = $1 and lease_token = $2
+            and lease_expires_at > now()
+          returning lease_token`,
+        [workspaceId, token, LEASE_SECONDS],
+      );
+      if (renewed[0]?.lease_token !== token) {
+        throw new VoiceWorkspaceMutationLeaseLostError(workspaceId);
+      }
+    },
+    async assertOwned() {
+      const owned = await sql.query<{ lease_token: string }>(
+        `update voice_workspace_mutation_leases
+            set lease_expires_at = now() + $3::int * interval '1 second'
+          where workspace_id = $1 and lease_token = $2
+            and lease_expires_at > now()
+          returning lease_token`,
+        [workspaceId, token, LEASE_SECONDS],
+      );
+      if (owned[0]?.lease_token !== token) {
+        throw new VoiceWorkspaceMutationLeaseLostError(workspaceId);
+      }
+    },
+  };
+  let heartbeatError: unknown;
+  let heartbeat = Promise.resolve();
+  const timer = setInterval(() => {
+    heartbeat = heartbeat
+      .then(() => lease.renew())
+      .catch((error) => {
+        heartbeatError ??= error;
+      });
+  }, LEASE_HEARTBEAT_MS);
+  timer.unref?.();
   try {
-    return await operation();
+    const value = await operation(lease);
+    await heartbeat;
+    if (heartbeatError) throw heartbeatError;
+    await lease.assertOwned();
+    return value;
   } finally {
+    clearInterval(timer);
+    await heartbeat;
     await sql.query(
       `delete from voice_workspace_mutation_leases
         where workspace_id = $1 and lease_token = $2`,

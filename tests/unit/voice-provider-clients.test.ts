@@ -207,6 +207,20 @@ describe("Retell voice runtime", () => {
     );
     expect(requests[1]?.method).toBe("DELETE");
   });
+
+  it("treats an already-missing Retell number as safely unbound", async () => {
+    const runtime = new RetellVoiceRuntime({
+      apiKey: "retell-secret",
+      voiceId: "unused",
+      fetchImpl: vi.fn(async () =>
+        jsonResponse({ message: "not found" }, 404),
+      ) as typeof fetch,
+    });
+
+    await expect(
+      runtime.unbindInboundNumber({ e164: "+15035550123" }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("Twilio SIP provisioning", () => {
