@@ -14,7 +14,12 @@ export const voicePromptInputSchema = z.object({
       transferToHuman: z.boolean().default(true),
       sendTransactionalText: z.boolean().default(false),
     })
-    .default({}),
+    .default({
+      collectLead: true,
+      requestAppointment: true,
+      transferToHuman: true,
+      sendTransactionalText: false,
+    }),
 });
 
 export type VoicePromptInput = z.input<typeof voicePromptInputSchema>;
