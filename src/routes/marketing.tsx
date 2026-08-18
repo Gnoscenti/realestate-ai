@@ -52,7 +52,14 @@ import {
 } from "@/lib/social-agent";
 import { myListings } from "@/lib/mls";
 import { cn } from "@/lib/utils";
-import { attachMediaToPosts, buildImaginePrompt, pickListingMedia } from "@/lib/imagine-media";
+import {
+  MAX_SELECTED_LISTING_PHOTOS,
+  attachMediaToPosts,
+  filterListingPhotoSelection,
+  listingPhotoUrls,
+  needsPhotoCta,
+  pickListingMedia,
+} from "@/lib/imagine-media";
 import { SOCIAL_NETWORKS, networkForPlatform } from "@/lib/social-accounts";
 import { Image as ImageIcon, Link2, Power } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -92,7 +99,8 @@ function MarketingPage() {
   const disconnectSocialAccount = useAppStore((s) => s.disconnectSocialAccount);
   const setSocialAutoPost = useAppStore((s) => s.setSocialAutoPost);
   const [handleDrafts, setHandleDrafts] = useState<Record<string, string>>({});
-  const [imagineBusy, setImagineBusy] = useState(false);
+  const [mediaAttachBusy, setMediaAttachBusy] = useState(false);
+  const [selectedPhotoUrls, setSelectedPhotoUrls] = useState<string[]>([]);
 
   const book = useMemo(() => {
     const mine = myListings(properties);
@@ -153,6 +161,34 @@ function MarketingPage() {
   }, [campaigns, activePlan]);
 
   const property = properties.find((p) => p.id === propertyId);
+  const listingPhotos = useMemo(() => listingPhotoUrls(property), [property]);
+
+  useEffect(() => {
+    setSelectedPhotoUrls(
+      listingPhotos.slice(0, MAX_SELECTED_LISTING_PHOTOS),
+    );
+  }, [listingPhotos]);
+
+  const selectedListingPhotos = useMemo(
+    () => filterListingPhotoSelection(property, selectedPhotoUrls),
+    [property, selectedPhotoUrls],
+  );
+
+  const toggleListingPhoto = (url: string) => {
+    if (selectedPhotoUrls.includes(url)) {
+      setSelectedPhotoUrls((current) =>
+        current.filter((selectedUrl) => selectedUrl !== url),
+      );
+      return;
+    }
+    if (selectedPhotoUrls.length >= MAX_SELECTED_LISTING_PHOTOS) {
+      toast.message(
+        `Choose up to ${MAX_SELECTED_LISTING_PHOTOS} listing photos`,
+      );
+      return;
+    }
+    setSelectedPhotoUrls((current) => [...current, url]);
+  };
 
   const selectedPost = useMemo(() => {
     if (!activePlan || !selectedPostId) return activePlan?.posts[0] ?? null;
@@ -1025,96 +1061,147 @@ function MarketingPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ImageIcon className="h-4 w-4 text-[var(--color-primary)]" />
-                    Grok Imagine + listing photos
+                    Listing photos
                   </CardTitle>
                   <CardDescription>
-                    AI picks photos from your website or MLS listing. When no photo
-                    exists, a Grok Imagine prompt is prepared for creative generation.
+                    Choose up to {MAX_SELECTED_LISTING_PHOTOS} real MLS or website
+                    photos. Attaching uses the originals and never invents property
+                    imagery.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {(() => {
                     const pick = pickListingMedia(property, profile?.photoUrl);
+
+                    if (!listingPhotos.length) {
+                      return (
+                        <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-4 text-sm text-[var(--color-fg-muted)]">
+                          {needsPhotoCta(property)}
+                        </div>
+                      );
+                    }
+
+                    const previewPhoto =
+                      selectedListingPhotos[0] ?? pick.imageUrl;
+
                     return (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
-                          {pick.imageUrl ? (
-                            <img
-                              src={pick.imageUrl}
-                              alt={property?.title || "Listing"}
-                              className="h-44 w-full object-cover"
-                              crossOrigin="anonymous"
-                            />
-                          ) : (
-                            <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No website/MLS photo yet — Imagine will create from facts
-                            </div>
-                          )}
+                          <img
+                            src={previewPhoto}
+                            alt={property?.title || "Selected listing"}
+                            className="h-44 w-full object-cover"
+                            crossOrigin="anonymous"
+                          />
                           <div className="p-3 text-xs text-[var(--color-fg-muted)]">
                             Source: <strong className="text-[var(--color-fg)]">{pick.source}</strong>
                             {" · "}
                             {pick.reason}
                           </div>
                         </div>
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                            Imagine prompt
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
+                              Select listing photos
+                            </div>
+                            <span className="text-xs text-[var(--color-fg-muted)]">
+                              {selectedListingPhotos.length}/
+                              {MAX_SELECTED_LISTING_PHOTOS}
+                            </span>
                           </div>
-                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
-                            {pick.imaginePrompt}
-                          </pre>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {listingPhotos.map((url, index) => {
+                              const selected = selectedPhotoUrls.includes(url);
+                              const atLimit =
+                                selectedPhotoUrls.length >=
+                                MAX_SELECTED_LISTING_PHOTOS;
+
+                              return (
+                                <button
+                                  key={url}
+                                  type="button"
+                                  aria-label={`${selected ? "Remove" : "Select"} listing photo ${index + 1}`}
+                                  aria-pressed={selected}
+                                  disabled={!selected && atLimit}
+                                  title={
+                                    !selected && atLimit
+                                      ? `Choose up to ${MAX_SELECTED_LISTING_PHOTOS} photos`
+                                      : undefined
+                                  }
+                                  onClick={() => toggleListingPhoto(url)}
+                                  className={cn(
+                                    "relative h-16 w-16 shrink-0 overflow-hidden rounded-md ring-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45",
+                                    selected
+                                      ? "ring-[var(--color-primary)]"
+                                      : "ring-[var(--color-border)] opacity-75 hover:opacity-100",
+                                  )}
+                                >
+                                  <img
+                                    src={url}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                    crossOrigin="anonymous"
+                                  />
+                                  {selected && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="absolute right-1 top-1 rounded-full bg-[var(--color-primary)] p-0.5 text-white"
+                                    >
+                                      <Check className="h-3 w-3" />
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
                           <Button
                             className="min-h-[44px] w-full"
-                            disabled={!activePlan || imagineBusy}
+                            disabled={
+                              !activePlan ||
+                              mediaAttachBusy ||
+                              selectedListingPhotos.length === 0
+                            }
                             onClick={() => {
                               if (!activePlan) {
                                 toast.message("Run the Content Agent first");
                                 return;
                               }
-                              setImagineBusy(true);
-                              const prompt = buildImaginePrompt(property, pick.imageUrl ? "enhance" : "create");
-                              const next = {
-                                ...activePlan,
-                                posts: activePlan.posts.map((post) => ({
-                                  ...post,
-                                  imaginePrompt: prompt,
-                                  mediaSource: pick.imageUrl
-                                    ? (post.mediaSource ?? pick.source)
-                                    : ("imagine" as const),
-                                  imageUrl: pick.imageUrl || post.imageUrl,
-                                  visualBrief: pick.imageUrl
-                                    ? `${post.visualBrief} · AI-selected listing photo`
-                                    : `Grok Imagine · ${prompt.slice(0, 100)}…`,
-                                })),
-                              };
-                              saveCampaign(next);
-                              setActivePlan(next);
-                              setImagineBusy(false);
-                              toast.success(
-                                pick.imageUrl
-                                  ? "AI applied listing photos to this campaign"
-                                  : "Imagine prompts attached — generate creatives from the brief",
-                              );
+                              if (!selectedListingPhotos.length) {
+                                toast.error("Select at least one listing photo");
+                                return;
+                              }
+                              setMediaAttachBusy(true);
+                              try {
+                                const next = {
+                                  ...activePlan,
+                                  posts: attachMediaToPosts(
+                                    activePlan.posts,
+                                    property,
+                                    profile?.photoUrl,
+                                    {
+                                      selectedPhotoUrls:
+                                        selectedListingPhotos,
+                                      includeImaginePrompt: false,
+                                    },
+                                  ),
+                                };
+                                saveCampaign(next);
+                                setActivePlan(next);
+                                toast.success(
+                                  `${selectedListingPhotos.length} selected listing ${selectedListingPhotos.length === 1 ? "photo" : "photos"} attached`,
+                                );
+                              } finally {
+                                setMediaAttachBusy(false);
+                              }
                             }}
                           >
-                            <Sparkles className="h-4 w-4" />
-                            {property?.photoUrls?.length || property?.imageUrl
-                              ? "Use AI-picked listing photos"
-                              : "Attach Grok Imagine prompts"}
+                            <Check className="h-4 w-4" />
+                            Attach selected photos to campaign
                           </Button>
-                          {property?.photoUrls && property.photoUrls.length > 1 && (
-                            <div className="flex gap-2 overflow-x-auto pt-1">
-                              {property.photoUrls.slice(0, 6).map((url) => (
-                                <img
-                                  key={url}
-                                  src={url}
-                                  alt=""
-                                  className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-[var(--color-border)]"
-                                  crossOrigin="anonymous"
-                                />
-                              ))}
-                            </div>
-                          )}
+                          <p className="text-xs text-[var(--color-fg-subtle)]">
+                            Original listing photos only. No AI generation occurs
+                            in this attachment step.
+                          </p>
                         </div>
                       </div>
                     );

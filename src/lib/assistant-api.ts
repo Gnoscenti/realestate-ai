@@ -111,7 +111,7 @@ function usedSearch(json: any): boolean {
 export const askLiveAssistant = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(inputSchema)
-  .handler(async ({ data }): Promise<LiveAssistantResult> => {
+  .handler(async ({ data, context }): Promise<LiveAssistantResult> => {
     const key = xaiKey();
     if (!key) {
       return {
@@ -123,6 +123,48 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
 
     const model = process.env.XAI_ASSISTANT_MODEL?.trim() || "grok-4.6";
     const system = buildSystem(data);
+    const { ensurePersonalWorkspace } = await import(
+      "@/lib/workspaces/repository.server"
+    );
+    const { finalizeAiGeneration, reserveAiGeneration } = await import(
+      "@/lib/ai-usage/repository.server"
+    );
+    const workspace = await ensurePersonalWorkspace(context.userId);
+    const reservation = await reserveAiGeneration({
+      userId: context.userId,
+      workspaceId: workspace.id,
+      product: "grok_assistant",
+      operation: "assistant",
+      model,
+      inputChars: system.length + data.question.length,
+      units: 1,
+    });
+    if (!reservation.allowed) {
+      return {
+        ok: false,
+        error:
+          reservation.reason === "entitlement_required"
+            ? "Live assistant requires an active AI entitlement for this workspace."
+            : "Live assistant quota reached. Try again after the quota window resets.",
+      };
+    }
+
+    const settleUsage = async (
+      status: "completed" | "failed",
+      errorCode?: string,
+    ) => {
+      try {
+        await finalizeAiGeneration({
+          id: reservation.id,
+          userId: context.userId,
+          workspaceId: workspace.id,
+          status,
+          errorCode,
+        });
+      } catch (error) {
+        console.error("[askLiveAssistant] usage settlement failed", error);
+      }
+    };
 
     try {
       const res = await fetch(`${XAI_BASE}/responses`, {
@@ -140,11 +182,13 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
           tools: [{ type: "web_search" }],
           reasoning: { effort: "low" },
         }),
+        signal: AbortSignal.timeout(30_000),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         const answer = extractAnswer(json);
         if (answer) {
+          await settleUsage("completed");
           return {
             ok: true,
             answer,
@@ -153,38 +197,16 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
           };
         }
       }
-
-      const chat = await fetch(`${XAI_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: data.question },
-          ],
-          temperature: 0.4,
-        }),
-      });
-      const cj = await chat.json().catch(() => ({}));
-      if (!chat.ok) {
-        const msg =
-          cj?.error?.message ||
-          json?.error?.message ||
-          `Grok error (${res.status}/${chat.status})`;
-        console.error("[askLiveAssistant]", msg);
-        return { ok: false, error: String(msg) };
-      }
-      const answer =
-        cj?.choices?.[0]?.message?.content?.trim() || extractAnswer(cj);
-      if (!answer) return { ok: false, error: "Empty response from Grok" };
-      return { ok: true, answer, usedWebSearch: false, model };
+      const message =
+        json?.error?.message ||
+        json?.error ||
+        (res.ok ? "Empty response from Grok" : `Grok error (${res.status})`);
+      await settleUsage("failed", res.ok ? "empty_response" : "provider_error");
+      return { ok: false, error: String(message) };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Assistant request failed";
       console.error("[askLiveAssistant]", msg);
+      await settleUsage("failed", "request_failed");
       return { ok: false, error: msg };
     }
   });
