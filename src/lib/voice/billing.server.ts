@@ -715,6 +715,11 @@ export async function applyResolvedVoiceBillingEvent(
     return { state, outcomeCode: "WORKSPACE_SCOPE_MISMATCH" };
   }
 
+  // The audit insert intentionally comes after the entitlement CTE. PostgreSQL
+  // data-modifying CTEs share one snapshot, so a sibling UPDATE cannot see a
+  // row inserted earlier in the same WITH. Computing the final audit state from
+  // entitlement RETURNING keeps the first delivery atomic while the event key
+  // still turns every replay into a no-op/duplicate.
   const rows = await sql.query<{
     processing_state: "processed" | "ignored";
     outcome_code: string;
@@ -725,16 +730,6 @@ export async function applyResolvedVoiceBillingEvent(
         where workspace_id = $8 and user_id = $9
           and role in ('owner', 'admin')
         limit 1
-     ), inserted_event as (
-       insert into voice_stripe_events (
-         event_id, event_type, event_created, event_order, livemode,
-         api_version, object_id, workspace_id, stripe_customer_id,
-         stripe_subscription_id, payload_sha256, processing_state, outcome_code
-       )
-       select $1,$2,$3,$4,$5,$6,$7,$8,$10,$11,$12,'ignored','BINDING_CONFLICT'
-         from allowed
-       on conflict (event_id) do nothing
-       returning event_id
      ), entitlement as (
        insert into workspace_entitlements (
          workspace_id, product, status, stripe_customer_id,
@@ -745,7 +740,10 @@ export async function applyResolvedVoiceBillingEvent(
        )
        select $8,'voice_assistant',$13,$10,$11,$14,$15,$15,false,
               $16::timestamptz,$17::timestamptz,now(),$1,$4,now()
-         from inserted_event
+         from allowed
+        where not exists (
+          select 1 from voice_stripe_events where event_id = $1
+        )
        on conflict (workspace_id, product) do update set
          status = excluded.status,
          stripe_customer_id = excluded.stripe_customer_id,
@@ -779,13 +777,18 @@ export async function applyResolvedVoiceBillingEvent(
          )
        ) and excluded.billing_event_order >= coalesce(workspace_entitlements.billing_event_order, -1)
        returning workspace_id
-     ), finalized as (
-       update voice_stripe_events
-          set processing_state = case
+     ), inserted_event as (
+       insert into voice_stripe_events (
+         event_id, event_type, event_created, event_order, livemode,
+         api_version, object_id, workspace_id, stripe_customer_id,
+         stripe_subscription_id, payload_sha256, processing_state, outcome_code
+       )
+       select $1,$2,$3,$4,$5,$6,$7,$8,$10,$11,$12,
+              case
                 when exists (select 1 from entitlement) then 'processed'
                 else 'ignored'
               end,
-              outcome_code = case
+              case
                 when exists (select 1 from entitlement) then 'ENTITLEMENT_SYNCED'
                 when exists (
                   select 1
@@ -794,12 +797,12 @@ export async function applyResolvedVoiceBillingEvent(
                      and billing_event_order > $4
                 ) then 'STALE_EVENT'
                 else 'BINDING_CONFLICT'
-              end,
-              processed_at = now()
-        where event_id in (select event_id from inserted_event)
+              end
+         from allowed
+       on conflict (event_id) do nothing
        returning processing_state, outcome_code
      )
-     select processing_state, outcome_code from finalized`,
+     select processing_state, outcome_code from inserted_event`,
     [
       update.eventId,
       update.eventType,
