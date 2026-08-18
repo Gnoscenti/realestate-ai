@@ -1355,9 +1355,13 @@ function MarketingPage() {
                         if (!activePlan || !property) return;
                         setImagineBusy(true);
                         const pick = pickListingMedia(property, profile?.photoUrl);
+                        const gallery = (selectedPhotoUrls.length
+                          ? selectedPhotoUrls
+                          : listingPhotoUrls(property)
+                        ).slice(0, 3);
                         const next = {
                           ...activePlan,
-                          posts: activePlan.posts.map((post) => ({
+                          posts: activePlan.posts.map((post, i) => ({
                             ...post,
                             imaginePrompt: buildOverlayPrompt(property, socialPreset),
                             mediaSource: (post.mediaSource ?? pick.source) as
@@ -1365,8 +1369,11 @@ function MarketingPage() {
                               | "website"
                               | "imagine"
                               | "none",
-                            imageUrl: pick.imageUrl || post.imageUrl,
-                            visualBrief: `${post.visualBrief} · AI-selected listing photo`,
+                            imageUrl:
+                              gallery[i % Math.max(gallery.length, 1)] ||
+                              pick.imageUrl ||
+                              post.imageUrl,
+                            visualBrief: `${post.visualBrief} · Selected listing photo ${1 + (i % Math.max(gallery.length, 1))}`,
                           })),
                         };
                         saveCampaign(next);
