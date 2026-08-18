@@ -438,6 +438,7 @@ describe("Voice Assistant Stripe billing", () => {
       workspace_id: workspace.id,
       user_id: userId,
     });
+    current.id = `sub_voice_${randomUUID().replaceAll("-", "")}`;
     const stripe = fakeStripe({
       subscriptions: { retrieve: vi.fn(async () => current) },
     });
@@ -525,6 +526,7 @@ describe("Voice Assistant Stripe billing", () => {
       workspace_id: workspace.id,
       user_id: userId,
     });
+    current.id = `sub_voice_${randomUUID().replaceAll("-", "")}`;
     const stripe = fakeStripe({
       subscriptions: { retrieve: vi.fn(async () => current) },
     });

@@ -48,7 +48,8 @@ describe("voice workspace mutation lease fencing", () => {
 
     await sql.query(
       `update voice_workspace_mutation_leases
-          set lease_expires_at = now() - interval '1 second'
+          set acquired_at = now() - interval '2 seconds',
+              lease_expires_at = now() - interval '1 second'
         where workspace_id = $1 and lease_token = $2`,
       [workspace.id, firstToken],
     );

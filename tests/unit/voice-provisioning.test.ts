@@ -1417,7 +1417,8 @@ describe("voice provisioning policy", () => {
     await providerStarted.promise;
     await sql.query(
       `update voice_workspace_mutation_leases
-          set lease_expires_at = now() - interval '1 second'
+          set acquired_at = now() - interval '2 seconds',
+              lease_expires_at = now() - interval '1 second'
         where workspace_id = $1`,
       [workspace.id],
     );
@@ -1686,7 +1687,11 @@ describe("voice provisioning policy", () => {
       [`usage_${randomUUID()}`, workspace.id, callId],
     );
 
-    const paused = await reconcileVoicePolicies(sql, providers.voice);
+    const paused = await reconcileVoicePolicies(
+      sql,
+      providers.voice,
+      workspace.id,
+    );
     const pausedState = await sql.query<{ status: string; blocked_reason: string | null }>(
       `select status, blocked_reason from voice_assistants where workspace_id = $1`,
       [workspace.id],
@@ -1699,7 +1704,11 @@ describe("voice provisioning policy", () => {
     });
 
     await sql.query(`delete from voice_usage_ledger where workspace_id = $1`, [workspace.id]);
-    const resumed = await reconcileVoicePolicies(sql, providers.voice);
+    const resumed = await reconcileVoicePolicies(
+      sql,
+      providers.voice,
+      workspace.id,
+    );
     expect(resumed.resumed).toBe(1);
     expect(calls.bind).toBe(1);
   });
