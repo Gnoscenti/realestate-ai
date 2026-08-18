@@ -60,6 +60,7 @@ import {
 import { SOCIAL_NETWORKS } from "@/lib/social-accounts";
 import { Image as ImageIcon, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
 
 const searchSchema = z.object({
   goal: z.string().optional(),
@@ -357,6 +358,8 @@ function MarketingPage() {
           </div>
         </div>
       </div>
+
+      <SocialMediaGenerator />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-4">
