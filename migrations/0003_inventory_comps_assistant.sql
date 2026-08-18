@@ -44,6 +44,8 @@ create table if not exists listings (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id, workspace_id),
+  -- Deferred NO ACTION prevents deleting an in-use source by itself while
+  -- still allowing a whole workspace cascade to settle before commit.
   foreign key (source_id, workspace_id)
     references data_sources(id, workspace_id)
     on delete no action deferrable initially deferred

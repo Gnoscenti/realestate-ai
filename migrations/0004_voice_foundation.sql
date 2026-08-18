@@ -103,6 +103,8 @@ create table if not exists voice_calls (
   unique (id, workspace_id),
   foreign key (assistant_id, workspace_id)
     references voice_assistants(id, workspace_id) on delete cascade,
+  -- A phone with calls cannot be deleted alone, but account deletion can
+  -- cascade both sides and satisfy this deferred constraint at commit.
   foreign key (phone_number_id, workspace_id)
     references voice_phone_numbers(id, workspace_id)
     on delete no action deferrable initially deferred
