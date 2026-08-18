@@ -10,27 +10,19 @@ export type MediaPick = {
   imageUrl: string;
   source: MediaSource;
   reason: string;
-  /** Enhancement prompt only when a real photo exists (image-to-image / video) */
   imaginePrompt: string;
-  /** True when agent must link website or sync MLS before creatives */
   needsRealPhoto: boolean;
 };
 
-/** Collect real photo URLs from a listing (website scrape or MLS). */
 export function listingPhotoUrls(property?: Property | null): string[] {
   if (!property) return [];
   const urls = [
     ...(property.photoUrls ?? []),
     ...(property.imageUrl ? [property.imageUrl] : []),
   ].filter((u): u is string => Boolean(u && String(u).trim()));
-  // de-dupe
   return [...new Set(urls)];
 }
 
-/**
- * Prefer real listing media. If none — do NOT fabricate from facts.
- * Point the agent at website scrape or MLS Hub instead.
- */
 export function pickListingMedia(
   property?: Property | null,
   _agentPhotoUrl?: string | null,
@@ -62,12 +54,13 @@ export function pickListingMedia(
 
 /**
  * Prompts only for enhancing / animating an existing real photo.
- * "create from facts" path is intentionally removed.
+ * "create" is a deprecated no-op (never invent photos from facts).
  */
 export function buildImaginePrompt(
   property?: Property | null,
-  mode: "enhance" | "video" = "enhance",
+  mode: "enhance" | "video" | "create" = "enhance",
 ): string {
+  if (mode === "create") return "";
   if (!property) {
     return mode === "video"
       ? "Slow cinematic pan across a luxury home exterior, natural light, no text, no logos, no people."
@@ -81,7 +74,6 @@ export function buildImaginePrompt(
   return `Editorial real estate social crop of this home. ${base}. Clean composition, golden hour, no text overlays, no fake view counts, no watermarks.`;
 }
 
-/** Attach real listing photos to campaign posts. Skip inventing imagery. */
 export function attachMediaToPosts<
   T extends {
     visualBrief: string;
@@ -117,7 +109,6 @@ export function attachMediaToPosts<
   });
 }
 
-/** CTA copy when inventory has no photos */
 export function needsPhotoCta(_property?: Property | null): string {
   return "Open MLS Hub → scan your agent website (or connect MLS) so we pull real photoUrls. Marketing never invents property images from text.";
 }
