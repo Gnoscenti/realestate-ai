@@ -99,6 +99,22 @@ export function buildSocialVideoPrompt(
     .join(" ");
 }
 
+/**
+ * Approved media hostnames for listing photos.
+ * Restricts Grok Imagine to app-owned or known MLS CDN sources.
+ * Expand this list as additional vetted CDN domains are onboarded.
+ */
+const APPROVED_PHOTO_HOSTS: readonly string[] = [
+  // Vercel Blob storage (app-owned)
+  "public.blob.vercel-storage.com",
+  // Common MLS / real-estate CDN domains
+  "cdn.mlsgrid.com",
+  "photos.zillowstatic.com",
+  "ssl.cdn-redfin.com",
+  "ap.rdcpix.com",
+  "listing.coldwellbanker.com",
+];
+
 async function validatePhotoUrls(urls: string[]): Promise<string[]> {
   if (!urls.length) {
     throw new Error("At least one real listing photo URL is required");
@@ -111,6 +127,12 @@ async function validatePhotoUrls(urls: string[]): Promise<string[]> {
     const u = await assertPublicHttpUrl(raw);
     if (u.protocol !== "https:" && process.env.NODE_ENV === "production") {
       throw new Error("Listing photos must be HTTPS in production");
+    }
+    if (!isGrokImagineMockMode() && !APPROVED_PHOTO_HOSTS.includes(u.hostname)) {
+      throw new Error(
+        `Photo host "${u.hostname}" is not an approved media source. ` +
+          `Listing photos must be served from a known app-owned or MLS CDN domain.`,
+      );
     }
     validated.push(u.toString());
   }
