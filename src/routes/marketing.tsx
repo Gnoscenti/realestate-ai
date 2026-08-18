@@ -13,6 +13,7 @@ import {
   Play,
   Share2,
   Sparkles,
+  Video,
   Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,7 +53,18 @@ import {
 } from "@/lib/social-agent";
 import { myListings } from "@/lib/mls";
 import { cn } from "@/lib/utils";
-import { attachMediaToPosts, buildImaginePrompt, pickListingMedia } from "@/lib/imagine-media";
+import {
+  attachMediaToPosts,
+  buildOverlayPrompt,
+  listingHasRealPhotos,
+  listingPhotoUrls,
+  pickListingMedia,
+} from "@/lib/imagine-media";
+import {
+  generateSocialImage,
+  startSocialVideo,
+  pollSocialVideoJob,
+} from "@/lib/social-media/generate-social";
 import { SOCIAL_NETWORKS, networkForPlatform } from "@/lib/social-accounts";
 import { Image as ImageIcon, Link2, Power } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -93,6 +105,16 @@ function MarketingPage() {
   const setSocialAutoPost = useAppStore((s) => s.setSocialAutoPost);
   const [handleDrafts, setHandleDrafts] = useState<Record<string, string>>({});
   const [imagineBusy, setImagineBusy] = useState(false);
+  const [socialPreset, setSocialPreset] = useState<"modern" | "classic">("modern");
+  const [selectedPhotoUrls, setSelectedPhotoUrls] = useState<string[]>([]);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoStage, setVideoStage] = useState<string | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<{
+    kind: "image" | "video";
+    url: string;
+    provider?: string;
+  } | null>(null);
 
   const book = useMemo(() => {
     const mine = myListings(properties);
@@ -153,6 +175,144 @@ function MarketingPage() {
   }, [campaigns, activePlan]);
 
   const property = properties.find((p) => p.id === propertyId);
+
+  useEffect(() => {
+    const urls = listingPhotoUrls(property);
+    setSelectedPhotoUrls(urls);
+    setPreviewMedia(null);
+    setVideoStage(null);
+  }, [property?.id, property?.photoUrls?.join("|"), property?.imageUrl]);
+
+  const hasRealPhotos = listingHasRealPhotos(property);
+
+  const listingFacts = useMemo(
+    () => ({
+      address: property?.address,
+      city: property?.city,
+      price: property?.price,
+      beds: property?.beds,
+      baths: property?.baths,
+      sqft: property?.sqft,
+      title: property?.title,
+    }),
+    [property],
+  );
+
+  const togglePhoto = (url: string) => {
+    setSelectedPhotoUrls((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url].slice(0, 3),
+    );
+  };
+
+  const handleGenerateImage = async () => {
+    if (!property || !hasRealPhotos) {
+      toast.error("Add at least one real listing photo to create media.");
+      return;
+    }
+    const photos = selectedPhotoUrls.length
+      ? selectedPhotoUrls
+      : listingPhotoUrls(property);
+    if (!photos.length) {
+      toast.error("Select at least one listing photo.");
+      return;
+    }
+    setImageBusy(true);
+    try {
+      const result = await generateSocialImage({
+        data: {
+          listingId: property.id,
+          preset: socialPreset,
+          photoUrls: photos.slice(0, 3),
+          facts: listingFacts,
+        },
+      });
+      setPreviewMedia({
+        kind: "image",
+        url: result.imageUrl,
+        provider: result.provider,
+      });
+      toast.success(
+        result.provider === "mock"
+          ? "Preview ready (mock mode — set XAI_API_KEY for live Grok Imagine)"
+          : "Social image ready",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Image generation failed";
+      toast.error(msg);
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!property || !hasRealPhotos) {
+      toast.error("Add at least one real listing photo to create media.");
+      return;
+    }
+    const photos = selectedPhotoUrls.length
+      ? selectedPhotoUrls
+      : listingPhotoUrls(property);
+    const photo = photos[0];
+    if (!photo) {
+      toast.error("Select at least one listing photo.");
+      return;
+    }
+    setVideoBusy(true);
+    setVideoStage("Preparing photos");
+    try {
+      const started = await startSocialVideo({
+        data: {
+          listingId: property.id,
+          preset: socialPreset,
+          photoUrl: photo,
+          facts: listingFacts,
+          duration: 6,
+        },
+      });
+      if (started.status === "completed" && started.videoUrl) {
+        setPreviewMedia({
+          kind: "video",
+          url: started.videoUrl,
+          provider: started.provider,
+        });
+        setVideoStage(null);
+        toast.success(
+          started.provider === "mock"
+            ? "Preview ready (mock mode — set XAI_API_KEY for live Grok Imagine)"
+            : "Social video ready",
+        );
+        return;
+      }
+      setVideoStage("Queued");
+      const jobId = started.jobId;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        setVideoStage(i < 2 ? "Queued" : "Rendering");
+        const polled = await pollSocialVideoJob({ data: { jobId } });
+        if (polled.status === "completed" && polled.videoUrl) {
+          setPreviewMedia({
+            kind: "video",
+            url: polled.videoUrl,
+            provider: started.provider,
+          });
+          setVideoStage(null);
+          toast.success("Social video ready");
+          return;
+        }
+        if (polled.status === "failed") {
+          throw new Error(polled.error || "Video render failed");
+        }
+      }
+      throw new Error("Video render timed out — try again");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Video generation failed";
+      toast.error(msg);
+      setVideoStage(null);
+    } finally {
+      setVideoBusy(false);
+    }
+  };
+
 
   const selectedPost = useMemo(() => {
     if (!activePlan || !selectedPostId) return activePlan?.posts[0] ?? null;
@@ -1025,100 +1185,200 @@ function MarketingPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ImageIcon className="h-4 w-4 text-[var(--color-primary)]" />
-                    Grok Imagine + listing photos
+                    Media Studio · one-click social
                   </CardTitle>
                   <CardDescription>
-                    AI picks photos from your website or MLS listing. When no photo
-                    exists, a Grok Imagine prompt is prepared for creative generation.
+                    Generate a ready-to-post image or short video from your real
+                    listing photos only. Grok Imagine overlays text or animates
+                    the photo — it never invents property imagery from facts.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {(() => {
-                    const pick = pickListingMedia(property, profile?.photoUrl);
-                    return (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
-                          {pick.imageUrl ? (
+                  {!hasRealPhotos ? (
+                    <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-4 text-sm text-[var(--color-fg-muted)]">
+                      Add at least one real listing photo to create media.
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
+                          Listing photos (max 3)
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {listingPhotoUrls(property).map((url) => {
+                            const selected = selectedPhotoUrls.includes(url);
+                            return (
+                              <button
+                                key={url}
+                                type="button"
+                                onClick={() => togglePhoto(url)}
+                                className={cn(
+                                  "relative h-16 w-16 overflow-hidden rounded-md ring-2 transition",
+                                  selected
+                                    ? "ring-[var(--color-primary)]"
+                                    : "ring-[var(--color-border)] opacity-70 hover:opacity-100",
+                                )}
+                              >
+                                <img
+                                  src={url}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                  crossOrigin="anonymous"
+                                />
+                                {selected && (
+                                  <span className="absolute right-0.5 top-0.5 rounded-full bg-[var(--color-primary)] p-0.5 text-white">
+                                    <Check className="h-3 w-3" />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
+                            Style
+                          </Label>
+                          <Select
+                            value={socialPreset}
+                            onValueChange={(v) =>
+                              setSocialPreset(v as "modern" | "classic")
+                            }
+                          >
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="modern">Modern</SelectItem>
+                              <SelectItem value="classic">Classic</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          disabled={imageBusy || videoBusy || selectedPhotoUrls.length === 0}
+                          onClick={handleGenerateImage}
+                          className="min-h-11"
+                        >
+                          {imageBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <ImageIcon className="h-4 w-4" />
+                          )}
+                          {imageBusy ? "Generating image…" : "Generate Social Image"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={imageBusy || videoBusy || selectedPhotoUrls.length === 0}
+                          onClick={handleGenerateVideo}
+                          className="min-h-11"
+                        >
+                          {videoBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Video className="h-4 w-4" />
+                          )}
+                          {videoBusy
+                            ? videoStage || "Rendering video…"
+                            : "Generate Social Video"}
+                        </Button>
+                      </div>
+
+                      {previewMedia && (
+                        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs text-[var(--color-fg-muted)]">
+                              Preview
+                              {previewMedia.provider
+                                ? ` · ${previewMedia.provider}`
+                                : ""}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                asChild
+                              >
+                                <a
+                                  href={previewMedia.url}
+                                  download
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  Download
+                                </a>
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setPreviewMedia(null)}
+                              >
+                                Close
+                              </Button>
+                            </div>
+                          </div>
+                          {previewMedia.kind === "image" ? (
                             <img
-                              src={pick.imageUrl}
-                              alt={property?.title || "Listing"}
-                              className="h-44 w-full object-cover"
+                              src={previewMedia.url}
+                              alt="Generated social image"
+                              className="max-h-80 w-full rounded-md object-contain"
                               crossOrigin="anonymous"
                             />
                           ) : (
-                            <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No website/MLS photo yet — Imagine will create from facts
-                            </div>
-                          )}
-                          <div className="p-3 text-xs text-[var(--color-fg-muted)]">
-                            Source: <strong className="text-[var(--color-fg)]">{pick.source}</strong>
-                            {" · "}
-                            {pick.reason}
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                            Imagine prompt
-                          </div>
-                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
-                            {pick.imaginePrompt}
-                          </pre>
-                          <Button
-                            className="min-h-[44px] w-full"
-                            disabled={!activePlan || imagineBusy}
-                            onClick={() => {
-                              if (!activePlan) {
-                                toast.message("Run the Content Agent first");
-                                return;
-                              }
-                              setImagineBusy(true);
-                              const prompt = buildImaginePrompt(property, pick.imageUrl ? "enhance" : "create");
-                              const next = {
-                                ...activePlan,
-                                posts: activePlan.posts.map((post) => ({
-                                  ...post,
-                                  imaginePrompt: prompt,
-                                  mediaSource: pick.imageUrl
-                                    ? (post.mediaSource ?? pick.source)
-                                    : ("imagine" as const),
-                                  imageUrl: pick.imageUrl || post.imageUrl,
-                                  visualBrief: pick.imageUrl
-                                    ? `${post.visualBrief} · AI-selected listing photo`
-                                    : `Grok Imagine · ${prompt.slice(0, 100)}…`,
-                                })),
-                              };
-                              saveCampaign(next);
-                              setActivePlan(next);
-                              setImagineBusy(false);
-                              toast.success(
-                                pick.imageUrl
-                                  ? "AI applied listing photos to this campaign"
-                                  : "Imagine prompts attached — generate creatives from the brief",
-                              );
-                            }}
-                          >
-                            <Sparkles className="h-4 w-4" />
-                            {property?.photoUrls?.length || property?.imageUrl
-                              ? "Use AI-picked listing photos"
-                              : "Attach Grok Imagine prompts"}
-                          </Button>
-                          {property?.photoUrls && property.photoUrls.length > 1 && (
-                            <div className="flex gap-2 overflow-x-auto pt-1">
-                              {property.photoUrls.slice(0, 6).map((url) => (
-                                <img
-                                  key={url}
-                                  src={url}
-                                  alt=""
-                                  className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-[var(--color-border)]"
-                                  crossOrigin="anonymous"
-                                />
-                              ))}
-                            </div>
+                            <video
+                              src={previewMedia.url}
+                              controls
+                              className="max-h-80 w-full rounded-md"
+                            />
                           )}
                         </div>
-                      </div>
-                    );
-                  })()}
+                      )}
+                    </>
+                  )}
+
+                  {hasRealPhotos && activePlan && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={imagineBusy}
+                      onClick={() => {
+                        if (!activePlan || !property) return;
+                        setImagineBusy(true);
+                        const pick = pickListingMedia(property, profile?.photoUrl);
+                        const next = {
+                          ...activePlan,
+                          posts: activePlan.posts.map((post) => ({
+                            ...post,
+                            imaginePrompt: buildOverlayPrompt(property, socialPreset),
+                            mediaSource: (post.mediaSource ?? pick.source) as
+                              | "mls"
+                              | "website"
+                              | "imagine"
+                              | "none",
+                            imageUrl: pick.imageUrl || post.imageUrl,
+                            visualBrief: `${post.visualBrief} · AI-selected listing photo`,
+                          })),
+                        };
+                        saveCampaign(next);
+                        setActivePlan(next);
+                        setImagineBusy(false);
+                        toast.success("Listing photos attached to campaign posts");
+                      }}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Attach selected photos to campaign
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
