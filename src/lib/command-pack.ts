@@ -187,9 +187,7 @@ export function buildCommandPack(
       cma.headline,
       cma.subjectSummary,
       "",
-      `Suggested list: ${formatCurrency(cma.suggestedList)}`,
-      "",
-      "Comps:",
+      "Browser-saved comparison set (not verified Closed/Sold comps):",
       ...cma.comps.map(
         (c) =>
           `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · ${c.adj}`,
@@ -205,11 +203,11 @@ export function buildCommandPack(
     artifacts.push({
       id: "cma",
       kind: "cma",
-      title: "CMA snapshot",
-      summary: `${subjectProperty.neighborhood} · suggest ${formatCurrency(cma.suggestedList)}`,
+      title: "Comparison planning snapshot",
+      summary: `${subjectProperty.neighborhood} · ${cma.comps.length} unverified workspace record${cma.comps.length === 1 ? "" : "s"}`,
       body: cmaBody,
       href: "/cma",
-      hrefLabel: "Open CMA Studio",
+      hrefLabel: "Open comparison planning",
     });
   }
 
