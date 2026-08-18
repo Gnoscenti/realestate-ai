@@ -19,6 +19,9 @@ import {
 } from "../../src/lib/workspaces/repository.server";
 
 function mockProviders() {
+  const fixtureId = randomUUID().replaceAll("-", "");
+  const phoneSeed =
+    (Number.parseInt(fixtureId.slice(0, 8), 16) % 9_000_000) + 1_000_000;
   const calls = {
     createAgent: [] as VoiceRuntimeAgentInput[],
     llmInputs: [] as VoiceRuntimeAgentInput[],
@@ -95,17 +98,20 @@ function mockProviders() {
       telephony: {
         async reserveLocalNumber(input: { idempotencyKey: string }) {
           calls.reserveKeys.push(input.idempotencyKey);
+          const subscriber = String(
+            (phoneSeed + calls.reserveKeys.length - 1) % 10_000_000,
+          ).padStart(7, "0");
           return {
-            e164: `+1503555${String(calls.reserveKeys.length).padStart(4, "0")}`,
-            phoneNumberSid: `PN${calls.reserveKeys.length}`,
+            e164: `+1503${subscriber}`,
+            phoneNumberSid: `PN${fixtureId}${calls.reserveKeys.length}`,
           };
         },
         async configureRetellSipRouting(): Promise<SipRoutingResult> {
           calls.configure += 1;
           return {
-            trunkSid: "TK1",
-            terminationUri: "cloud.pstn.twilio.com",
-            originationUrlSid: "OU1",
+            trunkSid: `TK${fixtureId}`,
+            terminationUri: `${fixtureId}.pstn.twilio.com`,
+            originationUrlSid: `OU${fixtureId}`,
           };
         },
         async releaseNumber() {
