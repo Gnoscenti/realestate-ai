@@ -63,7 +63,7 @@ const VALUATION_PATTERNS = [
   /\bwhat\s+(?:number|figure)\s+.{0,40}\b(?:sign|listing|market)\b/i,
   /\bwhere\s+(?:would|should|could)\s+(?:you|we|i)\s+start.{0,40}\b(?:price|listing|sign|offer)\b/i,
   /\b(?:what|which|how\s+much)\s+(?:discount|premium|percentage|percent)\b.{0,60}\b(?:ask|asking|list|listing|price)\b/i,
-  /\b(?:discount|premium|above|below|off)\b.{0,50}\b(?:ask|asking|list|listing|price)\b/i,
+  /\b(?:discount|premium|above|below|over|under|higher|lower|off)\b.{0,50}\b(?:ask|asking|list|listing|price)\b/i,
 ];
 
 const SOLD_RECORD_BROWSE_PATTERNS = [
@@ -121,6 +121,7 @@ export function buildAssistantPolicySystemPrompt(): string {
     "Never describe public internet information as MLS data, verified sold records, comparable sales, or a licensed feed.",
     "Do not claim that web search ran. This request has no public-web-search tool.",
     "Closed/Sold rows in the data message may be displayed only as unranked source records. Do not call them comps, select or rank them, calculate price-per-square-foot conclusions, or recommend a price, value, offer, or range.",
+    "Do not recommend a discount, premium, or percentage above, below, over, under, higher, lower, or off an asking, listing, or offer price.",
     "Do not provide appraisal, legal, tax, lending, fair-housing, or safety conclusions. State limits and recommend appropriate licensed review.",
     "Follow fair-housing law: discuss objective property and transaction criteria, never protected-class targeting or neighborhood steering.",
   ].join("\n");
@@ -193,13 +194,16 @@ export function buildAssistantWorkspaceData(
  * is rendered deterministically without a model. */
 export function containsProhibitedValuationClaim(answer: string): boolean {
   const numeric =
-    "(?:\\d{1,3}(?:,\\d{3})+|\\d{5,}|\\d+(?:\\.\\d+)?\\s*(?:k|m|million)|(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)|\\d+(?:\\.\\d+)?)\\s*(?:%|percent(?:age)?))";
+    "(?:\\d{1,3}(?:,\\d{3})+|\\d{5,}|\\d+(?:\\.\\d+)?\\s*(?:k|m|million))";
   const valuation =
-    "(?:price|valu(?:e|ed|ation)|worth|offer|range|defensible|recommend(?:ed)?|start\\s+at|put\\s+on\\s+the\\s+sign|position(?:ed|ing)?)";
+    "(?:price|ask(?:ing)?|list(?:ing)?|valu(?:e|ed|ation)|worth|offer|range|discount|premium|above|below|over|under|higher|lower|defensible|recommend(?:ed)?|suggest(?:ed)?|start\\s+at|put\\s+on\\s+the\\s+sign|position(?:ed|ing)?)";
+  const percentage = "(?:%|percent(?:age)?|per\\s+cent)";
   return [
     /\$\s*\d/i,
     /\b(?:usd|dollars?)\b/i,
     new RegExp(`${valuation}[^\\n]{0,60}${numeric}`, "i"),
     new RegExp(`${numeric}[^\\n]{0,60}${valuation}`, "i"),
+    new RegExp(`${valuation}[^\\n]{0,60}${percentage}`, "i"),
+    new RegExp(`${percentage}[^\\n]{0,60}${valuation}`, "i"),
   ].some((pattern) => pattern.test(answer));
 }

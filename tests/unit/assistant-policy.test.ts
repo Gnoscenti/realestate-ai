@@ -67,6 +67,8 @@ describe("assistant valuation policy", () => {
     "Where should we start on price?",
     "What discount from current ask would you choose?",
     "Should we start five percent below the asking price?",
+    "Would you go 5% over ask?",
+    "Should I come in ten percent under list?",
   ])("recognizes a value or comp request: %s", (question) => {
     expect(isPropertyValuationRequest(question)).toBe(true);
   });
@@ -152,6 +154,8 @@ describe("assistant output guard", () => {
     "Between $750,000 and $800,000 would position it well.",
     "I would start 5% below the current asking price.",
     "A five percent premium over list is defensible.",
+    "I recommend thirteen percent below asking.",
+    "I suggest eight per cent under ask.",
   ])("blocks a generated numeric value: %s", (answer) => {
     expect(containsProhibitedValuationClaim(answer)).toBe(true);
   });
