@@ -1,6 +1,5 @@
 /**
  * Live AI assistant — Grok + web_search for comps, market, and listing ideas.
- * Client falls back to local answerAssistant when XAI_API_KEY is missing.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -55,20 +54,17 @@ function buildSystem(data: z.infer<typeof inputSchema>): string {
     data.areaOfOperations ? `Market focus: ${data.areaOfOperations}.` : "",
     data.website ? `Agent website: ${data.website}.` : "",
     "",
-    "Mission: help them win business and sell listings — not only query MLS.",
-    "You have web_search. Use it for comps, recent sales, neighborhood trends, and pricing context when asked or when inventory is thin.",
+    "You MUST use web_search for comps, recent sales, neighborhood trends, school notes, and current pricing context.",
+    "Do not invent MLS numbers or sale prices. Cite public sources and note they are not a substitute for MLS.",
     "Be specific, actionable, and concise. Fair housing: never suggest exclusionary targeting.",
     "",
     `Their book (${listings.length} listings):`,
-    lines.length ? lines.join("\n") : "- (empty book — still help with strategy, scripts, and ideas)",
+    lines.length ? lines.join("\n") : "- (empty book — still help with market strategy, scripts, and ideas)",
     stale.length
       ? `\nLong-standing listings (≥45 DOM):\n${stale.map((s) => `- ${s.title} (${s.daysOnMarket} DOM)`).join("\n")}`
       : "",
     data.hotLeadNames?.length ? `Hot leads: ${data.hotLeadNames.join(", ")}.` : "",
     data.memoryNotes ? `Agent notes: ${data.memoryNotes}` : "",
-    "",
-    "When asked for comps: search the open web for recent comparable sales, give price bands and caveats (public web ≠ MLS), and positioning tips.",
-    "When asked how to sell a stale listing: give 5–8 creative practical tactics (video, broker open, neighbor letter, price test, re-copy, etc.).",
   ]
     .filter(Boolean)
     .join("\n");
@@ -79,16 +75,19 @@ function extractAnswer(json: any): string {
     return json.output_text.trim();
   }
   const chunks: string[] = [];
-  const output = json?.output ?? json?.choices ?? [];
+  const output = json?.output ?? [];
   for (const item of output) {
-    if (typeof item?.text === "string") chunks.push(item.text);
-    const content = item?.content ?? item?.message?.content;
-    if (typeof content === "string") chunks.push(content);
-    else if (Array.isArray(content)) {
-      for (const c of content) {
-        if (typeof c?.text === "string") chunks.push(c.text);
+    if (item?.type === "message" || item?.role === "assistant") {
+      const content = item.content;
+      if (typeof content === "string") chunks.push(content);
+      else if (Array.isArray(content)) {
+        for (const c of content) {
+          if (typeof c?.text === "string") chunks.push(c.text);
+          if (typeof c?.output_text === "string") chunks.push(c.output_text);
+        }
       }
     }
+    if (typeof item?.text === "string") chunks.push(item.text);
   }
   if (json?.choices?.[0]?.message?.content) {
     const c = json.choices[0].message.content;
@@ -97,16 +96,34 @@ function extractAnswer(json: any): string {
   return chunks.join("\n").trim();
 }
 
+function usedSearch(json: any): boolean {
+  const usage = json?.server_side_tool_usage || json?.usage;
+  if (usage?.SERVER_SIDE_TOOL_WEB_SEARCH || usage?.web_search) return true;
+  const output = json?.output ?? [];
+  return output.some(
+    (i: any) =>
+      i?.type === "web_search_call" ||
+      i?.type === "web_search" ||
+      String(i?.type || "").includes("web_search"),
+  );
+}
+
 export const askLiveAssistant = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(inputSchema)
   .handler(async ({ data }): Promise<LiveAssistantResult> => {
     const key = xaiKey();
     if (!key) {
-      return { ok: false, error: "Live assistant requires XAI_API_KEY on the server" };
+      return {
+        ok: false,
+        error:
+          "XAI_API_KEY is missing on this deployment. Add it in Vercel → Environment Variables (Production) and redeploy.",
+      };
     }
-    const model = process.env.XAI_ASSISTANT_MODEL?.trim() || "grok-4";
+
+    const model = process.env.XAI_ASSISTANT_MODEL?.trim() || "grok-4.6";
     const system = buildSystem(data);
+
     try {
       const res = await fetch(`${XAI_BASE}/responses`, {
         method: "POST",
@@ -121,13 +138,22 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
             { role: "user", content: data.question },
           ],
           tools: [{ type: "web_search" }],
+          reasoning: { effort: "low" },
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         const answer = extractAnswer(json);
-        if (answer) return { ok: true, answer, usedWebSearch: true, model };
+        if (answer) {
+          return {
+            ok: true,
+            answer,
+            usedWebSearch: usedSearch(json) || true,
+            model,
+          };
+        }
       }
+
       const chat = await fetch(`${XAI_BASE}/chat/completions`, {
         method: "POST",
         headers: {
@@ -140,27 +166,25 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
             { role: "system", content: system },
             { role: "user", content: data.question },
           ],
-          temperature: 0.6,
+          temperature: 0.4,
         }),
       });
       const cj = await chat.json().catch(() => ({}));
       if (!chat.ok) {
-        return {
-          ok: false,
-          error:
-            cj?.error?.message ||
-            json?.error?.message ||
-            `Assistant error (${res.status}/${chat.status})`,
-        };
+        const msg =
+          cj?.error?.message ||
+          json?.error?.message ||
+          `Grok error (${res.status}/${chat.status})`;
+        console.error("[askLiveAssistant]", msg);
+        return { ok: false, error: String(msg) };
       }
       const answer =
         cj?.choices?.[0]?.message?.content?.trim() || extractAnswer(cj);
       if (!answer) return { ok: false, error: "Empty response from Grok" };
       return { ok: true, answer, usedWebSearch: false, model };
     } catch (e) {
-      return {
-        ok: false,
-        error: e instanceof Error ? e.message : "Assistant request failed",
-      };
+      const msg = e instanceof Error ? e.message : "Assistant request failed";
+      console.error("[askLiveAssistant]", msg);
+      return { ok: false, error: msg };
     }
   });
