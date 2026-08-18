@@ -271,14 +271,14 @@ function MarketingPage() {
       });
       if (started.status === "completed" && started.videoUrl) {
         setPreviewMedia({
-          kind: "video",
+          kind: started.provider === "mock" ? "image" : "video",
           url: started.videoUrl,
           provider: started.provider,
         });
         setVideoStage(null);
         toast.success(
           started.provider === "mock"
-            ? "Preview ready (mock mode — set XAI_API_KEY for live Grok Imagine)"
+            ? "Preview ready (mock mode — returns the source photo; set XAI_API_KEY for live Grok Imagine video)"
             : "Social video ready",
         );
         return;
