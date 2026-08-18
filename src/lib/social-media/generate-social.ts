@@ -5,6 +5,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { SEED_PROPERTIES } from "@/data/seed";
+import { listingPhotoUrls } from "@/lib/imagine-media";
 
 const presetSchema = z.enum(["modern", "classic"]);
 
@@ -37,11 +39,31 @@ const videoPollSchema = z.object({
   jobId: z.string().min(1).max(200),
 });
 
+/**
+ * Assert that every URL in `urls` is part of the listing's own media.
+ * Throws if the listing is not found or if any URL is not in the listing's gallery.
+ */
+function assertUrlsOwnedByListing(listingId: string, urls: string[]): void {
+  const listing = SEED_PROPERTIES.find((p) => p.id === listingId);
+  if (!listing) {
+    throw new Error("Listing not found");
+  }
+  const allowed = new Set(listingPhotoUrls(listing));
+  for (const url of urls) {
+    if (!allowed.has(url)) {
+      throw new Error(
+        "One or more photo URLs do not belong to the specified listing",
+      );
+    }
+  }
+}
+
 export const generateSocialImage = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(imageInputSchema)
   .handler(async ({ data, context }) => {
     void context.userId;
+    assertUrlsOwnedByListing(data.listingId, data.photoUrls);
     const { generateSocialImageFromPhoto } = await import(
       "@/lib/social-media/grok-imagine.server"
     );
@@ -57,6 +79,7 @@ export const startSocialVideo = createServerFn({ method: "POST" })
   .validator(videoStartSchema)
   .handler(async ({ data, context }) => {
     void context.userId;
+    assertUrlsOwnedByListing(data.listingId, [data.photoUrl]);
     const { startSocialVideoFromPhoto } = await import(
       "@/lib/social-media/grok-imagine.server"
     );
