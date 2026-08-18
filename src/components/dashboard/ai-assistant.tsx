@@ -10,7 +10,6 @@ import {
   BookOpen,
   Brain,
   Calendar,
-  Wrench,
 } from "lucide-react";
 import {
   Card,
@@ -28,9 +27,16 @@ import { cn } from "@/lib/utils";
 
 const QUICK = [
   {
-    label: "Calendar",
-    icon: Calendar,
-    query: "What's on my calendar and what reminders did AI pick up?",
+    label: "Comps search",
+    icon: TrendingUp,
+    query:
+      "Search recent comparable sales near my market and tell me how to price/position an active listing. Use the web.",
+  },
+  {
+    label: "Sell stale listing",
+    icon: Sparkles,
+    query:
+      "Give me creative, practical ideas to sell my longest-standing active listings — fresh marketing angles, not generic advice.",
   },
   {
     label: "Who needs a reply?",
@@ -38,29 +44,24 @@ const QUICK = [
     query: "Who needs an instant response right now for speed-to-lead?",
   },
   {
-    label: "Termite vendor",
-    icon: Wrench,
-    query: "Who's on my commonly used termite contractor list?",
-  },
-  {
     label: "Top leads",
     icon: Users,
     query: "Analyze my top leads and suggest next actions",
   },
   {
-    label: "RSF comps",
-    icon: BookOpen,
-    query: "Covenant vs Bridges comps rules for Rancho Santa Fe",
+    label: "Calendar",
+    icon: Calendar,
+    query: "What's on my calendar and what reminders did AI pick up?",
   },
   {
     label: "CMA help",
-    icon: TrendingUp,
-    query: "How do I build a CMA and pricing strategy?",
+    icon: BookOpen,
+    query: "How do I build a CMA and pricing strategy for a listing that has sat?",
   },
   {
     label: "Inventory",
     icon: Home,
-    query: "Show me luxury estates in Rancho Santa Fe",
+    query: "Summarize my active listings and who they are best for",
   },
   {
     label: "About me",
@@ -78,8 +79,6 @@ export function AIAssistant({ className }: { className?: string }) {
   const rentals = useAppStore((s) => s.rentals);
   const profile = useAppStore((s) => s.agentProfile);
   const memory = useAppStore((s) => s.agentMemory);
-  const appointments = useAppStore((s) => s.appointments);
-  const contractors = useAppStore((s) => s.contractors);
   const recordSignal = useAppStore((s) => s.recordSignal);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -95,20 +94,62 @@ export function AIAssistant({ className }: { className?: string }) {
     setInput("");
     pushChat({ role: "user", content: q });
     setThinking(true);
-    await new Promise((r) => setTimeout(r, 450 + Math.random() * 400));
     const mem = useAppStore.getState().agentMemory;
     const apts = useAppStore.getState().appointments;
     const ctrs = useAppStore.getState().contractors;
-    const reply = answerAssistant(q, {
-      leads,
-      properties,
-      deals,
-      rentals,
-      profile,
-      memory: mem,
-      appointments: apts,
-      contractors: ctrs,
-    });
+
+    let reply: string | null = null;
+    try {
+      const { askLiveAssistant } = await import("@/lib/assistant-api");
+      const live = await askLiveAssistant({
+        data: {
+          question: q,
+          profileName: profile?.name,
+          areaOfOperations: profile?.areaOfOperations,
+          website: profile?.website,
+          listings: properties.slice(0, 15).map((p) => ({
+            title: p.title,
+            address: p.address,
+            city: p.city,
+            neighborhood: p.neighborhood,
+            price: p.price,
+            beds: p.beds,
+            baths: p.baths,
+            sqft: p.sqft,
+            daysOnMarket: p.daysOnMarket,
+            status: p.status,
+            features: p.features?.slice(0, 6),
+          })),
+          hotLeadNames: leads
+            .filter((l) => l.heat === "hot")
+            .slice(0, 8)
+            .map((l) => l.name),
+          memoryNotes: mem?.learnedFacts?.slice(0, 8).join("; "),
+        },
+      });
+      if (live.ok) {
+        reply = live.usedWebSearch
+          ? `${live.answer}\n\n— _Live web-connected assistant_`
+          : live.answer;
+      }
+    } catch {
+      /* local fallback */
+    }
+
+    if (!reply) {
+      await new Promise((r) => setTimeout(r, 350 + Math.random() * 250));
+      reply = answerAssistant(q, {
+        leads,
+        properties,
+        deals,
+        rentals,
+        profile,
+        memory: mem,
+        appointments: apts,
+        contractors: ctrs,
+      });
+    }
+
     pushChat({ role: "assistant", content: reply });
     setThinking(false);
   };
@@ -186,7 +227,7 @@ export function AIAssistant({ className }: { className?: string }) {
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-muted)]">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent" />
-                    Thinking with calendar + memory…
+                    Thinking — web + your book…
                   </span>
                 </div>
               </div>
@@ -222,7 +263,7 @@ export function AIAssistant({ className }: { className?: string }) {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Calendar, contractors, RSF, or “remember that …”"
+            placeholder="Ask for comps, sell ideas, calendar, or “remember that …”"
             disabled={thinking}
             className="flex-1"
           />
