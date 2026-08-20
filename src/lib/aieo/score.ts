@@ -23,7 +23,13 @@ function grade(total: number): AieoScore["grade"] {
 }
 
 function activeBook(properties: Property[] = []): Property[] {
-  return properties.filter((p) => p.status === "active" || !p.status);
+  return properties.filter(
+    (p) =>
+      (p.status === "active" || !p.status) &&
+      (p.listingSide === "mine" ||
+        p.listingSide === undefined ||
+        p.listingSide === null),
+  );
 }
 
 function scoreEntity(profile?: AgentProfile | null) {
@@ -56,7 +62,7 @@ function scoreAnswers(profile?: AgentProfile | null, properties: Property[] = []
 }
 
 function scoreEvidence(properties: Property[] = []) {
-  const book = activeBook(properties);
+  const book = properties;
   const gaps: AieoGap[] = [];
   if (!book.length) {
     gaps.push({ pillar: "evidence", severity: "high", issue: "No active listings", fix: "Scan website or connect MLS." });
@@ -94,7 +100,7 @@ function scoreVoice(profile?: AgentProfile | null, voice?: string) {
   let score = 3;
   const gaps: AieoGap[] = [];
   if (voice && voice.length > 8) score += 5;
-  if (profile?.bio && /I |we |our /i.test(profile.bio)) score += 4;
+  if (profile?.bio && /\b(?:i|me|my|mine|we|us|our|ours)\b/i.test(profile.bio)) score += 4;
   else gaps.push({ pillar: "voice", severity: "low", issue: "Voice is generic", fix: "Train brand voice from 3 of your best listing emails." });
   return { score: Math.min(PILLAR_MAX.voice, score), note: "Distinctive voice models won't flatten", gaps };
 }
@@ -115,7 +121,7 @@ function buildFaqs(profile?: AgentProfile | null, properties: Property[] = []): 
   const area = profile?.areaOfOperations || "this market";
   const name = profile?.name || "your local agent";
   const brokerage = profile?.brokerage ? ` with ${profile.brokerage}` : "";
-  const book = activeBook(properties);
+  const book = properties;
   const sample = book[0];
   const faqs: AieoFaq[] = [
     {
@@ -143,7 +149,7 @@ function buildFaqs(profile?: AgentProfile | null, properties: Property[] = []): 
 }
 
 export function scoreAieo(input: AieoInput): AieoScore {
-  const properties = input.properties ?? [];
+  const properties = activeBook(input.properties ?? []);
   const entity = scoreEntity(input.profile);
   const answers = scoreAnswers(input.profile, properties);
   const evidence = scoreEvidence(properties);
@@ -159,10 +165,22 @@ export function scoreAieo(input: AieoInput): AieoScore {
     local: { score: local.score, max: PILLAR_MAX.local, note: local.note },
   };
   const total = Object.values(pillars).reduce((s, p) => s + p.score, 0);
-  const gaps = [...entity.gaps, ...answers.gaps, ...evidence.gaps, ...freshness.gaps, ...voice.gaps, ...local.gaps];
+  const severityRank: Record<AieoGap["severity"], number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  };
+  const gaps = [
+    ...entity.gaps,
+    ...answers.gaps,
+    ...evidence.gaps,
+    ...freshness.gaps,
+    ...voice.gaps,
+    ...local.gaps,
+  ].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
   const name = input.profile?.name || "This agent";
   const area = input.profile?.areaOfOperations || "their market";
-  const book = activeBook(properties);
+  const book = properties;
   return {
     total,
     grade: grade(total),
@@ -183,12 +201,13 @@ export function scoreAieo(input: AieoInput): AieoScore {
       const loc = [p.neighborhood, p.city].filter(Boolean).join(", ");
       const feats = (p.features || []).slice(0, 3).join(", ");
       return {
+        id: p.id,
         title: p.title,
         blurb: `${p.title} is an active ${p.beds || ""}bd home in ${loc || "this market"}${p.price ? ` listed at $${p.price.toLocaleString()}` : ""}${p.mlsNumber ? ` (MLS ${p.mlsNumber})` : ""}${feats ? `. Highlights: ${feats}` : ""}. Tour by appointment.`,
       };
     }),
     brandVoiceCard: [`Voice: ${input.voice || "not trained"}`, `Agent: ${name}`, `Market: ${area}`, "Never invent property photos or MLS numbers."].join("\n"),
-    summary: `${name} scores ${total}/100 (grade ${grade(total)}) for AI citation in ${area}. ${gaps[0] ? `First fix: ${gaps[0].fix}` : "Citation-ready."}`,
+    summary: `${name} scores ${total}/100 (grade ${grade(total)}) for AI citation readiness in ${area}. ${gaps[0] ? `First fix: ${gaps[0].fix}` : "Citation-ready."}`,
   };
 }
 

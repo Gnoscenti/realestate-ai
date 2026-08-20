@@ -19,28 +19,34 @@ export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }
 
   const applyUrl = (url: string, prompt: string, kind: "image" | "video") => {
     if (!activePlan) {
-      toast.success(kind === "image" ? "Social image ready" : "Social video ready");
+      toast.message("Run the Content Agent first");
       return;
     }
     const next = {
       ...activePlan,
       posts: activePlan.posts.map((post) => ({
         ...post,
-        imageUrl: url,
+        ...(kind === "image"
+          ? { imageUrl: url, videoUrl: undefined }
+          : { videoUrl: url }),
         mediaSource: "imagine" as const,
         imaginePrompt: prompt,
         visualBrief: `Grok Imagine ${kind} · ${property?.title || "listing"}`,
       })),
     };
     onPlan(next);
-    toast.success(kind === "image" ? "Social image applied to campaign" : "Social video applied to campaign");
+    toast.success(
+      kind === "image"
+        ? "Social image applied to campaign"
+        : "Social video applied to campaign",
+    );
   };
 
   return (
     <div className="grid gap-2">
       <Button
         className="min-h-[44px] w-full"
-        disabled={!hasPhoto || busy}
+        disabled={!hasPhoto || !activePlan || busy}
         onClick={() => {
           void (async () => {
             if (!imageUrl) {
@@ -82,7 +88,7 @@ export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }
       <Button
         className="min-h-[44px] w-full"
         variant="outline"
-        disabled={!hasPhoto || busy}
+        disabled={!hasPhoto || !activePlan || busy}
         onClick={() => {
           void (async () => {
             if (!imageUrl) {
@@ -92,7 +98,7 @@ export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }
             setBusy(true);
             try {
               const { generateVideo } = await import("@/lib/imagine-api");
-              const prompt = buildImaginePrompt(property, "enhance");
+              const prompt = buildImaginePrompt(property, "video");
               const res = await generateVideo({
                 data: {
                   prompt: `${prompt}\nShort social motion, elegant, no text distortion.`,
@@ -120,6 +126,11 @@ export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }
       {!hasPhoto && (
         <p className="text-[11px] text-[var(--color-fg-muted)]">
           Scan MLS Hub / website for real photos first. We never invent property imagery.
+        </p>
+      )}
+      {hasPhoto && !activePlan && (
+        <p className="text-[11px] text-[var(--color-fg-muted)]">
+          Run the Content Agent first so generated media has a campaign to update.
         </p>
       )}
     </div>

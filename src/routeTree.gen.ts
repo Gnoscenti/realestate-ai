@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AieoRouteImport } from './routes/aieo'
 import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as CalendarRouteImport } from './routes/calendar'
@@ -36,6 +37,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AieoRoute = AieoRouteImport.update({
+  id: '/aieo',
+  path: '/aieo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AlertsRoute = AlertsRouteImport.update({
@@ -122,6 +128,7 @@ const TransactionsRoute = TransactionsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
@@ -142,6 +149,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/api/auth/$'
     | '/'
+    | '/aieo'
     | '/alerts'
     | '/billing'
     | '/calendar'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
   to:
     | '/api/auth/$'
     | '/'
+    | '/aieo'
     | '/alerts'
     | '/billing'
     | '/calendar'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/api/auth/$'
     | '/'
+    | '/aieo'
     | '/alerts'
     | '/billing'
     | '/calendar'
@@ -246,6 +258,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   IndexRoute: typeof IndexRoute
+  AieoRoute: typeof AieoRoute
   AlertsRoute: typeof AlertsRoute
   BillingRoute: typeof BillingRoute
   CalendarRoute: typeof CalendarRoute
@@ -278,6 +291,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aieo': {
+      id: '/aieo'
+      path: '/aieo'
+      fullPath: '/aieo'
+      preLoaderRoute: typeof AieoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/alerts': {
@@ -398,6 +418,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   IndexRoute: IndexRoute,
+  AieoRoute: AieoRoute,
   AlertsRoute: AlertsRoute,
   BillingRoute: BillingRoute,
   CalendarRoute: CalendarRoute,

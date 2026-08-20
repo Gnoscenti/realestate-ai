@@ -55,4 +55,33 @@ describe("CiteLock AIEO", () => {
     expect(s.gaps.some((g) => /photo/i.test(g.issue))).toBe(true);
     expect(s.total).toBeLessThan(70);
   });
+  it("does not count third-person words as first-person brand voice", () => {
+    const s = scoreAieo({
+      profile: {
+        ...profile,
+        bio: "Your local guide for carefully priced homes and evidence-based advice.",
+      },
+      properties: [],
+    });
+    expect(s.pillars.voice.score).toBe(3);
+  });
+
+  it("uses only owned or legacy active listings as represented inventory", () => {
+    const s = scoreAieo({
+      profile,
+      properties: [
+        listing({ id: "mine", listingSide: "mine" }),
+        listing({ id: "legacy", listingSide: undefined }),
+        listing({ id: "office", listingSide: "office" }),
+        listing({ id: "market", listingSide: "market" }),
+        listing({ id: "pending", listingSide: "mine", status: "pending" }),
+        listing({ id: "sold", listingSide: "mine", status: "sold" }),
+      ],
+    });
+    expect(s.listingBlurbs.map((b) => b.id)).toEqual(["mine", "legacy"]);
+    const inventoryFaq = s.faqs.find((f) =>
+      f.question.startsWith("What homes are for sale"),
+    );
+    expect(inventoryFaq?.answer).toContain("2 active listings");
+  });
 });

@@ -27,7 +27,7 @@ export type AieoScore = {
   gaps: AieoGap[];
   faqs: AieoFaq[];
   jsonLd: Record<string, unknown>;
-  listingBlurbs: { title: string; blurb: string }[];
+  listingBlurbs: { id: string; title: string; blurb: string }[];
   brandVoiceCard: string;
   summary: string;
 };
@@ -36,5 +36,4 @@ export type AieoInput = {
   profile?: AgentProfile | null;
   properties?: Property[];
   voice?: string;
-  scrapedSummary?: string;
 };

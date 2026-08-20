@@ -31,7 +31,6 @@ function AieoPage() {
         profile,
         properties,
         voice: memory?.preferredVoice,
-        scrapedSummary: profile?.websiteScrapeSummary,
       }),
     [profile, properties, memory?.preferredVoice],
   );
@@ -54,11 +53,12 @@ function AieoPage() {
             CiteLock™ AIEO
           </Badge>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            Get cited by Grok, ChatGPT, and Perplexity
+            Build a citation-ready real estate presence
           </h1>
           <p className="max-w-2xl text-sm text-[var(--color-fg-muted)]">
-            Realtor-specific AI-engine optimization. Scores entity lock, answer
-            coverage, real photos, and local authority — never invents listings.
+            A deterministic readiness heuristic for entity clarity, answer
+            coverage, real evidence, freshness, voice, and local authority. It
+            does not measure live model indexing or guarantee citations.
           </p>
         </div>
       </div>
@@ -183,7 +183,7 @@ function AieoPage() {
         <CardContent className="grid gap-3 md:grid-cols-2">
           {report.listingBlurbs.length ? (
             report.listingBlurbs.map((b) => (
-              <div key={b.title} className={cn("rounded-[var(--radius-md)] border border-[var(--color-border)] p-3")}>
+              <div key={b.id} className={cn("rounded-[var(--radius-md)] border border-[var(--color-border)] p-3")}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-sm font-medium">{b.title}</div>
                   <Button size="sm" variant="ghost" onClick={() => copy(b.blurb, "Blurb")}>
