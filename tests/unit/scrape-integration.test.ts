@@ -25,15 +25,16 @@ describe("scrapeRealtorWebsite (integration)", () => {
 
     expect(result.ok).toBe(true);
     expect(result.profile.name).toBe("Morgan Hale");
-    expect(result.profile.mlsNumber || result.profile.license).toBe("01888777");
     expect(result.siteAudit?.homePage.serverRenderedIdentity).toBe(true);
 
     // The mock deliberately uses Schema.org RealEstateAgent, an organization
-    // subtype, rather than a Person node. Its contact fields must not be
-    // rebound to the person merely because the page title names Morgan.
+    // subtype, rather than a Person node. Its contact and credential fields
+    // must not be rebound to the person merely because the page title names
+    // Morgan; the submitted license is verified through the regulator path.
     expect(result.profile.phone).toBeUndefined();
     expect(result.profile.photoUrl).toBeUndefined();
     expect(result.profile.email).toBeUndefined();
+    expect(result.profile.license).toBeUndefined();
 
     expect(result.listings.length).toBeGreaterThanOrEqual(3);
     const prices = result.listings.map((listing) => listing.price);
