@@ -584,7 +584,7 @@ export function scoreAieo(input: AieoInput): AieoScore {
 
   const actions: CiteAction[] = rules
     .filter((item) => item.earned < item.max)
-    .map((item) => ({
+    .map<CiteAction>((item) => ({
       id: `action:${item.id}`,
       pillar: item.pillar,
       severity: gates.some((gate) => gate.status === "block" && gate.id.includes(item.pillar)) ? "blocking" : item.max - item.earned >= 5 ? "high" : item.max - item.earned >= 3 ? "medium" : "low",
