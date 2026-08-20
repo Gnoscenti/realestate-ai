@@ -18,7 +18,7 @@ test.describe("onboarding website scrape", () => {
     await site.close();
   });
 
-  test("scans agent website and loads real listings (no seed clients)", async ({
+  test("loads listings without binding organization contacts to the person", async ({
     page,
   }) => {
     await resetApp(page);
@@ -30,19 +30,22 @@ test.describe("onboarding website scrape", () => {
       brokerage: "Compass",
     });
 
-    // Final step: scan site
+    // The fixture intentionally exposes an organization-typed RealEstateAgent.
+    // Listings remain usable, but its contact fields are not Person evidence.
     await page.getByRole("button", { name: /Scan website/i }).click();
     await expect(page.getByText(/listing\(s\)/i)).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/555|858/).first()).toBeVisible();
+    await expect(
+      page.getByText(/\(858\) 555-0142|8585550142/),
+    ).toHaveCount(0);
 
     await page.getByRole("button", { name: /Launch workspace/i }).click();
     await unlockWithBetaCode(page);
 
-    await expect(page.getByText(/Command Center|Action Desk/i).first()).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByText(/Command Center|Action Desk/i).first(),
+    ).toBeVisible({ timeout: 20_000 });
 
     const state = await readWorkspaceState(page);
     expect(state).toBeTruthy();
@@ -50,7 +53,8 @@ test.describe("onboarding website scrape", () => {
     expect(state!.seedLeads).toBe(false);
     expect(state!.props).toBeGreaterThanOrEqual(2);
     expect(state!.leads).toBe(0);
-    expect(state!.phone || state!.photo).toBeTruthy();
+    expect(state!.phone).toBeFalsy();
+    expect(state!.photo).toBeFalsy();
     expect(state!.source).toBe("website");
   });
 });
