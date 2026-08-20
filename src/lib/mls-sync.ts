@@ -2,6 +2,7 @@
  * RESO-ish listing mapping + query builders for multi-platform MLS sync.
  */
 import type { Property } from "@/data/seed";
+import type { CiteProperty } from "@/lib/aieo/provenance";
 import type { MlsPlatformId } from "@/lib/mls-platforms";
 import { uid } from "@/lib/utils";
 
@@ -61,6 +62,22 @@ function mapType(raw: string): Property["type"] {
   return "house";
 }
 
+function normalizeAgentName(value: string): string {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+function exactAgentNameMatch(sourceName: string, expectedName?: string): boolean {
+  if (!sourceName || !expectedName) return false;
+  return normalizeAgentName(sourceName) === normalizeAgentName(expectedName);
+}
+
 function addressFromReso(r: ResoProperty): string {
   const unparsed = str(r.UnparsedAddress);
   if (unparsed) return unparsed;
@@ -75,7 +92,7 @@ function addressFromReso(r: ResoProperty): string {
 export function resoToProperty(
   r: ResoProperty,
   opts: { agentName?: string; agentMlsId?: string; platform: MlsPlatformId },
-): Property | null {
+): CiteProperty | null {
   const price =
     num(r.ListPrice) || num(r.CurrentPrice) || num(r.ClosePrice) || num(r.Price);
   const address = addressFromReso(r);
@@ -114,17 +131,51 @@ export function resoToProperty(
     "";
   const listAgentName =
     str(r.ListAgentFullName) ||
-    [str(r.ListAgentFirstName), str(r.ListAgentLastName)].filter(Boolean).join(" ") ||
-    opts.agentName ||
+    [str(r.ListAgentFirstName), str(r.ListAgentLastName)]
+      .filter(Boolean)
+      .join(" ");
+  const coListAgentId =
+    str(r.CoListAgentMlsId) ||
+    str(r.CoListAgentKey) ||
+    str(r.CoListAgentId) ||
     "";
+  const coListAgentName =
+    str(r.CoListAgentFullName) ||
+    [str(r.CoListAgentFirstName), str(r.CoListAgentLastName)]
+      .filter(Boolean)
+      .join(" ");
 
-  const isMine =
-    (opts.agentMlsId &&
-      listAgentId &&
-      listAgentId.toLowerCase() === opts.agentMlsId.toLowerCase()) ||
-    (opts.agentName &&
-      listAgentName &&
-      listAgentName.toLowerCase().includes(opts.agentName.toLowerCase().split(" ")[0]!));
+  const expectedId = opts.agentMlsId?.toLowerCase();
+  const primaryIdMatch = Boolean(
+    expectedId && listAgentId && listAgentId.toLowerCase() === expectedId,
+  );
+  const coIdMatch = Boolean(
+    expectedId && coListAgentId && coListAgentId.toLowerCase() === expectedId,
+  );
+  const primaryNameMatch =
+    !expectedId && exactAgentNameMatch(listAgentName, opts.agentName);
+  const coNameMatch =
+    !expectedId && exactAgentNameMatch(coListAgentName, opts.agentName);
+  const representationRole =
+    primaryIdMatch || primaryNameMatch
+      ? "listing"
+      : coIdMatch || coNameMatch
+        ? "co_listing"
+        : "market";
+  const represented =
+    representationRole === "listing" || representationRole === "co_listing";
+  const matchedAgentId =
+    representationRole === "listing"
+      ? listAgentId
+      : representationRole === "co_listing"
+        ? coListAgentId
+        : "";
+  const matchedAgentName =
+    representationRole === "listing"
+      ? listAgentName
+      : representationRole === "co_listing"
+        ? coListAgentName
+        : "";
 
   const ppsf = sqft > 0 && price > 0 ? Math.round(price / sqft) : 0;
   const yearBuilt = num(r.YearBuilt) || 0;
@@ -161,11 +212,39 @@ export function resoToProperty(
     lng: num(r.Longitude) || 0,
     pricePerSqft: ppsf,
     estimatedValue: price || 0,
-    accent: isMine ? "#5b8def" : "#6b7385",
+    accent: represented ? "#5b8def" : "#6b7385",
     pattern: 1,
     mlsNumber,
-    listingSide: isMine ? "mine" : "market",
-    listAgentName: listAgentName || undefined,
+    listingSide:
+      representationRole === "listing"
+        ? "mine"
+        : representationRole === "co_listing"
+          ? "mine"
+          : "market",
+    listAgentName:
+      representationRole === "co_listing"
+        ? coListAgentName || undefined
+        : listAgentName || undefined,
+    source: {
+      kind: "mls",
+      provider: opts.platform,
+      url:
+        str(r.ListingURL) ||
+        str(r.PublicListingURL) ||
+        str(r.VirtualTourURLUnbranded) ||
+        undefined,
+      observedAt: new Date().toISOString(),
+      modifiedAt: str(r.ModificationTimestamp) || undefined,
+      evidenceLevel: "provider_verified",
+    },
+    representation: {
+      role: representationRole,
+      matchedAgentId: matchedAgentId || undefined,
+      matchedAgentName: matchedAgentName || undefined,
+      verifiedAt:
+        str(r.ModificationTimestamp) || new Date().toISOString(),
+    },
+    visibility: "public",
   };
 }
 

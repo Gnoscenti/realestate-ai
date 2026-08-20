@@ -5,6 +5,7 @@
  * from being bundled into the onboarding UI.
  */
 import {
+  auditWebsitePageHtml,
   emptyScrape,
   normalizeSiteUrl,
   parseRealtorWebsiteHtml,
@@ -127,9 +128,15 @@ function mergeIdentity(
     mlsNumber: a.mlsNumber || b.mlsNumber,
     license: a.license || b.license,
     brokerage: a.brokerage || b.brokerage,
+    responsibleBrokerName:
+      a.responsibleBrokerName || b.responsibleBrokerName,
+    responsibleBrokerLicense:
+      a.responsibleBrokerLicense || b.responsibleBrokerLicense,
+    brokerageBrand: a.brokerageBrand || b.brokerageBrand,
     bio: a.bio || b.bio,
     title: a.title || b.title,
     address: a.address || b.address,
+    sameAs: [...new Set([...(a.sameAs || []), ...(b.sameAs || [])])],
   };
 }
 
@@ -159,6 +166,10 @@ export async function scrapeRealtorWebsite(opts: {
   const homeParsed = parseRealtorWebsiteHtml(home.html, home.url);
   profile = homeParsed.profile;
   listings = homeParsed.listings;
+  const homePageAudit = auditWebsitePageHtml(home.html, home.url, {
+    name: profile.name || opts.agentNameHint,
+    license: profile.license,
+  });
 
   if (opts.agentNameHint && !profile.name) {
     profile.name = opts.agentNameHint;
@@ -203,7 +214,11 @@ export async function scrapeRealtorWebsite(opts: {
 
   const ok =
     Boolean(
-      profile.phone || profile.email || profile.photoUrl || profile.mlsNumber,
+      profile.phone ||
+        profile.email ||
+        profile.photoUrl ||
+        profile.license ||
+        profile.mlsNumber,
     ) || listings.length > 0;
 
   if (!ok) {
@@ -221,6 +236,16 @@ export async function scrapeRealtorWebsite(opts: {
     pagesFetched,
     warnings,
     scrapedAt: new Date().toISOString(),
+    siteAudit: {
+      observedAt: new Date().toISOString(),
+      homePage: homePageAudit,
+      sitemap: "unmeasured",
+      robots: "unmeasured",
+      botAccess: {
+        oaiSearchBot: "unmeasured",
+        perplexityBot: "unmeasured",
+      },
+    },
   };
 }
 

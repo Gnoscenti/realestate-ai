@@ -1,7 +1,18 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Radar, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Copy,
+  ExternalLink,
+  Link2,
+  Radar,
+  Search,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,21 +20,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { useAppStore } from "@/lib/store";
 import { AIEO_PILLAR_LABEL, scoreAieo } from "@/lib/aieo/score";
-import { cn } from "@/lib/utils";
+import { useAppStore } from "@/lib/store";
 
 export const Route = createFileRoute("/aieo")({
   component: AieoPage,
 });
 
+type Tab = "overview" | "evidence" | "answers" | "schema" | "recognition";
+
+const TAB_LABEL: Record<Tab, string> = {
+  overview: "Overview",
+  evidence: "Evidence Locker",
+  answers: "Answer Pack",
+  schema: "Schema",
+  recognition: "Recognition",
+};
+
 function AieoPage() {
-  const profile = useAppStore((s) => s.agentProfile);
-  const properties = useAppStore((s) => s.properties);
-  const memory = useAppStore((s) => s.agentMemory);
-  const [tab, setTab] = useState<"score" | "faqs" | "schema">("score");
+  const profile = useAppStore((state) => state.agentProfile);
+  const properties = useAppStore((state) => state.properties);
+  const memory = useAppStore((state) => state.agentMemory);
+  const [tab, setTab] = useState<Tab>("overview");
 
   const report = useMemo(
     () =>
@@ -44,158 +62,361 @@ function AieoPage() {
     }
   };
 
+  const statusVariant =
+    report.readiness.status === "publish_ready"
+      ? "success"
+      : report.readiness.status === "blocked"
+        ? "danger"
+        : "secondary";
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="relative overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="relative space-y-3 p-5 sm:p-7">
+    <div className="mx-auto max-w-7xl space-y-6">
+      <section className="overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <div className="space-y-3 p-5 sm:p-7">
           <Badge variant="accent">
             <Radar className="h-3 w-3" />
-            CiteLock™ AIEO
+            CiteLock™ Beta · logic v{report.algorithmVersion}
           </Badge>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            Build a citation-ready real estate presence
+            Lock the Realtor, brokerage, market, and evidence into one citable graph
           </h1>
-          <p className="max-w-2xl text-sm text-[var(--color-fg-muted)]">
-            A deterministic readiness heuristic for entity clarity, answer
-            coverage, real evidence, freshness, voice, and local authority. It
-            does not measure live model indexing or guarantee citations.
+          <p className="max-w-3xl text-sm text-[var(--color-fg-muted)]">
+            CiteScore measures verified publishing readiness. Recognition is a
+            separate observed metric and remains unmeasured until controlled
+            model runs exist. No score guarantees a citation or ranking.
           </p>
         </div>
-      </div>
+      </section>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-base">CiteScore</CardTitle>
-            <CardDescription>{report.summary}</CardDescription>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>CiteScore readiness</CardDescription>
+            <CardTitle className="flex items-end gap-3">
+              <span className="font-display text-5xl">{report.total}</span>
+              <span className="pb-1 text-sm text-[var(--color-fg-muted)]">/ 100</span>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-end gap-3">
-              <div className="font-display text-5xl font-semibold">{report.total}</div>
-              <Badge variant={report.grade === "A" || report.grade === "B" ? "success" : "secondary"}>
-                Grade {report.grade}
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              {(Object.keys(report.pillars) as Array<keyof typeof report.pillars>).map((k) => {
-                const p = report.pillars[k];
-                return (
-                  <div key={k}>
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span>{AIEO_PILLAR_LABEL[k]}</span>
-                      <span className="text-[var(--color-fg-subtle)]">
-                        {p.score}/{p.max}
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-elevated)]">
-                      <div
-                        className="h-full bg-[var(--color-primary)]"
-                        style={{ width: `${Math.round((p.score / p.max) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          <CardContent className="flex flex-wrap gap-2">
+            <Badge variant={statusVariant} className="capitalize">
+              {report.readiness.status.replace(/_/g, " ")}
+            </Badge>
+            <Badge variant="outline">Grade {report.grade}</Badge>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="text-base">Fix list</CardTitle>
-              <CardDescription>Highest-leverage gaps first</CardDescription>
-            </div>
-            <div className="flex gap-1">
-              {(["score", "faqs", "schema"] as const).map((t) => (
-                <Button
-                  key={t}
-                  size="sm"
-                  variant={tab === t ? "default" : "outline"}
-                  className="capitalize"
-                  onClick={() => setTab(t)}
-                >
-                  {t === "faqs" ? "FAQs" : t}
-                </Button>
-              ))}
-            </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Evidence coverage</CardDescription>
+            <CardTitle className="font-display text-5xl">
+              {report.readiness.evidenceCoverage}%
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {tab === "score" &&
-              (report.gaps.length ? (
-                report.gaps.map((g) => (
-                  <div
-                    key={g.issue}
-                    className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant={g.severity === "high" ? "danger" : "secondary"} className="capitalize">
-                        {g.severity}
-                      </Badge>
-                      <span className="text-sm font-medium">{g.issue}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{g.fix}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-[var(--color-fg-muted)]">No critical gaps.</p>
-              ))}
+          <CardContent className="text-xs text-[var(--color-fg-muted)]">
+            Weighted by source authority and verification status. First-party
+            claims never equal regulator or MLS proof.
+          </CardContent>
+        </Card>
 
-            {tab === "faqs" &&
-              report.faqs.map((f) => (
-                <div
-                  key={f.question}
-                  className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-sm font-medium">{f.question}</div>
-                    <Button size="sm" variant="ghost" onClick={() => copy(`${f.question}\n${f.answer}`, "FAQ")}>
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">{f.answer}</p>
-                </div>
-              ))}
-
-            {tab === "schema" && (
-              <div className="space-y-3">
-                <pre className="max-h-72 overflow-auto rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-[11px]">
-                  {JSON.stringify(report.jsonLd, null, 2)}
-                </pre>
-                <Button onClick={() => copy(JSON.stringify(report.jsonLd, null, 2), "JSON-LD")}>
-                  <Copy className="h-4 w-4" />
-                  Copy schema
-                </Button>
-              </div>
-            )}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Observed recognition</CardDescription>
+            <CardTitle className="font-display text-3xl">
+              {report.recognition
+                ? report.recognition.state === "measured"
+                  ? `${report.recognition.mentionRate}%`
+                  : "Insufficient sample"
+                : "Not measured"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-[var(--color-fg-muted)]">
+            {report.recognition
+              ? `${report.recognition.runs} controlled run(s) across ${report.recognition.providers.join(", ")}. ${report.recognition.state === "insufficient" ? "Need 18 runs, 3 engines, and 3 prompt families." : "Sampling threshold met."}`
+              : "Run the frozen prompt panel before reporting model visibility."}
           </CardContent>
         </Card>
       </div>
 
       <Card>
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle className="text-base">CiteLock command center</CardTitle>
+            <CardDescription>{report.summary}</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {(Object.keys(TAB_LABEL) as Tab[]).map((item) => (
+              <Button
+                key={item}
+                size="sm"
+                variant={tab === item ? "default" : "outline"}
+                onClick={() => setTab(item)}
+              >
+                {TAB_LABEL[item]}
+              </Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {tab === "overview" && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="mb-2 text-sm font-semibold">Readiness pillars</h2>
+                  <div className="space-y-3">
+                    {(Object.keys(report.pillars) as Array<keyof typeof report.pillars>).map((key) => {
+                      const pillar = report.pillars[key];
+                      return (
+                        <div key={key}>
+                          <div className="mb-1 flex justify-between text-xs">
+                            <span>{AIEO_PILLAR_LABEL[key]}</span>
+                            <span className="text-[var(--color-fg-subtle)]">
+                              {pillar.score}/{pillar.max}
+                            </span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-elevated)]">
+                            <div
+                              className="h-full bg-[var(--color-primary)]"
+                              style={{ width: `${Math.round((pillar.score / pillar.max) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="mb-2 text-sm font-semibold">Publishing gates</h2>
+                  <div className="space-y-2">
+                    {report.gates.map((gate) => (
+                      <div
+                        key={gate.id}
+                        className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          {gate.status === "pass" ? (
+                            <ShieldCheck className="h-4 w-4 text-[var(--color-success)]" />
+                          ) : (
+                            <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
+                          )}
+                          <span className="text-sm font-medium">{gate.label}</span>
+                          <Badge
+                            variant={gate.status === "block" ? "danger" : gate.status === "pass" ? "success" : "secondary"}
+                            className="ml-auto capitalize"
+                          >
+                            {gate.status}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{gate.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="mb-2 text-sm font-semibold">Highest-impact actions</h2>
+                <div className="space-y-2">
+                  {report.actions.length ? (
+                    report.actions.slice(0, 8).map((action) => (
+                      <div
+                        key={action.id}
+                        className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={action.severity === "blocking" ? "danger" : "secondary"}
+                            className="capitalize"
+                          >
+                            {action.severity}
+                          </Badge>
+                          <span className="text-sm font-medium">{action.issue}</span>
+                          <span className="ml-auto text-xs text-[var(--color-fg-subtle)]">
+                            +{action.pointsAvailable} available
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{action.fix}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-[var(--color-fg-muted)]">No open readiness actions.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === "evidence" && (
+            <div className="space-y-4">
+              {report.conflicts.map((conflict) => (
+                <div
+                  key={conflict.id}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-[var(--color-danger)]" />
+                    <span className="text-sm font-semibold">Conflicting {conflict.field.replace(/_/g, " ")}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{conflict.message}</p>
+                  <p className="mt-1 text-xs">{conflict.values.join(" ↔ ")}</p>
+                </div>
+              ))}
+              <div className="grid gap-3 md:grid-cols-2">
+                {report.evidence.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Link2 className="mt-0.5 h-4 w-4 text-[var(--color-primary)]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">{item.field.replace(/_/g, " ")}</span>
+                          <Badge variant={item.status === "verified" ? "success" : item.status === "conflicted" ? "danger" : "secondary"} className="ml-auto capitalize">
+                            {item.status}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 break-words text-xs">{item.value}</p>
+                        <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
+                          {item.sourceLabel} · {item.sourceTier.replace(/_/g, " ")}
+                          {item.observedAt ? ` · observed ${item.observedAt.slice(0, 10)}` : ""}
+                        </p>
+                        {item.sourceUrl && (
+                          <a
+                            href={item.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:underline"
+                          >
+                            Open source <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === "answers" && (
+            <div className="space-y-3">
+              <p className="text-xs text-[var(--color-fg-muted)]">
+                All generated answers require human review. CiteLock suppresses unsupported “best,” ranking,
+                production, and representation claims.
+              </p>
+              {report.faqs.map((faq) => (
+                <div
+                  key={faq.question}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{faq.question}</span>
+                        <Badge variant={faq.publishable ? "success" : "secondary"}>
+                          {faq.publishable ? "Sources attached" : "Draft only"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">{faq.answer}</p>
+                      <p className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">
+                        Evidence: {faq.evidenceIds.length ? faq.evidenceIds.join(", ") : "none"}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => copy(`${faq.question}\n${faq.answer}`, "Answer") }>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === "schema" && (
+            <div className="space-y-3">
+              <p className="text-xs text-[var(--color-fg-muted)]">
+                The person and responsible brokerage are separate linked entities. Publish only where the same
+                facts are visible on-page, then validate the deployed URL.
+              </p>
+              <pre className="max-h-[32rem] overflow-auto rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-[11px]">
+                {JSON.stringify(report.jsonLd, null, 2)}
+              </pre>
+              <Button onClick={() => copy(JSON.stringify(report.jsonLd, null, 2), "JSON-LD") }>
+                <Copy className="h-4 w-4" /> Copy schema
+              </Button>
+            </div>
+          )}
+
+          {tab === "recognition" && (
+            <div className="space-y-4">
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-[var(--color-primary)]" />
+                  <span className="text-sm font-semibold">
+                    {report.recognition ? "Controlled recognition results" : "Recognition is not measured"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+                  {report.recognition
+                    ? `${report.recognition.citationRate}% citation rate, ${report.recognition.identityAccuracy}% correct identity, and ${report.recognition.brokerageAccuracy}% correct brokerage attribution.`
+                    : "CiteScore is not an LLM ranking. Freeze these prompts, retain raw answers and citations, and compare model, location, and date over time."}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {report.queryPlan.map((query) => (
+                  <div
+                    key={query.id}
+                    className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="capitalize">{query.category}</Badge>
+                      <Badge variant={query.readiness === "ready" ? "success" : "secondary"} className="capitalize">
+                        {query.readiness}
+                      </Badge>
+                      {query.mode === "measurement_only" && <Badge variant="secondary">Measure only</Badge>}
+                    </div>
+                    <p className="mt-2 text-sm">{query.prompt}</p>
+                    <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
+                      Evidence: {query.evidenceIds.length ? query.evidenceIds.join(", ") : "none"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4 text-[var(--color-primary)]" />
-            LLM-ready listing blurbs
+            Provider-verified listing answers
           </CardTitle>
-          <CardDescription>Answer-shaped copy from real listing facts only.</CardDescription>
+          <CardDescription>
+            Only active public listings with current MLS/provider role evidence appear here.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
           {report.listingBlurbs.length ? (
-            report.listingBlurbs.map((b) => (
-              <div key={b.id} className={cn("rounded-[var(--radius-md)] border border-[var(--color-border)] p-3")}>
+            report.listingBlurbs.map((blurb) => (
+              <div key={blurb.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm font-medium">{b.title}</div>
-                  <Button size="sm" variant="ghost" onClick={() => copy(b.blurb, "Blurb")}>
+                  <div className="text-sm font-medium">{blurb.title}</div>
+                  <Button size="sm" variant="ghost" onClick={() => copy(blurb.blurb, "Listing answer") }>
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{b.blurb}</p>
+                <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{blurb.blurb}</p>
+                <a href={blurb.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-[var(--color-primary)] hover:underline">
+                  Verify source <ExternalLink className="h-3 w-3" />
+                </a>
               </div>
             ))
           ) : (
             <p className="text-sm text-[var(--color-fg-muted)]">
-              Scan your website or connect MLS so CiteLock can write from real inventory.
+              No publishable represented inventory. Website/IDX cards remain unverified until current provider
+              attribution matches this agent or co-agent.
             </p>
           )}
         </CardContent>

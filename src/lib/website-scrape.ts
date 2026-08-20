@@ -3,6 +3,7 @@
  * Used when MLS is not connected (or to enrich MLS credentials).
  */
 import type { Property } from "@/data/seed";
+import type { CiteProperty, SiteAuditSnapshot } from "@/lib/aieo/provenance";
 import { uid } from "@/lib/utils";
 
 export type ScrapedAgentIdentity = {
@@ -10,13 +11,17 @@ export type ScrapedAgentIdentity = {
   phone?: string;
   email?: string;
   photoUrl?: string;
-  /** License / MLS agent ID shown on site */
+  /** MLS agent ID and regulatory license are intentionally separate. */
   mlsNumber?: string;
   license?: string;
   brokerage?: string;
+  responsibleBrokerName?: string;
+  responsibleBrokerLicense?: string;
+  brokerageBrand?: string;
   bio?: string;
   title?: string;
   address?: string;
+  sameAs?: string[];
 };
 
 export type ScrapedListing = {
@@ -56,6 +61,7 @@ export type WebsiteScrapeResult = {
   warnings: string[];
   error?: string;
   scrapedAt: string;
+  siteAudit?: SiteAuditSnapshot;
 };
 
 const LISTING_PATH_HINT =
@@ -129,15 +135,48 @@ function pickEmail(text: string): string | undefined {
   return e;
 }
 
-function pickMlsAgentId(text: string): string | undefined {
-  // Prefer agent license (DRE/BRE) over listing MLS numbers
-  const dre = text.match(/\b(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/i);
-  if (dre?.[1]) return dre[1].trim();
-  const agentMls = text.match(
-    /(?:MLS\s*(?:ID|Agent|No\.?|Number))\s*[:#]?\s*([A-Z]{0,4}\d{5,12})/i,
+function pickLicense(text: string): string | undefined {
+  const match = text.match(
+    /\b(?:CA\s*)?(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/i,
   );
-  if (agentMls?.[1]) return agentMls[1].trim();
-  return undefined;
+  return match?.[1]?.trim();
+}
+
+function pickMlsAgentId(text: string): string | undefined {
+  const match = text.match(
+    /(?:MLS\s*(?:ID|Agent(?:\s*ID)?|No\.?|Number))\s*[:#]?\s*([A-Z]{1,4}\d{4,12})/i,
+  );
+  return match?.[1]?.trim();
+}
+
+function pickResponsibleBroker(
+  text: string,
+  agentLicense?: string,
+): { name?: string; license?: string } {
+  const re =
+    /([A-Z][A-Za-z0-9&'.,\s]{2,80}?)\s*(?:\||·|–|—)\s*(?:CA\s*)?(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    const license = match[2]?.trim();
+    const name = match[1]?.replace(/\s+/g, " ").trim();
+    if (license && license !== agentLicense && name && name.split(" ").length <= 12) {
+      return { name, license };
+    }
+  }
+  return {};
+}
+
+function extractIdentityLinks(html: string, baseUrl: string): string[] {
+  const urls = new Set<string>();
+  const re = /href=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    const url = absolutize(baseUrl, match[1]);
+    if (url && /(?:instagram|linkedin|youtube|facebook|realtor\.com|sothebysrealty)\./i.test(url)) {
+      urls.add(url);
+    }
+  }
+  return [...urls];
 }
 
 function extractMeta(html: string, prop: string): string | undefined {
@@ -472,16 +511,23 @@ export function parseRealtorWebsiteHtml(
   const fromLd = fromJsonLd(html, base);
   const telMail = extractTelMailto(html);
 
+  const license = fromLd.profile.license || pickLicense(text);
+  const responsibleBroker = pickResponsibleBroker(text, license);
   let profile: ScrapedAgentIdentity = {
     ...fromLd.profile,
     phone: fromLd.profile.phone || telMail.phone || pickPhone(text),
     email: fromLd.profile.email || telMail.email || pickEmail(text),
     photoUrl: fromLd.profile.photoUrl || extractPhoto(html, base),
-    mlsNumber:
-      fromLd.profile.mlsNumber ||
-      pickMlsAgentId(text) ||
-      undefined,
-    license: fromLd.profile.license || pickMlsAgentId(text),
+    mlsNumber: fromLd.profile.mlsNumber || pickMlsAgentId(text),
+    license,
+    responsibleBrokerName:
+      fromLd.profile.responsibleBrokerName || responsibleBroker.name,
+    responsibleBrokerLicense:
+      fromLd.profile.responsibleBrokerLicense || responsibleBroker.license,
+    sameAs: [
+      ...(fromLd.profile.sameAs || []),
+      ...extractIdentityLinks(html, base),
+    ].filter((url, index, all) => all.indexOf(url) === index),
     bio:
       fromLd.profile.bio ||
       extractMeta(html, "og:description") ||
@@ -501,6 +547,41 @@ export function parseRealtorWebsiteHtml(
   const listings = dedupeListings([...fromLd.listings, ...cardListings]);
 
   return { profile, listings };
+}
+
+export function auditWebsitePageHtml(
+  html: string,
+  pageUrl: string,
+  identityHint?: { name?: string; license?: string },
+): SiteAuditSnapshot["homePage"] {
+  const schemaTypes = new Set<string>();
+  walkJsonLd(extractJsonLd(html), (node) => {
+    const types = Array.isArray(node["@type"])
+      ? node["@type"].map(String)
+      : [String(node["@type"] || "")];
+    for (const type of types) if (type) schemaTypes.add(type);
+  });
+  const canonical =
+    html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]+href=["']([^"']+)["']/i)?.[1] ||
+    html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*canonical[^"']*["']/i)?.[1];
+  const robots =
+    extractMeta(html, "robots") ||
+    extractMeta(html, "googlebot") ||
+    "";
+  const text = stripTags(html).toLowerCase();
+  const name = identityHint?.name?.toLowerCase().trim();
+  const license = identityHint?.license?.replace(/\D/g, "");
+  return {
+    url: pageUrl,
+    httpOk: true,
+    canonical: absolutize(pageUrl, canonical),
+    indexable: !/\bnoindex\b/i.test(robots),
+    serverRenderedIdentity: Boolean(
+      (name && text.includes(name)) ||
+        (license && text.replace(/\D/g, "").includes(license)),
+    ),
+    schemaTypes: [...schemaTypes].sort(),
+  };
 }
 
 export function scoreInternalLinks(
@@ -529,9 +610,10 @@ export function scoreInternalLinks(
 
 export function scrapedListingsToProperties(
   listings: ScrapedListing[],
-  agentName: string,
+  _agentName: string,
   areaFallback: string,
-): Property[] {
+  observedAt = new Date().toISOString(),
+): CiteProperty[] {
   const accents = ["#5b8def", "#3dceb0", "#e0a855", "#e86a6a", "#9b7bff"];
   return listings.map((l, i) => {
     const price = l.price || 0;
@@ -572,8 +654,16 @@ export function scrapedListingsToProperties(
       accent: accents[i % accents.length]!,
       pattern: (i % 4) + 1,
       mlsNumber: l.mlsNumber,
-      listingSide: "mine" as const,
-      listAgentName: agentName,
+      source: {
+        kind: "website" as const,
+        url: l.url,
+        observedAt,
+        evidenceLevel: "site_published" as const,
+      },
+      representation: {
+        role: "unknown" as const,
+      },
+      visibility: "public" as const,
       imageUrl: l.imageUrl,
       photoUrls: l.imageUrl ? [l.imageUrl] : [],
     };
