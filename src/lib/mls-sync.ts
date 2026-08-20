@@ -49,8 +49,20 @@ function mapStatus(raw: string): Property["status"] {
   const s = raw.toLowerCase();
   if (/pending|under.?contract|active.?under/.test(s)) return "pending";
   if (/sold|closed/.test(s)) return "sold";
-  if (/coming.?soon|hold|temp/.test(s)) return "coming_soon";
-  return "active";
+  if (/coming.?soon/.test(s)) return "coming_soon";
+  if (/^\s*active\s*$/.test(s)) return "active";
+  // Property has no `unknown` state yet. Map every withdrawn, canceled,
+  // expired, hold, temp, deleted, and unrecognized value to a non-publishable
+  // state instead of manufacturing an active listing.
+  return "pending";
+}
+
+function displayAllowed(value: unknown): boolean {
+  // Absence is not permission. CiteLock may keep the row for internal workflow,
+  // but it cannot publish the address or listing claim without an explicit Y.
+  if (value == null || value === "") return false;
+  if (typeof value === "boolean") return value;
+  return /^(?:y|yes|true|1)$/i.test(str(value));
 }
 
 function mapType(raw: string): Property["type"] {
@@ -60,6 +72,52 @@ function mapType(raw: string): Property["type"] {
   if (/multi|duplex|triplex|fourplex/.test(s)) return "multi";
   if (/land|lot|vacant/.test(s)) return "land";
   return "house";
+}
+
+function mapTransactionType(
+  r: ResoProperty,
+): Pick<CiteProperty, "transactionType" | "pricePeriod"> {
+  const value = [
+    r.TransactionType,
+    r.ListingType,
+    r.PropertyType,
+    r.PropertySubType,
+  ]
+    .map(str)
+    .filter(Boolean)
+    .join(" ");
+  const leaseSignal = [
+    value,
+    r.LeaseAmountFrequency,
+    r.LeaseTerm,
+    r.LeaseConsideredYN,
+  ]
+    .map(str)
+    .filter(Boolean)
+    .join(" ");
+  if (/lease|rental|for rent/i.test(leaseSignal) || num(r.LeaseAmount) > 0) {
+    const frequency = str(r.LeaseAmountFrequency || r.LeaseTerm);
+    const pricePeriod: CiteProperty["pricePeriod"] = /day|daily/i.test(frequency)
+      ? "day"
+      : /week|weekly/i.test(frequency)
+        ? "week"
+        : /month|monthly/i.test(frequency)
+          ? "month"
+          : "unknown";
+    return { transactionType: "lease", pricePeriod };
+  }
+  if (/sale|purchase/i.test(value)) {
+    return { transactionType: "sale", pricePeriod: "total" };
+  }
+  if (
+    num(r.ListPrice) > 0 &&
+    /residential|commercial|land|farm|business opportunity/i.test(
+      str(r.PropertyType),
+    )
+  ) {
+    return { transactionType: "sale", pricePeriod: "total" };
+  }
+  return { transactionType: "unknown", pricePeriod: "unknown" };
 }
 
 function normalizeAgentName(value: string): string {
@@ -93,8 +151,13 @@ export function resoToProperty(
   r: ResoProperty,
   opts: { agentName?: string; agentMlsId?: string; platform: MlsPlatformId },
 ): CiteProperty | null {
+  const transaction = mapTransactionType(r);
   const price =
-    num(r.ListPrice) || num(r.CurrentPrice) || num(r.ClosePrice) || num(r.Price);
+    (transaction.transactionType === "lease" ? num(r.LeaseAmount) : 0) ||
+    num(r.ListPrice) ||
+    num(r.CurrentPrice) ||
+    num(r.ClosePrice) ||
+    num(r.Price);
   const address = addressFromReso(r);
   if (!price && address.length < 5) return null;
 
@@ -119,7 +182,7 @@ export function resoToProperty(
     str(r.ListingKeyNumeric) ||
     undefined;
   const status = mapStatus(
-    str(r.StandardStatus) || str(r.MlsStatus) || str(r.Status) || "Active",
+    str(r.StandardStatus) || str(r.MlsStatus) || str(r.Status),
   );
   const type = mapType(
     str(r.PropertyType) || str(r.PropertySubType) || "Residential",
@@ -181,6 +244,9 @@ export function resoToProperty(
   const yearBuilt = num(r.YearBuilt) || 0;
   const days = num(r.DaysOnMarket) || num(r.CumulativeDaysOnMarket) || 0;
   const publicRemarks = str(r.PublicRemarks) || str(r.Remarks) || "";
+  const entireListingDisplay = displayAllowed(r.InternetEntireListingDisplayYN);
+  const addressDisplay = displayAllowed(r.InternetAddressDisplayYN);
+  const publicListingUrl = str(r.ListingURL) || str(r.PublicListingURL);
   const features = [
     "From MLS",
     opts.platform.toUpperCase(),
@@ -228,14 +294,15 @@ export function resoToProperty(
     source: {
       kind: "mls",
       provider: opts.platform,
-      url:
-        str(r.ListingURL) ||
-        str(r.PublicListingURL) ||
-        str(r.VirtualTourURLUnbranded) ||
-        undefined,
+      // A virtual tour is media, not a provider attribution page proving role.
+      url: publicListingUrl || undefined,
       observedAt: new Date().toISOString(),
       modifiedAt: str(r.ModificationTimestamp) || undefined,
       evidenceLevel: "provider_verified",
+      // Today these rows come through a client-supplied connection payload.
+      // They are useful workspace observations but cannot authorize CiteLock
+      // publication until a server-owned provider adapter mints an attestation.
+      trust: "client_import",
     },
     representation: {
       role: representationRole,
@@ -244,7 +311,9 @@ export function resoToProperty(
       verifiedAt:
         str(r.ModificationTimestamp) || new Date().toISOString(),
     },
-    visibility: "public",
+    visibility:
+      entireListingDisplay && addressDisplay ? "public" : "suppressed",
+    ...transaction,
   };
 }
 

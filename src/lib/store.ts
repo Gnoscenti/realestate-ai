@@ -524,6 +524,8 @@ export const useAppStore = create<AppState>()(
           photoUrl: sp?.photoUrl || input.photoUrl,
           agentMlsId: sp?.mlsNumber || input.agentMlsId,
           license: sp?.license || input.license,
+          licenseJurisdiction:
+            sp?.licenseJurisdiction || inputCite.licenseJurisdiction,
           responsibleBrokerName:
             sp?.responsibleBrokerName || inputCite.responsibleBrokerName,
           responsibleBrokerLicense:
@@ -602,6 +604,8 @@ export const useAppStore = create<AppState>()(
           photoUrl: sp.photoUrl || current.photoUrl,
           agentMlsId: sp.mlsNumber || current.agentMlsId,
           license: sp.license || current.license,
+          licenseJurisdiction:
+            sp.licenseJurisdiction || currentCite.licenseJurisdiction,
           responsibleBrokerName:
             sp.responsibleBrokerName || currentCite.responsibleBrokerName,
           responsibleBrokerLicense:
@@ -678,11 +682,9 @@ export const useAppStore = create<AppState>()(
       updateAgentProfile: (patch) => {
         const current = get().agentProfile;
         if (!current) return;
-        const now = new Date().toISOString();
         const profile: AgentProfile = {
           ...current,
           ...patch,
-          lastMlsSyncAt: now,
         };
         set({
           agentProfile: profile,

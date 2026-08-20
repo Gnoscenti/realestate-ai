@@ -19,7 +19,7 @@ describe("board to platforms", () => {
 });
 
 describe("resoToProperty", () => {
-  it("records exact primary-agent ID matches as provider-verified listing roles", () => {
+  it("records provider role data but leaves client-imported rows unattested", () => {
     const property = resoToProperty(
       {
         ListingId: "SDP2500999",
@@ -56,6 +56,7 @@ describe("resoToProperty", () => {
         url: "https://mls.example.com/SDP2500999",
         modifiedAt: "2026-08-19T12:00:00.000Z",
         evidenceLevel: "provider_verified",
+        trust: "client_import",
       },
     });
     expect(property!.features).toContain("From MLS");
@@ -114,6 +115,148 @@ describe("resoToProperty", () => {
       { platform: "reso_web", agentName: "Morgan Hale" },
     );
     expect(property?.listingSide).toBe("market");
+  });
+
+  it.each(["Canceled", "Withdrawn", "Expired", "Hold", "Temp", "Deleted", "Mystery"])(
+    "fails closed for non-publishable MLS status %s",
+    (status) => {
+      const property = resoToProperty(
+        {
+          ListingId: `STATUS-${status}`,
+          UnparsedAddress: "4 Status Way",
+          ListPrice: 800_000,
+          StandardStatus: status,
+          ListAgentMlsId: "MINE",
+          ListingURL: "https://mls.example.com/status",
+        },
+        { platform: "bridge", agentMlsId: "MINE" },
+      );
+
+      expect(property?.status).not.toBe("active");
+      expect(property?.status).not.toBe("coming_soon");
+    },
+  );
+
+  it("suppresses listings whose RESO internet-display flags forbid publication", () => {
+    const property = resoToProperty(
+      {
+        ListingId: "PRIVATE",
+        UnparsedAddress: "5 Private Way",
+        ListPrice: 2_000_000,
+        StandardStatus: "Active",
+        ListAgentMlsId: "MINE",
+        ListingURL: "https://mls.example.com/private",
+        InternetEntireListingDisplayYN: false,
+      },
+      { platform: "bridge", agentMlsId: "MINE" },
+    );
+
+    expect(property?.visibility).toBe("suppressed");
+  });
+
+  it("does not treat an unbranded virtual tour as role-attribution evidence", () => {
+    const property = resoToProperty(
+      {
+        ListingId: "TOUR",
+        UnparsedAddress: "6 Tour Way",
+        ListPrice: 2_000_000,
+        StandardStatus: "Active",
+        ListAgentMlsId: "MINE",
+        VirtualTourURLUnbranded: "https://media.example.com/tour.mp4",
+      },
+      { platform: "bridge", agentMlsId: "MINE" },
+    );
+
+    expect(property?.source?.url).toBeUndefined();
+  });
+
+  it("keeps lease price semantics separate from a for-sale price", () => {
+    const property = resoToProperty(
+      {
+        ListingId: "LEASE",
+        UnparsedAddress: "7 Rental Way",
+        ListPrice: 25_000,
+        StandardStatus: "Active",
+        PropertyType: "Residential Lease",
+        LeaseAmountFrequency: "Monthly",
+        ListAgentMlsId: "MINE",
+        ListingURL: "https://mls.example.com/lease",
+        InternetEntireListingDisplayYN: true,
+        InternetAddressDisplayYN: true,
+      },
+      { platform: "bridge", agentMlsId: "MINE" },
+    );
+
+    expect(property).toMatchObject({
+      transactionType: "lease",
+      pricePeriod: "month",
+      visibility: "public",
+    });
+  });
+
+  it("preserves weekly lease frequency and classifies ordinary residential sale rows", () => {
+    const weekly = resoToProperty(
+      {
+        ListingId: "WEEKLY",
+        UnparsedAddress: "9 Weekly Rental Way",
+        LeaseAmount: 12_000,
+        LeaseAmountFrequency: "Weekly",
+        StandardStatus: "Active",
+        PropertyType: "Residential Lease",
+      },
+      { platform: "bridge" },
+    );
+    const sale = resoToProperty(
+      {
+        ListingId: "SALE",
+        UnparsedAddress: "10 Residential Sale Way",
+        ListPrice: 1_200_000,
+        StandardStatus: "Active",
+        PropertyType: "Residential",
+      },
+      { platform: "bridge" },
+    );
+
+    expect(weekly).toMatchObject({
+      price: 12_000,
+      transactionType: "lease",
+      pricePeriod: "week",
+    });
+    expect(sale).toMatchObject({
+      transactionType: "sale",
+      pricePeriod: "total",
+    });
+  });
+
+  it("does not interpret ambiguous internet-display values as permission", () => {
+    const property = resoToProperty(
+      {
+        ListingId: "AMBIGUOUS-FLAGS",
+        UnparsedAddress: "11 Permission Test Way",
+        ListPrice: 1_000_000,
+        StandardStatus: "Active",
+        InternetEntireListingDisplayYN: "maybe",
+        InternetAddressDisplayYN: "unknown",
+      },
+      { platform: "bridge" },
+    );
+
+    expect(property?.visibility).toBe("suppressed");
+  });
+
+  it("suppresses an otherwise active row when display permission is absent", () => {
+    const property = resoToProperty(
+      {
+        ListingId: "NO-FLAGS",
+        UnparsedAddress: "8 Permission Way",
+        ListPrice: 1_000_000,
+        StandardStatus: "Active",
+        ListAgentMlsId: "MINE",
+      },
+      { platform: "bridge", agentMlsId: "MINE" },
+    );
+
+    expect(property?.visibility).toBe("suppressed");
   });
 });
 

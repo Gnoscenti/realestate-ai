@@ -54,6 +54,17 @@ export const pilotProfile: CiteAgentProfile = {
 
 export const pilotEvidence: CiteEvidence[] = [
   {
+    id: "site:website",
+    subject: "agent",
+    field: "website",
+    value: "https://agent.example/",
+    sourceLabel: "Agent website fixture",
+    sourceTier: "first_party",
+    status: "published",
+    sourceUrl: "https://agent.example/",
+    observedAt: PILOT_AUDIT_AT,
+  },
+  {
     id: "regulator:agent:name",
     subject: "agent",
     field: "name",
@@ -75,6 +86,8 @@ export const pilotEvidence: CiteEvidence[] = [
     sourceUrl: "https://regulator.example/licenses/01234567",
     observedAt: "2026-08-12T14:07:36.000-07:00",
     validThrough: "2029-10-06",
+    credentialStatus: "active",
+    jurisdiction: "US-CA",
   },
   {
     id: "regulator:broker:name",
@@ -98,6 +111,8 @@ export const pilotEvidence: CiteEvidence[] = [
     sourceUrl: "https://regulator.example/licenses/01999999",
     observedAt: PILOT_AUDIT_AT,
     validThrough: "2026-10-14",
+    credentialStatus: "active",
+    jurisdiction: "US-CA",
     note: "Licensed at evaluation time; renewal watch under 90 days.",
   },
   {
@@ -173,6 +188,8 @@ function listing(
       url: `https://listings.example/${id}`,
       observedAt: verified ? "2026-08-18T12:00:00.000-07:00" : "2026-07-01T12:00:00.000-07:00",
       evidenceLevel: verified ? "provider_verified" : "site_published",
+      trust: verified ? "server_attested" : undefined,
+      attestationId: verified ? `pilot-attestation:${mlsNumber}` : undefined,
     },
     representation: verified
       ? {
@@ -183,6 +200,8 @@ function listing(
         }
       : { role: "unknown" },
     visibility: "public",
+    transactionType: id === "lease-conflict" ? "lease" : "sale",
+    pricePeriod: id === "lease-conflict" ? "month" : "total",
   };
 }
 

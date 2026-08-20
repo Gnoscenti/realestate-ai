@@ -36,12 +36,19 @@ export type CiteEvidence = {
   sourceUrl?: string;
   observedAt?: string;
   validThrough?: string;
+  /** Comparable claim scope, for example `sales_volume:2025` or a listing id. */
+  claimScope?: string;
+  /** Registry-reported authorization state; `verified` only means the source was read. */
+  credentialStatus?: "active" | "inactive" | "restricted" | "unknown";
+  /** ISO 3166-2 jurisdiction used to evaluate date-only credential expiries. */
+  jurisdiction?: string;
   note?: string;
 };
 
 export type CiteConflict = {
   id: string;
   field: string;
+  claimScope?: string;
   values: string[];
   evidenceIds: string[];
   severity: "blocking" | "warning";

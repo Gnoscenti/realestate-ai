@@ -9,8 +9,10 @@ import {
   emptyScrape,
   normalizeSiteUrl,
   parseRealtorWebsiteHtml,
+  realtorNamesMatch,
   scoreInternalLinks,
   type ScrapedAgentIdentity,
+  type ScrapedClaim,
   type ScrapedListing,
   type WebsiteScrapeResult,
 } from "@/lib/website-scrape";
@@ -22,7 +24,10 @@ import {
 
 async function fetchHtml(
   url: string,
-): Promise<{ ok: true; url: string; html: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; url: string; html: string; xRobotsTag?: string }
+  | { ok: false; error: string }
+> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
@@ -56,7 +61,12 @@ async function fetchHtml(
     if (html.length < 80) {
       return { ok: false, error: `Empty page at ${url}` };
     }
-    return { ok: true, url: finalUrl.toString(), html };
+    return {
+      ok: true,
+      url: finalUrl.toString(),
+      html,
+      xRobotsTag: response.headers.get("x-robots-tag") || undefined,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fetch failed";
     return { ok: false, error: `${message} (${url})` };
@@ -103,17 +113,38 @@ function extractAllLinks(html: string, baseUrl: string): string[] {
 }
 
 function mergeListings(a: ScrapedListing[], b: ScrapedListing[]): ScrapedListing[] {
-  const out = [...a];
-  const keys = new Set(
-    a.map((l) => (l.mlsNumber || `${l.address}|${l.price}`).toLowerCase()),
-  );
-  for (const l of b) {
-    const k = (l.mlsNumber || `${l.address}|${l.price}`).toLowerCase();
-    if (keys.has(k)) continue;
-    keys.add(k);
-    out.push(l);
+  const byObservation = new Map<string, ScrapedListing>();
+  for (const listing of [...a, ...b]) {
+    const identity = (listing.mlsNumber || listing.address)
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const key = [
+      identity,
+      listing.status,
+      listing.price,
+      listing.transactionType || "unknown",
+      listing.pricePeriod || "unknown",
+    ].join("|");
+    const current = byObservation.get(key);
+    if (!current || (!current.url && listing.url))
+      byObservation.set(key, listing);
   }
-  return out;
+  return [...byObservation.values()];
+}
+
+function mergeClaims(a: ScrapedClaim[], b: ScrapedClaim[]): ScrapedClaim[] {
+  const byKey = new Map<string, ScrapedClaim>();
+  for (const claim of [...a, ...b]) {
+    byKey.set(
+      `${claim.field}:${claim.claimScope}:${claim.value.toLowerCase()}`,
+      claim,
+    );
+  }
+  return [...byKey.values()].sort((left, right) =>
+    `${left.claimScope}:${left.value}`.localeCompare(
+      `${right.claimScope}:${right.value}`,
+    ),
+  );
 }
 
 function mergeIdentity(
@@ -127,6 +158,8 @@ function mergeIdentity(
     photoUrl: a.photoUrl || b.photoUrl,
     mlsNumber: a.mlsNumber || b.mlsNumber,
     license: a.license || b.license,
+    licenseJurisdiction:
+      a.licenseJurisdiction || b.licenseJurisdiction,
     brokerage: a.brokerage || b.brokerage,
     responsibleBrokerName:
       a.responsibleBrokerName || b.responsibleBrokerName,
@@ -137,6 +170,34 @@ function mergeIdentity(
     title: a.title || b.title,
     address: a.address || b.address,
     sameAs: [...new Set([...(a.sameAs || []), ...(b.sameAs || [])])],
+  };
+}
+
+function personBoundProfile(
+  parsed: ReturnType<typeof parseRealtorWebsiteHtml>,
+  expectedName?: string,
+): ScrapedAgentIdentity | undefined {
+  if (!expectedName) return undefined;
+  const observedName =
+    parsed.structuredPersonProfile.name || parsed.profile.name;
+  if (!realtorNamesMatch(expectedName, observedName)) return undefined;
+  const structured = realtorNamesMatch(
+    expectedName,
+    parsed.structuredPersonProfile.name,
+  )
+    ? parsed.structuredPersonProfile
+    : {};
+  return {
+    name: observedName,
+    phone: structured.phone,
+    email: structured.email,
+    photoUrl: structured.photoUrl,
+    brokerage: structured.brokerage,
+    brokerageBrand: structured.brokerageBrand,
+    bio: structured.bio,
+    title: structured.title,
+    address: structured.address,
+    sameAs: structured.sameAs,
   };
 }
 
@@ -153,6 +214,9 @@ export async function scrapeRealtorWebsite(opts: {
   const maxPages = opts.maxPages ?? 5;
   const warnings: string[] = [];
   const pagesFetched: string[] = [];
+  const profileObservations: NonNullable<
+    WebsiteScrapeResult["profileObservations"]
+  > = [];
 
   const home = await fetchHtml(sourceUrl);
   if (!home.ok) {
@@ -162,18 +226,30 @@ export async function scrapeRealtorWebsite(opts: {
   pagesFetched.push(home.url);
   let profile: ScrapedAgentIdentity = {};
   let listings: ScrapedListing[] = [];
+  let claims: ScrapedClaim[] = [];
 
-  const homeParsed = parseRealtorWebsiteHtml(home.html, home.url);
-  profile = homeParsed.profile;
-  listings = homeParsed.listings;
-  const homePageAudit = auditWebsitePageHtml(home.html, home.url, {
-    name: profile.name || opts.agentNameHint,
-    license: profile.license,
-  });
-
-  if (opts.agentNameHint && !profile.name) {
-    profile.name = opts.agentNameHint;
+  const homeParsed = parseRealtorWebsiteHtml(
+    home.html,
+    home.url,
+    opts.agentNameHint,
+  );
+  const homeProfile = personBoundProfile(homeParsed, opts.agentNameHint);
+  if (homeProfile) {
+    profile = homeProfile;
+    profileObservations.push({ sourceUrl: home.url, profile: homeProfile });
   }
+  listings = homeParsed.listings;
+  claims = homeProfile ? homeParsed.claims : [];
+  const homePageAudit = auditWebsitePageHtml(
+    home.html,
+    home.url,
+    {
+      name: opts.agentNameHint,
+      observedName:
+        homeParsed.structuredPersonProfile.name || homeParsed.profile.name,
+    },
+    { xRobotsTag: home.xRobotsTag },
+  );
 
   const links = extractAllLinks(home.html, home.url);
   const listingPages = scoreInternalLinks(
@@ -196,25 +272,24 @@ export async function scrapeRealtorWebsite(opts: {
       continue;
     }
     pagesFetched.push(res.url);
-    const parsed = parseRealtorWebsiteHtml(res.html, res.url);
-    profile = mergeIdentity(profile, parsed.profile);
+    const parsed = parseRealtorWebsiteHtml(
+      res.html,
+      res.url,
+      profile.name || opts.agentNameHint,
+    );
+    const pageProfile = personBoundProfile(parsed, opts.agentNameHint);
+    if (pageProfile) {
+      profile = mergeIdentity(profile, pageProfile);
+      profileObservations.push({ sourceUrl: res.url, profile: pageProfile });
+      claims = mergeClaims(claims, parsed.claims);
+    }
     listings = mergeListings(listings, parsed.listings);
-  }
-
-  if (
-    opts.agentNameHint &&
-    profile.name &&
-    /home|welcome|real estate|properties/i.test(profile.name) &&
-    profile.name.length < 40
-  ) {
-    profile.name = opts.agentNameHint;
-  } else if (opts.agentNameHint && !profile.name) {
-    profile.name = opts.agentNameHint;
   }
 
   const ok =
     Boolean(
       profile.phone ||
+        profile.name ||
         profile.email ||
         profile.photoUrl ||
         profile.license ||
@@ -232,7 +307,9 @@ export async function scrapeRealtorWebsite(opts: {
     sourceUrl,
     finalUrl: home.url,
     profile,
+    profileObservations,
     listings,
+    claims,
     pagesFetched,
     warnings,
     scrapedAt: new Date().toISOString(),
@@ -268,4 +345,3 @@ export function consumeScrapeQuota(userId: string): void {
   recent.push(now);
   quotas.set(userId, recent);
 }
-
