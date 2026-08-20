@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { buildImaginePrompt } from "@/lib/imagine-media";
 import type { Property } from "@/data/seed";
-import type { ContentPlan } from "@/lib/content-agent";
+import type { CampaignPlan } from "@/lib/social-agent";
 
 type Props = {
   property?: Property | null;
   imageUrl?: string | null;
-  activePlan: ContentPlan | null;
-  onPlan: (plan: ContentPlan) => void;
+  activePlan: CampaignPlan | null;
+  onPlan: (plan: CampaignPlan) => void;
 };
 
 export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }: Props) {
