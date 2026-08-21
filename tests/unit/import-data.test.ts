@@ -1,53 +1,77 @@
 import { describe, expect, it } from "vitest";
 import {
-  parseLeadsCsv,
-  parseListingsCsv,
   LEAD_CSV_TEMPLATE,
   LISTING_CSV_TEMPLATE,
+  parseLeadsCsv,
+  parseListingsCsv,
 } from "@/lib/import-data";
 
 describe("parseLeadsCsv", () => {
-  it("parses headered CSV into leads", () => {
-    const { items, errors } = parseLeadsCsv(LEAD_CSV_TEMPLATE);
-    expect(errors).toEqual([]);
-    expect(items.length).toBe(1);
-    expect(items[0]!.name).toBe("Jane Client");
-    expect(items[0]!.budgetMax).toBe(3500000);
-    expect(items[0]!.tags).toContain("imported");
+  it("parses headered and headerless lead rows", () => {
+    const headered = parseLeadsCsv(LEAD_CSV_TEMPLATE);
+    expect(headered.errors).toEqual([]);
+    expect(headered.items[0]).toMatchObject({
+      name: "Jane Client",
+      budgetMax: 3_500_000,
+    });
+    expect(headered.items[0]!.tags).toContain("imported");
+
+    const headerless = parseLeadsCsv(
+      "Alex Buyer,alex@x.com,(858) 111-2222,Del Mar,1500000",
+    );
+    expect(headerless.items[0]).toMatchObject({
+      name: "Alex Buyer",
+      email: "alex@x.com",
+      budgetMax: 1_500_000,
+    });
   });
 
-  it("parses headerless rows name,email,phone,location,budget", () => {
-    const raw = "Alex Buyer,alex@x.com,(858) 111-2222,Del Mar,1500000";
-    const { items } = parseLeadsCsv(raw);
-    expect(items[0]!.name).toBe("Alex Buyer");
-    expect(items[0]!.email).toBe("alex@x.com");
-    expect(items[0]!.budgetMax).toBe(1500000);
-  });
-
-  it("skips empty paste", () => {
-    const r = parseLeadsCsv("   \n  ");
-    expect(r.items).toEqual([]);
-    expect(r.errors.length).toBeGreaterThan(0);
+  it("rejects an empty paste", () => {
+    const result = parseLeadsCsv("   \n  ");
+    expect(result.items).toEqual([]);
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 });
 
 describe("parseListingsCsv", () => {
-  it("parses listing template as mine", () => {
+  it("records explicit mine as a user declaration, not provider verification", () => {
     const { items, errors } = parseListingsCsv(LISTING_CSV_TEMPLATE, {
       agentName: "Morgan Hale",
       defaultCity: "Rancho Santa Fe",
     });
     expect(errors).toEqual([]);
-    expect(items.length).toBe(1);
-    expect(items[0]!.price).toBe(4250000);
-    expect(items[0]!.listingSide).toBe("mine");
-    expect(items[0]!.listAgentName).toBe("Morgan Hale");
-    expect(items[0]!.mlsNumber).toBe("SDP1234567");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      price: 4_250_000,
+      listingSide: "mine",
+      listAgentName: "Morgan Hale",
+      mlsNumber: "SDP1234567",
+      source: {
+        kind: "csv",
+        evidenceLevel: "user_declared",
+      },
+      representation: {
+        role: "listing",
+        matchedAgentName: "Morgan Hale",
+      },
+    });
   });
 
-  it("requires address + price", () => {
+  it("fails closed when the Side column is blank or unrecognized", () => {
+    const csv = `Address,Price,City,Side\n1 Test Way,1000000,San Diego,\n2 Test Way,1200000,San Diego,maybe`;
+    const { items } = parseListingsCsv(csv, { agentName: "Morgan Hale" });
+
+    expect(items.map((item) => item.listingSide)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(items.every((item) => item.representation?.role === "unknown")).toBe(true);
+    expect(items.every((item) => !item.description.includes("Owned by your book"))).toBe(true);
+  });
+
+  it("requires address and price", () => {
     const { items, skipped } = parseListingsCsv("Name Only\nbogus");
-    expect(items.length).toBe(0);
+    expect(items).toHaveLength(0);
     expect(skipped).toBeGreaterThan(0);
   });
 });
