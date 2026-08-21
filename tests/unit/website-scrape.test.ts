@@ -67,6 +67,186 @@ describe("parseRealtorWebsiteHtml", () => {
     expect(result.profile.name).toBe("Jamie Cole");
     expect(result.profile.brokerage).toBe("Coastal Realty Group");
     expect(result.profile.brokerageBrand).toBe("Coastal Realty Group");
+    expect(result.structuredPersonProfile.brokerage).toBe(
+      "Coastal Realty Group",
+    );
+  });
+
+  it("suppresses global contact fallbacks for an org-only RealEstateAgent", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <meta property="og:image" content="https://cdn.example.com/coastal-team.jpg" />
+      <script type="application/ld+json">{
+        "@type":"RealEstateAgent","name":"Coastal Realty Group"
+      }</script></head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Brokerage office</a>
+      <a href="mailto:office@coastal.example">Brokerage email</a>
+      <p>Alternate office: (858) 555-0197 · contact@coastal.example</p>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile).toMatchObject({
+      name: "Jamie Cole",
+      brokerage: "Coastal Realty Group",
+    });
+    expect(result.profile.phone).toBeUndefined();
+    expect(result.profile.email).toBeUndefined();
+    expect(result.profile.photoUrl).toBeUndefined();
+  });
+
+  it("preserves legacy HTML contact fallbacks when there is no JSON-LD", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <meta property="og:image" content="https://cdn.example.com/jamie-headshot.jpg" />
+      </head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Call Jamie</a>
+      <a href="mailto:jamie@jamieworks.com">Email Jamie</a>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile.phone).toBe("8585550198");
+    expect(result.profile.email).toBe("jamie@jamieworks.com");
+    expect(result.profile.photoUrl).toBe(
+      "https://cdn.example.com/jamie-headshot.jpg",
+    );
+  });
+
+  it("does not let an unrelated Person authorize organization fallbacks", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <meta property="og:image" content="https://cdn.example.com/coastal-team.jpg" />
+      <script type="application/ld+json">{
+        "@graph":[
+          {"@type":"RealEstateAgent","name":"Coastal Realty Group"},
+          {"@type":"Person","name":"Testimonial Author","telephone":"8585550111"}
+        ]
+      }</script></head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Brokerage office</a>
+      <a href="mailto:office@coastal.example">Brokerage email</a>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile.name).toBe("Jamie Cole");
+    expect(result.profile.phone).toBeUndefined();
+    expect(result.profile.email).toBeUndefined();
+    expect(result.profile.photoUrl).toBeUndefined();
+    expect(result.structuredPersonProfile).toEqual({});
+  });
+
+  it("does not treat a generic publisher Organization as an agent conflict", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <meta property="og:image" content="https://cdn.example.com/jamie-headshot.jpg" />
+      <script type="application/ld+json">{
+        "@type":"Organization","name":"Website Publisher LLC"
+      }</script></head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Call Jamie</a>
+      <a href="mailto:jamie@jamieworks.com">Email Jamie</a>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile.phone).toBe("8585550198");
+    expect(result.profile.email).toBe("jamie@jamieworks.com");
+    expect(result.profile.photoUrl).toContain("jamie-headshot.jpg");
+    expect(result.profile.brokerage).toBeUndefined();
+  });
+
+  it("keeps each matched-Person field independent from global fallbacks", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <meta property="og:image" content="https://cdn.example.com/coastal-team.jpg" />
+      <script type="application/ld+json">{
+        "@graph":[
+          {"@id":"#practice","@type":"RealEstateAgent","name":"Coastal Realty Group"},
+          {"@type":"Person","name":"Jamie Cole","telephone":"8585550100","worksFor":{"@id":"#practice"}}
+        ]
+      }</script></head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Brokerage office</a>
+      <a href="mailto:office@coastal.example">Brokerage email</a>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile.phone).toBe("8585550100");
+    expect(result.profile.email).toBeUndefined();
+    expect(result.profile.photoUrl).toBeUndefined();
+  });
+
+  it("ignores an unrelated RealEstateAgent beside the page-primary Person", () => {
+    const html = `<html><head><title>Agent Profile</title>
+      <meta property="og:image" content="https://cdn.example.com/jamie-headshot.jpg" />
+      <script type="application/ld+json">{
+        "@graph":[
+          {"@type":"ProfilePage","@id":"#page","mainEntity":{"@id":"#jamie"}},
+          {"@type":"Person","@id":"#jamie","name":"Jamie Cole"},
+          {"@type":"RealEstateAgent","@id":"#other","name":"Other Office"}
+        ]
+      }</script></head><body><h1>Jamie Cole</h1>
+      <a href="tel:8585550198">Call Jamie</a>
+      <a href="mailto:jamie@jamieworks.com">Email Jamie</a>
+    </body></html>`;
+
+    const result = parseRealtorWebsiteHtml(html, "https://jamieworks.com");
+
+    expect(result.profile.name).toBe("Jamie Cole");
+    expect(result.profile.phone).toBe("8585550198");
+    expect(result.profile.email).toBe("jamie@jamieworks.com");
+    expect(result.profile.photoUrl).toContain("jamie-headshot.jpg");
+    expect(result.profile.brokerage).toBeUndefined();
+  });
+
+  it("finds a target Person nested under a RealEstateAgent node", () => {
+    const html = `<html><head><title>Jamie Cole | Realtor</title>
+      <script type="application/ld+json">{
+        "@type":["https://schema.org/RealEstateAgent","https://schema.org/LocalBusiness"],
+        "name":"Coastal Realty Group",
+        "employee":{
+          "@type":"https://schema.org/Person",
+          "name":"Jamie Cole",
+          "telephone":"8585550100",
+          "email":"jamie@jamieworks.com",
+          "image":{"url":"https://cdn.example.com/jamie.jpg"}
+        }
+      }</script></head><body><h1>Jamie Cole</h1></body></html>`;
+
+    const result = parseRealtorWebsiteHtml(
+      html,
+      "https://jamieworks.com",
+      "Jamie Cole",
+    );
+
+    expect(result.profile).toMatchObject({
+      name: "Jamie Cole",
+      phone: "8585550100",
+      email: "jamie@jamieworks.com",
+      photoUrl: "https://cdn.example.com/jamie.jpg",
+      brokerage: "Coastal Realty Group",
+    });
+    expect(result.structuredPersonProfile).toMatchObject({
+      name: "Jamie Cole",
+      phone: "8585550100",
+      email: "jamie@jamieworks.com",
+      photoUrl: "https://cdn.example.com/jamie.jpg",
+    });
   });
 
   it("keeps person-matched profiles and rejects brand, spoofed, and script footer links", () => {

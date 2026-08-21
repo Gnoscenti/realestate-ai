@@ -413,17 +413,29 @@ function extractJsonLd(html: string): unknown[] {
   return blocks;
 }
 
-function walkJsonLd(nodes: unknown[], visit: (o: Record<string, unknown>) => void) {
-  for (const n of nodes) {
-    if (!n || typeof n !== "object") continue;
-    if (Array.isArray(n)) {
-      walkJsonLd(n, visit);
-      continue;
+function walkJsonLd(
+  nodes: unknown[],
+  visit: (o: Record<string, unknown>) => void,
+) {
+  const seen = new Set<object>();
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
     }
-    const o = n as Record<string, unknown>;
-    visit(o);
-    if (o["@graph"] && Array.isArray(o["@graph"])) walkJsonLd(o["@graph"], visit);
-  }
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    const node = value as Record<string, unknown>;
+    visit(node);
+    for (const [key, child] of Object.entries(node)) {
+      if (key === "@context") continue;
+      if (child && typeof child === "object") walk(child);
+    }
+  };
+
+  walk(nodes);
 }
 
 function typeOf(o: Record<string, unknown>): string {
@@ -448,18 +460,171 @@ function schemaTypeTokens(o: Record<string, unknown>): string[] {
 function fromJsonLd(
   html: string,
   baseUrl: string,
-): { profile: ScrapedAgentIdentity; listings: ScrapedListing[] } {
+  agentNameHint?: string,
+  pageTitleName?: string,
+): {
+  profile: ScrapedAgentIdentity;
+  listings: ScrapedListing[];
+  hasTargetPerson: boolean;
+  hasConflictingAgentOrganization: boolean;
+} {
   const profile: ScrapedAgentIdentity = {};
   const listings: ScrapedListing[] = [];
   const nodes = extractJsonLd(html);
+  const rootObjects = nodes.filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node && typeof node === "object" && !Array.isArray(node)),
+  );
   const byId = new Map<string, Record<string, unknown>>();
+  const people: Record<string, unknown>[] = [];
+  const agentOrganizations: Record<string, unknown>[] = [];
   walkJsonLd(nodes, (node) => {
-    if (typeof node["@id"] === "string") byId.set(node["@id"], node);
+    if (typeof node["@id"] === "string") {
+      const existing = byId.get(node["@id"]);
+      byId.set(node["@id"], existing ? { ...existing, ...node } : node);
+    }
+    const types = schemaTypeTokens(node);
+    if (types.includes("person")) people.push(node);
+    if (!types.includes("person") && types.includes("realestateagent")) {
+      agentOrganizations.push(node);
+    }
   });
+
+  const resolveReferences = (value: unknown): Record<string, unknown>[] => {
+    if (Array.isArray(value)) return value.flatMap(resolveReferences);
+    if (typeof value === "string") {
+      const linked = byId.get(value);
+      return linked ? [linked] : [];
+    }
+    if (!value || typeof value !== "object") return [];
+    const reference = value as Record<string, unknown>;
+    if (typeof reference["@id"] === "string") {
+      return [byId.get(reference["@id"]) || reference];
+    }
+    return [reference];
+  };
+  const sameNode = (
+    left?: Record<string, unknown>,
+    right?: Record<string, unknown>,
+  ): boolean => {
+    if (!left || !right) return false;
+    if (left === right) return true;
+    return (
+      typeof left["@id"] === "string" &&
+      typeof right["@id"] === "string" &&
+      left["@id"] === right["@id"]
+    );
+  };
+  const isSchemaType = (
+    node: Record<string, unknown>,
+    type: string,
+  ): boolean => schemaTypeTokens(node).includes(type);
+  const pageEntities: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    const types = schemaTypeTokens(node);
+    if (
+      types.some((type) =>
+        ["profilepage", "webpage", "aboutpage", "contactpage"].includes(type),
+      )
+    ) {
+      pageEntities.push(...resolveReferences(node.mainEntity));
+    }
+  });
+  const peopleMatching = (name?: string) =>
+    name
+      ? people.filter(
+        (candidate) =>
+          typeof candidate.name === "string" &&
+            realtorNamesMatch(name, candidate.name),
+      )
+      : [];
+  const primaryPeople = people.filter((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const explicitMatches = peopleMatching(agentNameHint);
+  const titleMatches = agentNameHint ? [] : peopleMatching(pageTitleName);
+  const targetPerson = agentNameHint
+    ? explicitMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      explicitMatches[0]
+    : titleMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      titleMatches[0] ||
+      primaryPeople[0] ||
+      (people.length === 1 ? people[0] : undefined);
+  const targetName =
+    agentNameHint ||
+    pageTitleName ||
+    (typeof targetPerson?.name === "string" ? targetPerson.name : undefined);
+  const linkedAgentOrganizations = targetPerson
+    ? ["worksFor", "affiliation", "memberOf"].flatMap((key) =>
+        resolveReferences(targetPerson[key]).filter((candidate) =>
+          isSchemaType(candidate, "realestateagent"),
+        ),
+      )
+    : [];
+  const samePageUrl = (value: unknown): boolean => {
+    if (typeof value !== "string") return false;
+    try {
+      const candidate = new URL(value, baseUrl);
+      const page = new URL(baseUrl);
+      candidate.hash = "";
+      page.hash = "";
+      return (
+        candidate.href.replace(/\/$/, "") === page.href.replace(/\/$/, "")
+      );
+    } catch {
+      return false;
+    }
+  };
+  const pagePrimaryAgent = agentOrganizations.find((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const linkedAgent = agentOrganizations.find((candidate) =>
+    linkedAgentOrganizations.some((linked) => sameNode(candidate, linked)),
+  );
+  const containingAgent = targetPerson
+    ? agentOrganizations.find((candidate) =>
+        ["employee", "agent", "founder", "member"].some((key) =>
+          resolveReferences(candidate[key]).some((nested) =>
+            sameNode(nested, targetPerson),
+          ),
+        ),
+      )
+    : undefined;
+  const namedAgent = targetName
+    ? agentOrganizations.find(
+        (candidate) =>
+          typeof candidate.name === "string" &&
+          realtorNamesMatch(targetName, candidate.name),
+      )
+    : undefined;
+  const pageUrlAgent = agentOrganizations.find(
+    (candidate) =>
+      samePageUrl(candidate.url) || samePageUrl(candidate.mainEntityOfPage),
+  );
+  const standaloneAgent =
+    !targetPerson && pageEntities.length === 0
+      ? agentOrganizations.find((candidate) =>
+          rootObjects.some((root) => sameNode(candidate, root)),
+        )
+      : undefined;
+  const soleUnopposedAgent =
+    !targetPerson &&
+    pageEntities.length === 0 &&
+    agentOrganizations.length === 1
+      ? agentOrganizations[0]
+      : undefined;
+  const conflictingAgentOrganization =
+    pagePrimaryAgent ||
+    linkedAgent ||
+    containingAgent ||
+    namedAgent ||
+    pageUrlAgent ||
+    standaloneAgent ||
+    soleUnopposedAgent;
 
   walkJsonLd(nodes, (o) => {
     const types = schemaTypeTokens(o);
-    if (types.includes("person")) {
+    if (o === targetPerson) {
       if (typeof o.name === "string" && !profile.name) profile.name = o.name;
       if (typeof o.telephone === "string" && !profile.phone)
         profile.phone = o.telephone;
@@ -479,22 +644,10 @@ function fromJsonLd(
         const linked =
           typeof w["@id"] === "string" ? byId.get(w["@id"]) : undefined;
         const organization = linked || w;
-        if (typeof organization.name === "string")
+        if (typeof organization.name === "string") {
           profile.brokerage = organization.name;
-      }
-    }
-
-    if (
-      !types.includes("person") &&
-      (types.includes("realestateagent") ||
-        types.includes("localbusiness") ||
-        types.includes("organization"))
-    ) {
-      // Schema.org RealEstateAgent is a LocalBusiness/Organization, not a
-      // Person. Keep its marketing identity separate from the individual.
-      if (typeof o.name === "string") {
-        profile.brokerage ||= o.name;
-        profile.brokerageBrand ||= o.name;
+          profile.brokerageBrand = organization.name;
+        }
       }
     }
 
@@ -650,7 +803,17 @@ function fromJsonLd(
     }
   });
 
-  return { profile, listings };
+  if (typeof conflictingAgentOrganization?.name === "string") {
+    profile.brokerage ||= conflictingAgentOrganization.name;
+    profile.brokerageBrand ||= conflictingAgentOrganization.name;
+  }
+
+  return {
+    profile,
+    listings,
+    hasTargetPerson: Boolean(targetPerson),
+    hasConflictingAgentOrganization: Boolean(conflictingAgentOrganization),
+  };
 }
 
 /**
@@ -661,21 +824,75 @@ function structuredPersonFromJsonLd(
   html: string,
   baseUrl: string,
   agentNameHint?: string,
+  pageTitleName?: string,
 ): ScrapedAgentIdentity {
   const nodes = extractJsonLd(html);
   const byId = new Map<string, Record<string, unknown>>();
   const people: Record<string, unknown>[] = [];
   walkJsonLd(nodes, (node) => {
-    if (typeof node["@id"] === "string") byId.set(node["@id"], node);
+    if (typeof node["@id"] === "string") {
+      const existing = byId.get(node["@id"]);
+      byId.set(node["@id"], existing ? { ...existing, ...node } : node);
+    }
     if (schemaTypeTokens(node).includes("person")) people.push(node);
   });
-  const person = agentNameHint
-    ? people.find(
-        (candidate) =>
-          typeof candidate.name === "string" &&
-          realtorNamesMatch(agentNameHint, candidate.name),
+  const resolveReferences = (value: unknown): Record<string, unknown>[] => {
+    if (Array.isArray(value)) return value.flatMap(resolveReferences);
+    if (typeof value === "string") {
+      const linked = byId.get(value);
+      return linked ? [linked] : [];
+    }
+    if (!value || typeof value !== "object") return [];
+    const reference = value as Record<string, unknown>;
+    if (typeof reference["@id"] === "string") {
+      return [byId.get(reference["@id"]) || reference];
+    }
+    return [reference];
+  };
+  const sameNode = (
+    left?: Record<string, unknown>,
+    right?: Record<string, unknown>,
+  ): boolean =>
+    Boolean(
+      left &&
+        right &&
+        (left === right ||
+          (typeof left["@id"] === "string" &&
+            typeof right["@id"] === "string" &&
+            left["@id"] === right["@id"])),
+    );
+  const pageEntities: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    if (
+      schemaTypeTokens(node).some((type) =>
+        ["profilepage", "webpage", "aboutpage", "contactpage"].includes(type),
       )
-    : people[0];
+    ) {
+      pageEntities.push(...resolveReferences(node.mainEntity));
+    }
+  });
+  const matchesName = (candidate: Record<string, unknown>, name?: string) =>
+    Boolean(
+      name &&
+        typeof candidate.name === "string" &&
+        realtorNamesMatch(name, candidate.name),
+    );
+  const primaryPeople = people.filter((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const explicitMatches = people.filter((candidate) =>
+    matchesName(candidate, agentNameHint),
+  );
+  const titleMatches = agentNameHint
+    ? []
+    : people.filter((candidate) => matchesName(candidate, pageTitleName));
+  const person = agentNameHint
+    ? explicitMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      explicitMatches[0]
+    : titleMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      titleMatches[0] ||
+      primaryPeople[0] ||
+      (people.length === 1 ? people[0] : undefined);
   if (!person || typeof person.name !== "string") return {};
 
   const profile: ScrapedAgentIdentity = { name: person.name };
@@ -981,13 +1198,6 @@ export function parseRealtorWebsiteHtml(
 } {
   const base = pageUrl;
   const text = stripTags(html);
-  const fromLd = fromJsonLd(html, base);
-  const structuredPersonProfile = structuredPersonFromJsonLd(
-    html,
-    base,
-    agentNameHint,
-  );
-  const telMail = extractTelMailto(html);
   // og:title often "Jane Doe | Realtor in …". Resolve the candidate person
   // before examining global footer links so brand profiles cannot become the
   // person's sameAs graph.
@@ -995,6 +1205,14 @@ export function parseRealtorWebsiteHtml(
     html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "",
   );
   const titleName = ogTitle?.split(/[|\-–—]/)[0]?.trim();
+  const fromLd = fromJsonLd(html, base, agentNameHint, titleName);
+  const structuredPersonProfile = structuredPersonFromJsonLd(
+    html,
+    base,
+    agentNameHint,
+    titleName,
+  );
+  const telMail = extractTelMailto(html);
   const personName =
     structuredPersonProfile.name ||
     fromLd.profile.name ||
@@ -1006,12 +1224,32 @@ export function parseRealtorWebsiteHtml(
     ? "CA"
     : undefined;
   const responsibleBroker = pickResponsibleBroker(text, license);
+  // A RealEstateAgent node is an organization in Schema.org. When one is
+  // present, accept each contact field only when it came from the matched
+  // Person node; one proven field must never authorize unrelated fallbacks.
+  const resolveContactField = (
+    personValue: string | undefined,
+    htmlFallback: () => string | undefined,
+  ): string | undefined => {
+    if (fromLd.hasTargetPerson && personValue) return personValue;
+    return fromLd.hasConflictingAgentOrganization
+      ? undefined
+      : htmlFallback();
+  };
   let profile: ScrapedAgentIdentity = {
     ...fromLd.profile,
     name: fromLd.profile.name || titleName,
-    phone: fromLd.profile.phone || telMail.phone || pickPhone(text),
-    email: fromLd.profile.email || telMail.email || pickEmail(text),
-    photoUrl: fromLd.profile.photoUrl || extractPhoto(html, base),
+    phone: resolveContactField(
+      fromLd.profile.phone,
+      () => telMail.phone || pickPhone(text),
+    ),
+    email: resolveContactField(
+      fromLd.profile.email,
+      () => telMail.email || pickEmail(text),
+    ),
+    photoUrl: resolveContactField(fromLd.profile.photoUrl, () =>
+      extractPhoto(html, base),
+    ),
     mlsNumber: fromLd.profile.mlsNumber || pickMlsAgentId(text),
     license,
     licenseJurisdiction,
