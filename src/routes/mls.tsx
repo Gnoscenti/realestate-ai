@@ -155,6 +155,53 @@ function MlsHubPage() {
     }
   };
 
+  // CiteLock trust boundary: the server keeps its own copy of the connection
+  // and fetches with it directly. Only that path can mint listing
+  // attestations — locally stored credentials never can.
+  const saveServerConnection = async () => {
+    if (
+      platform === "website" ||
+      platform === "csv" ||
+      !baseUrl.trim() ||
+      (!accessToken.trim() && !(clientId && clientSecret))
+    ) {
+      toast.error(
+        "Server attestation needs a RESO platform, base URL, and credentials",
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const { saveMyMlsConnection } = await import("@/lib/aieo/api");
+      await saveMyMlsConnection({
+        data: {
+          platform: platform as
+            | "bridge"
+            | "trestle"
+            | "spark"
+            | "mls_grid"
+            | "reso_web",
+          baseUrl: baseUrl.trim(),
+          dataset: dataset.trim() || undefined,
+          agentMlsId: agentMlsId.trim() || profile?.agentMlsId || undefined,
+          agentName: profile?.name || undefined,
+          accessToken: accessToken.trim() || undefined,
+          clientId: clientId.trim() || undefined,
+          clientSecret: clientSecret.trim() || undefined,
+        },
+      });
+      toast.success(
+        "Server connection saved — run attestation from the CiteLock page",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Server connection failed",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -332,6 +379,19 @@ function MlsHubPage() {
               )}
               Connect & sync
             </Button>
+            <Button
+              variant="outline"
+              className="min-h-[44px] w-full"
+              disabled={busy}
+              onClick={() => void saveServerConnection()}
+            >
+              Save for CiteLock server attestation
+            </Button>
+            <p className="text-[11px] text-[var(--color-fg-subtle)]">
+              Stores the connection server-side so CiteLock can verify listing
+              roles itself. Credentials are held on the server and never
+              returned to the browser.
+            </p>
           </CardContent>
         </Card>
 

@@ -206,6 +206,134 @@ describe("CiteLock verified scan", () => {
     );
   });
 
+  it("fetches the independent production source when a RealTrends profile is submitted", async () => {
+    const fetchProduction = vi.fn(async () => ({
+      evidence: [
+        {
+          id: "realtrends:sales-volume:2025:full-year",
+          subject: "agent" as const,
+          field: "transaction_volume",
+          value: "$33,614,777 in 2025",
+          claimScope: "sales-volume:2025:full-year",
+          sourceLabel: "RealTrends Verified",
+          sourceTier: "independent" as const,
+          status: "verified" as const,
+          sourceUrl:
+            "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+          observedAt: NOW,
+        },
+      ],
+      outcomes: [
+        {
+          source: "production" as const,
+          status: "verified" as const,
+          label: "RealTrends Verified production figures fetched and cached",
+        },
+      ],
+    }));
+    const scan = await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+        realTrendsUrl:
+          "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+      },
+      {
+        now: () => NOW,
+        scanWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+
+    expect(fetchProduction).toHaveBeenCalledWith({
+      profileUrl: "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+      observedAt: NOW,
+    });
+    // The site claims $44M for 2025 while the independent source reports
+    // $33.6M — the same-period conflict must block downstream publishing.
+    const report = scoreAieo({ evidence: scan.evidence, evaluatedAt: NOW });
+    expect(
+      report.gates.find((gate) => gate.id === "production-claims")?.status,
+    ).toBe("block");
+  });
+
+  it("reports the production source as unlinked when none is discoverable", async () => {
+    const fetchProduction = vi.fn();
+    const scan = await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+      },
+      {
+        now: () => NOW,
+        scanWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.sourceOutcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "production",
+          status: "unavailable",
+          code: "production_source_unlinked",
+        }),
+      ]),
+    );
+  });
+
+  it("discovers a RealTrends profile from person-bound sameAs links", async () => {
+    const sameAsWebsite = vi.fn(async () => ({
+      ...(await scanWebsite()),
+      profileObservations: [
+        {
+          sourceUrl: "https://agent.example/",
+          profile: {
+            name: "San Diego Pilot Agent",
+            sameAs: [
+              "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+            ],
+          },
+        },
+      ],
+    }));
+    const fetchProduction = vi.fn(async () => ({
+      evidence: [],
+      outcomes: [
+        {
+          source: "production" as const,
+          status: "unavailable" as const,
+          label: "RealTrends Verified production verification was unavailable",
+          code: "production_source_unavailable",
+        },
+      ],
+    }));
+    await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+      },
+      {
+        now: () => NOW,
+        scanWebsite: sameAsWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+    expect(fetchProduction).toHaveBeenCalledWith({
+      profileUrl: "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+      observedAt: NOW,
+    });
+  });
+
   it("never applies merged fields that lack a person-bound page observation", async () => {
     const mixedWebsite = vi.fn(async () => ({
       ...(await scanWebsite()),

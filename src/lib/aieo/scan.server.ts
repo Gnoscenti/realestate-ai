@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { WebsiteScrapeResult } from "@/lib/website-scrape";
 import { scrapeRealtorWebsite } from "@/lib/scrape-site.server";
 import { verifyCaDreIdentity } from "./ca-dre.server";
+import { fetchRealTrendsProduction } from "./realtrends.server";
 import { listingClaimKeys, listingPriceClaimScope } from "./provenance";
 import type { CiteEvidence } from "./types";
 import type {
@@ -9,12 +10,16 @@ import type {
   CiteLockScanRecord,
   CiteSourceOutcome,
 } from "./scan-types";
-import { sanitizeCiteLockPublicUrl } from "./scan-types";
+import {
+  isRealTrendsProfileUrl,
+  sanitizeCiteLockPublicUrl,
+} from "./scan-types";
 
 type ScanDependencies = {
   now?: () => string;
   scanWebsite?: typeof scrapeRealtorWebsite;
   verifyCalifornia?: typeof verifyCaDreIdentity;
+  fetchProduction?: typeof fetchRealTrendsProduction;
 };
 
 export function citeLockSubjectFingerprint(input: CiteLockScanInput): string {
@@ -294,6 +299,32 @@ export async function executeCiteLockScan(
       status: "unsupported",
       label: `${input.jurisdiction} registry verification is not active in the San Diego pilot`,
       code: "jurisdiction_unsupported",
+    });
+  }
+
+  // Independent production source (RealTrends). The profile URL may be
+  // submitted explicitly or discovered from Person-bound sameAs links; the
+  // adapter itself fails closed and never fabricates a figure.
+  const fetchProduction =
+    dependencies.fetchProduction || fetchRealTrendsProduction;
+  const discoveredRealTrendsUrl = (personBoundProfile.sameAs || [])
+    .map(sanitizeCiteLockPublicUrl)
+    .find((url) => url && isRealTrendsProfileUrl(url));
+  const realTrendsUrl = input.realTrendsUrl || discoveredRealTrendsUrl;
+  if (realTrendsUrl) {
+    const production = await fetchProduction({
+      profileUrl: realTrendsUrl,
+      observedAt: evaluatedAt,
+    });
+    evidence.push(...production.evidence);
+    sourceOutcomes.push(...production.outcomes);
+  } else {
+    sourceOutcomes.push({
+      source: "production",
+      status: "unavailable",
+      label:
+        "No independent production source is linked; site production claims stay uncorroborated",
+      code: "production_source_unlinked",
     });
   }
 

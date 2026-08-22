@@ -177,7 +177,7 @@ function credentialState(
   return "pass";
 }
 
-function normalizeFieldValue(field: string, value: string): string {
+export function normalizeFieldValue(field: string, value: string): string {
   const cleaned = value.toLowerCase().replace(/®|™/g, "").replace(/[^a-z0-9]+/g, " ").trim();
   if (field === "license" || field === "responsible_broker_license") {
     return value.match(/\d{6,12}/)?.[0] || cleaned.replace(/\s+/g, "");

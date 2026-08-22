@@ -99,6 +99,20 @@ const citeLockWebsiteSchema = z
     }
   });
 
+export function isRealTrendsProfileUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      /(?:^|\.)realtrends\.com$/i.test(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const citeLockScanInputSchema = z.object({
   website: citeLockWebsiteSchema,
   agentName: z.string().trim().min(2).max(120),
@@ -109,12 +123,37 @@ export const citeLockScanInputSchema = z.object({
     .regex(/^\d{6,12}$/)
     .optional(),
   jurisdiction: z.enum(US_JURISDICTIONS),
+  /**
+   * Optional independent production-source profile (RealTrends Verified).
+   * Not part of the subject fingerprint — it corroborates, never identifies.
+   */
+  realTrendsUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine(isRealTrendsProfileUrl, {
+      message: "Must be an https RealTrends profile URL",
+    })
+    .optional(),
 });
 
 export type CiteLockScanInput = z.infer<typeof citeLockScanInputSchema>;
 
+export const mlsConnectionInputSchema = z.object({
+  platform: z.enum(["bridge", "trestle", "spark", "mls_grid", "reso_web"]),
+  baseUrl: z.string().trim().min(4).max(500),
+  dataset: z.string().trim().max(120).optional(),
+  agentMlsId: z.string().trim().max(80).optional(),
+  agentName: z.string().trim().max(120).optional(),
+  accessToken: z.string().trim().max(4000).optional(),
+  clientId: z.string().trim().max(200).optional(),
+  clientSecret: z.string().trim().max(400).optional(),
+});
+
+export type MlsConnectionInput = z.infer<typeof mlsConnectionInputSchema>;
+
 export type CiteSourceOutcome = {
-  source: "website" | "regulator";
+  source: "website" | "regulator" | "production" | "provider" | "recognition";
   status: "verified" | "observed" | "unsupported" | "unavailable" | "mismatch";
   label: string;
   url?: string;

@@ -30,11 +30,23 @@ import {
   type CiteLockScanRecord,
 } from "@/lib/aieo/scan-types";
 import {
+  getMyAttestedListings,
   getMyLatestCiteLockScan,
+  getMyMlsConnection,
+  getMyRecognitionRuns,
   runMyCiteLockScan,
+  runMyMlsAttestation,
+  runMyRecognitionProbes,
 } from "@/lib/aieo/api";
-import type { CiteAgentProfile, CiteProperty } from "@/lib/aieo/provenance";
+import {
+  listingClaimKeys,
+  type CiteAgentProfile,
+  type CiteProperty,
+} from "@/lib/aieo/provenance";
+import type { CiteRecognitionRun } from "@/lib/aieo/types";
 import { useAppStore } from "@/lib/store";
+
+type MlsConnectionSummary = Awaited<ReturnType<typeof getMyMlsConnection>>;
 
 export const Route = createFileRoute("/aieo")({
   component: AieoPage,
@@ -60,6 +72,34 @@ function AieoPage() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [jurisdiction, setJurisdiction] = useState<CiteJurisdiction>("US-CA");
   const [scoreClock, setScoreClock] = useState(() => new Date().toISOString());
+  const [attested, setAttested] = useState<CiteProperty[]>([]);
+  const [connection, setConnection] = useState<MlsConnectionSummary>(null);
+  const [attestBusy, setAttestBusy] = useState(false);
+  const [recognitionRuns, setRecognitionRuns] = useState<CiteRecognitionRun[]>(
+    [],
+  );
+  const [probeBusy, setProbeBusy] = useState(false);
+
+  const scanInput = useMemo(
+    () =>
+      profile?.website && profile?.name
+        ? {
+            website: profile.website,
+            agentName: profile.name,
+            license: profile.license || undefined,
+            responsibleBrokerLicense: (profile as CiteAgentProfile)
+              .responsibleBrokerLicense,
+            jurisdiction,
+          }
+        : null,
+    [
+      profile?.website,
+      profile?.name,
+      profile?.license,
+      (profile as CiteAgentProfile | null)?.responsibleBrokerLicense,
+      jurisdiction,
+    ],
+  );
 
   useEffect(() => {
     const interval = window.setInterval(
@@ -109,6 +149,43 @@ function AieoPage() {
       setJurisdiction(code as CiteJurisdiction);
   }, [profile]);
 
+  // Server-owned trust: attested inventory and the stored provider connection
+  // come only from the server; a client payload can never mint them.
+  useEffect(() => {
+    let active = true;
+    void getMyAttestedListings()
+      .then((rows) => {
+        if (active) setAttested(rows);
+      })
+      .catch(() => {});
+    void getMyMlsConnection()
+      .then((summary) => {
+        if (active) setConnection(summary);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!scanInput) {
+      setRecognitionRuns([]);
+      return;
+    }
+    let active = true;
+    void getMyRecognitionRuns({ data: scanInput })
+      .then((runs) => {
+        if (active) setRecognitionRuns(runs);
+      })
+      .catch(() => {
+        // No stored runs yet is a normal first-run state.
+      });
+    return () => {
+      active = false;
+    };
+  }, [scanInput]);
+
   const reportProfile = useMemo(() => {
     if (!profile) return null;
     const patch = Object.fromEntries(
@@ -128,9 +205,12 @@ function AieoPage() {
   // an authorization boundary. CiteLock will not treat a client-supplied
   // attestation string as provider proof; the future server MLS adapter must
   // return the scored observations directly.
-  const reportProperties = useMemo(
-    () =>
-      properties.map((property) => {
+  const reportProperties = useMemo(() => {
+    const attestedKeys = new Set(
+      attested.flatMap((listing) => listingClaimKeys(listing)),
+    );
+    const clientRows = properties
+      .map((property) => {
         const citeProperty = property as CiteProperty;
         return {
           ...citeProperty,
@@ -142,9 +222,15 @@ function AieoPage() {
               }
             : undefined,
         };
-      }),
-    [properties],
-  );
+      })
+      // A server-attested observation supersedes any client import of the
+      // same listing, so the trusted role evidence wins the dedupe.
+      .filter(
+        (property) =>
+          !listingClaimKeys(property).some((key) => attestedKeys.has(key)),
+      );
+    return [...clientRows, ...attested];
+  }, [properties, attested]);
 
   const report = useMemo(
     () =>
@@ -153,9 +239,17 @@ function AieoPage() {
         properties: reportProperties,
         voice: memory?.preferredVoice,
         evidence: scan?.evidence,
+        recognitionRuns,
         evaluatedAt: scoreClock,
       }),
-    [reportProfile, reportProperties, memory?.preferredVoice, scan, scoreClock],
+    [
+      reportProfile,
+      reportProperties,
+      memory?.preferredVoice,
+      scan,
+      recognitionRuns,
+      scoreClock,
+    ],
   );
 
   const runVerifiedScan = async () => {
@@ -184,6 +278,49 @@ function AieoPage() {
       toast.error(message);
     } finally {
       setScanBusy(false);
+    }
+  };
+
+  const runAttestation = async () => {
+    setAttestBusy(true);
+    try {
+      const result = await runMyMlsAttestation();
+      if (result.ok) {
+        setAttested(result.listings);
+        toast.success(result.outcome.label);
+      } else {
+        toast.error(result.outcome.label);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Provider attestation failed",
+      );
+    } finally {
+      setAttestBusy(false);
+    }
+  };
+
+  const runProbes = async () => {
+    if (!scanInput) {
+      toast.error("Add your name and public website before probing");
+      return;
+    }
+    setProbeBusy(true);
+    try {
+      const batch = await runMyRecognitionProbes({ data: scanInput });
+      if (batch.ok) {
+        toast.success(batch.outcome.label);
+        const runs = await getMyRecognitionRuns({ data: scanInput });
+        setRecognitionRuns(runs);
+      } else {
+        toast.error(batch.outcome.label);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Recognition probes failed",
+      );
+    } finally {
+      setProbeBusy(false);
     }
   };
 
@@ -269,6 +406,34 @@ function AieoPage() {
           {!profile?.website && (
             <p className="text-xs text-[var(--color-fg-muted)]">
               Add a public website in Profile before running CiteLock.
+            </p>
+          )}
+          <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-[var(--color-fg-muted)]">
+              {connection
+                ? `Server MLS connection: ${connection.platform} · ${connection.hasCredentials ? "credentials held server-side" : "credentials missing"} · updated ${new Date(connection.updatedAt).toLocaleDateString()}`
+                : "No server-held MLS connection. Save one from the MLS page to enable provider attestation — client imports can never authorize representation."}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={runAttestation}
+              disabled={attestBusy || !connection}
+            >
+              {attestBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+              {attestBusy
+                ? "Attesting provider roles…"
+                : "Run server attestation"}
+            </Button>
+          </div>
+          {attested.length > 0 && (
+            <p className="text-xs text-[var(--color-fg-muted)]">
+              {attested.length} server-attested provider observation(s) are
+              feeding the score, replacing overlapping client imports.
             </p>
           )}
           {scanError && (
@@ -597,6 +762,28 @@ function AieoPage() {
                     ? `${report.recognition.citationRate}% citation rate, ${report.recognition.identityAccuracy}% correct identity, and ${report.recognition.brokerageAccuracy}% correct brokerage attribution.`
                     : "CiteScore is not an LLM ranking. Freeze these prompts, retain raw answers and citations, and compare model, location, and date over time."}
                 </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={runProbes}
+                    disabled={probeBusy || !scan}
+                  >
+                    {probeBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                    {probeBusy
+                      ? "Running controlled probes…"
+                      : "Run controlled probes"}
+                  </Button>
+                  <span className="text-[11px] text-[var(--color-fg-subtle)]">
+                    {scan
+                      ? `${recognitionRuns.length} stored run(s) in the 30-day window. Probes use server-configured provider keys and persist prompt, model, location, and date.`
+                      : "Run a verified scan first — probes only execute against a persisted subject."}
+                  </span>
+                </div>
               </div>
               <div className="space-y-2">
                 {report.queryPlan.map((query) => (

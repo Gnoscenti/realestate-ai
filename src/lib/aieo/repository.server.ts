@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
+import { normalizeFieldValue } from "./score";
+import type { CiteEvidence } from "./types";
 import type { CiteLockScanRecord } from "./scan-types";
 
 type ScanRow = {
@@ -109,6 +111,153 @@ export async function saveCiteLockScan(
   );
   if (!rows[0]) throw new Error("CiteLock scan save failed");
   return toRecord(rows[0]);
+}
+
+function productionClaimScope(item: CiteEvidence): string {
+  if (item.claimScope) return item.claimScope.trim().toLowerCase();
+  const year = item.value.toLowerCase().match(/\b(20\d{2})\b/)?.[1];
+  return year ? `sales-volume:${year}:full-year` : "sales-volume:unspecified";
+}
+
+export type CiteLockDispute = {
+  id: string;
+  subjectFingerprint: string;
+  field: string;
+  claimScope: string;
+  values: string[];
+  evidenceIds: string[];
+  status: "open" | "resolved" | "dismissed";
+  createdAt: string;
+};
+
+/**
+ * Governance routing: persist same-period production conflicts discovered by a
+ * scan as open disputes. Attestation stays paused by the scoring gate until a
+ * human resolves or dismisses the dispute; re-recording an open dispute only
+ * refreshes its conflicting values.
+ */
+export async function recordProductionDisputes(
+  userId: string,
+  workspaceId: string,
+  scan: Omit<CiteLockScanRecord, "id">,
+  sqlOverride?: Sql,
+): Promise<number> {
+  const sql = sqlOverride || (await getSql());
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    ["owner", "admin"],
+    sql,
+  );
+  const byScope = new Map<string, CiteEvidence[]>();
+  for (const item of scan.evidence) {
+    if (item.field !== "transaction_volume" || !item.sourceUrl) continue;
+    const scope = productionClaimScope(item);
+    byScope.set(scope, [...(byScope.get(scope) || []), item]);
+  }
+  let recorded = 0;
+  for (const [scope, items] of byScope) {
+    const values = new Map<string, CiteEvidence>();
+    for (const item of items) {
+      const key = normalizeFieldValue("transaction_volume", item.value);
+      if (key && !values.has(key)) values.set(key, item);
+    }
+    if (values.size <= 1) continue;
+    await sql.query(
+      `insert into citelock_disputes (
+         id, workspace_id, subject_fingerprint, field, claim_scope,
+         claim_values, evidence_ids
+       ) values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)
+       on conflict (workspace_id, subject_fingerprint, field, claim_scope)
+         where status = 'open'
+       do update set
+         claim_values = excluded.claim_values,
+         evidence_ids = excluded.evidence_ids`,
+      [
+        randomUUID(),
+        workspace.id,
+        scan.subjectFingerprint,
+        "transaction_volume",
+        scope,
+        JSON.stringify([...values.values()].map((item) => item.value)),
+        JSON.stringify(items.map((item) => item.id)),
+      ],
+    );
+    recorded += 1;
+  }
+  return recorded;
+}
+
+export async function listOpenCiteLockDisputes(
+  userId: string,
+  workspaceId: string,
+  subjectFingerprint: string,
+  sqlOverride?: Sql,
+): Promise<CiteLockDispute[]> {
+  if (!/^[a-f0-9]{64}$/.test(subjectFingerprint))
+    throw new Error("Invalid CiteLock subject fingerprint");
+  const sql = sqlOverride || (await getSql());
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    undefined,
+    sql,
+  );
+  type DisputeRow = {
+    id: string;
+    subject_fingerprint: string;
+    field: string;
+    claim_scope: string;
+    claim_values: string[] | string;
+    evidence_ids: string[] | string;
+    status: CiteLockDispute["status"];
+    created_at: string | Date;
+  };
+  const rows = await sql.query<DisputeRow>(
+    `select id, subject_fingerprint, field, claim_scope, claim_values,
+            evidence_ids, status, created_at
+       from citelock_disputes
+      where workspace_id = $1 and subject_fingerprint = $2 and status = 'open'
+      order by created_at desc`,
+    [workspace.id, subjectFingerprint],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    subjectFingerprint: row.subject_fingerprint,
+    field: row.field,
+    claimScope: row.claim_scope,
+    values: jsonValue(row.claim_values, []),
+    evidenceIds: jsonValue(row.evidence_ids, []),
+    status: row.status,
+    createdAt:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
+  }));
+}
+
+export async function resolveCiteLockDispute(
+  userId: string,
+  workspaceId: string,
+  disputeId: string,
+  resolution: { status: "resolved" | "dismissed"; note?: string },
+  sqlOverride?: Sql,
+): Promise<void> {
+  const sql = sqlOverride || (await getSql());
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    ["owner", "admin"],
+    sql,
+  );
+  const rows = await sql.query<{ id: string }>(
+    `update citelock_disputes
+        set status = $3, resolution_note = $4, resolved_at = now()
+      where id = $1 and workspace_id = $2 and status = 'open'
+      returning id`,
+    [disputeId, workspace.id, resolution.status, resolution.note || null],
+  );
+  if (!rows.length) throw new Error("Open dispute not found");
 }
 
 export async function getLatestCiteLockScan(
