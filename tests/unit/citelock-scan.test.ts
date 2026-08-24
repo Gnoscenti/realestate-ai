@@ -9,10 +9,10 @@ import {
   sanitizeCiteLockPublicUrl,
 } from "@/lib/aieo/scan-types";
 import {
-  pilotEvidence,
-  pilotProfile,
-  pilotProperties,
-} from "../fixtures/citelock-san-diego-pilot";
+  attestedEvidence,
+  attestedProfile,
+  attestedProperties,
+} from "../fixtures/citelock-provider-attestation";
 
 const NOW = "2026-08-19T19:00:00.000-07:00";
 
@@ -311,10 +311,10 @@ describe("CiteLock verified scan", () => {
     );
 
     const report = scoreAieo({
-      profile: pilotProfile,
-      properties: [pilotProperties[0]!],
+      profile: attestedProfile,
+      properties: [attestedProperties[0]!],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         ...scan.evidence.filter((item) =>
           item.field.startsWith("listing_"),
         ),
