@@ -41,11 +41,12 @@ import {
 } from "@/lib/ai";
 import { cn, formatCurrency } from "@/lib/utils";
 import { buildFiveMinuteProtocol } from "@/lib/edge-pack";
+import { BuyerSellerFaqPanel, ShowingFollowUpPanel } from "@/components/outreach/faq-showing-panels";
 import { SPEED_TO_LEAD_SLA_MINUTES } from "@/lib/competitors";
 
 const searchSchema = z.object({
   lead: z.string().optional(),
-  mode: z.enum(["instant", "nurture", "brief", "reactivate", "agreement"]).optional(),
+  mode: z.enum(["instant", "nurture", "brief", "reactivate", "agreement", "faq", "showing"]).optional(),
 });
 
 export const Route = createFileRoute("/outreach")({
@@ -312,6 +313,8 @@ function OutreachPage() {
           <TabsTrigger value="instant">Instant reply</TabsTrigger>
           <TabsTrigger value="brief">Call brief</TabsTrigger>
           <TabsTrigger value="nurture">Nurture sequence</TabsTrigger>
+          <TabsTrigger value="showing">Showing follow-up</TabsTrigger>
+          <TabsTrigger value="faq">Buyer / Seller FAQ</TabsTrigger>
           <TabsTrigger value="reactivate">Sphere reactivate</TabsTrigger>
           <TabsTrigger value="agreement">Buyer agreement</TabsTrigger>
         </TabsList>
@@ -435,6 +438,19 @@ function OutreachPage() {
             <Check className="h-4 w-4" />
             Enroll in nurture
           </Button>
+        </TabsContent>
+
+        <TabsContent value="showing" className="space-y-3">
+          <ShowingFollowUpPanel
+            lead={lead}
+            property={properties[0]}
+            profile={profile}
+            onLogged={() => markSent("Showing follow-up sequence started")}
+          />
+        </TabsContent>
+
+        <TabsContent value="faq" className="space-y-3">
+          <BuyerSellerFaqPanel profile={profile} />
         </TabsContent>
 
         <TabsContent value="reactivate">
