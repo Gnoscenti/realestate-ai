@@ -28,7 +28,7 @@ export function SocialGenerateButtons({ property, imageUrl, activePlan, onPlan }
         ...post,
         ...(kind === "image"
           ? { imageUrl: url, videoUrl: undefined }
-          : { videoUrl: url }),
+          : { imageUrl: undefined, videoUrl: url }),
         mediaSource: "imagine" as const,
         imaginePrompt: prompt,
         visualBrief: `Grok Imagine ${kind} · ${property?.title || "listing"}`,
