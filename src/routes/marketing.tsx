@@ -56,7 +56,6 @@ import { attachMediaToPosts, buildImaginePrompt, pickListingMedia } from "@/lib/
 import { SOCIAL_NETWORKS, networkForPlatform } from "@/lib/social-accounts";
 import { Image as ImageIcon, Link2, Power } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { SocialGenerateButtons } from "@/components/marketing/social-generate-buttons";
 
 const searchSchema = z.object({
   goal: z.string().optional(),
@@ -678,23 +677,7 @@ function MarketingPage() {
                             </Button>
                           </CardHeader>
                           <CardContent className="space-y-4">
-                            {selectedPost.videoUrl ? (
-                              <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
-                                <video
-                                  src={selectedPost.videoUrl}
-                                  poster={selectedPost.imageUrl}
-                                  controls
-                                  playsInline
-                                  preload="metadata"
-                                  className="max-h-80 w-full bg-black object-contain"
-                                >
-                                  Your browser does not support video playback.
-                                </video>
-                                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  Grok Imagine video
-                                </div>
-                              </div>
-                            ) : selectedPost.imageUrl ? (
+                            {selectedPost.imageUrl && (
                               <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                                 <img
                                   src={selectedPost.imageUrl}
@@ -710,7 +693,7 @@ function MarketingPage() {
                                       : "Website photo"}
                                 </div>
                               </div>
-                            ) : null}
+                            )}
                             <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm leading-relaxed text-[var(--color-fg)] font-sans">
                               {composeFullCaption(selectedPost)}
                             </pre>
@@ -1045,8 +1028,8 @@ function MarketingPage() {
                     Grok Imagine + listing photos
                   </CardTitle>
                   <CardDescription>
-                    AI starts from a real website or MLS listing photo. Enhance that
-                    photo or turn it into a short social video without inventing the property.
+                    AI picks photos from your website or MLS listing. When no photo
+                    exists, a Grok Imagine prompt is prepared for creative generation.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1064,7 +1047,7 @@ function MarketingPage() {
                             />
                           ) : (
                             <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No website/MLS photo yet — add a real photo before generating
+                              No website/MLS photo yet — Imagine will create from facts
                             </div>
                           )}
                           <div className="p-3 text-xs text-[var(--color-fg-muted)]">
@@ -1082,42 +1065,43 @@ function MarketingPage() {
                           </pre>
                           <Button
                             className="min-h-[44px] w-full"
-                            disabled={!activePlan || imagineBusy || !pick.imageUrl}
+                            disabled={!activePlan || imagineBusy}
                             onClick={() => {
                               if (!activePlan) {
                                 toast.message("Run the Content Agent first");
                                 return;
                               }
                               setImagineBusy(true);
-                              const prompt = buildImaginePrompt(property, "enhance");
+                              const prompt = buildImaginePrompt(property, pick.imageUrl ? "enhance" : "create");
                               const next = {
                                 ...activePlan,
                                 posts: activePlan.posts.map((post) => ({
                                   ...post,
                                   imaginePrompt: prompt,
-                                  mediaSource: post.mediaSource ?? pick.source,
-                                  imageUrl: pick.imageUrl,
-                                  visualBrief: `${post.visualBrief} · AI-selected listing photo`,
+                                  mediaSource: pick.imageUrl
+                                    ? (post.mediaSource ?? pick.source)
+                                    : ("imagine" as const),
+                                  imageUrl: pick.imageUrl || post.imageUrl,
+                                  visualBrief: pick.imageUrl
+                                    ? `${post.visualBrief} · AI-selected listing photo`
+                                    : `Grok Imagine · ${prompt.slice(0, 100)}…`,
                                 })),
                               };
                               saveCampaign(next);
                               setActivePlan(next);
                               setImagineBusy(false);
-                              toast.success("AI applied the selected listing photo to this campaign");
+                              toast.success(
+                                pick.imageUrl
+                                  ? "AI applied listing photos to this campaign"
+                                  : "Imagine prompts attached — generate creatives from the brief",
+                              );
                             }}
                           >
                             <Sparkles className="h-4 w-4" />
-                            Use AI-picked listing photo
+                            {property?.photoUrls?.length || property?.imageUrl
+                              ? "Use AI-picked listing photos"
+                              : "Attach Grok Imagine prompts"}
                           </Button>
-                          <SocialGenerateButtons
-                            property={property}
-                            imageUrl={pick.imageUrl}
-                            activePlan={activePlan}
-                            onPlan={(next) => {
-                              saveCampaign(next);
-                              setActivePlan(next);
-                            }}
-                          />
                           {property?.photoUrls && property.photoUrls.length > 1 && (
                             <div className="flex gap-2 overflow-x-auto pt-1">
                               {property.photoUrls.slice(0, 6).map((url) => (
