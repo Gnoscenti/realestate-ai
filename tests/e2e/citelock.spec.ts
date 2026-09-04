@@ -20,6 +20,10 @@ test("CiteLock is reachable and distinguishes readiness from recognition", async
   await expect(page.getByText("CiteScore readiness", { exact: true })).toBeVisible();
   await expect(page.getByText("Not measured", { exact: true })).toBeVisible();
   await expect(page.getByText("No valid canonical public profile URL.")).toBeVisible();
+  await expect(page.getByText("Beta trust boundary", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/Quantified production claims are suppressed/),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Verified evidence scan" }),
   ).toBeVisible();
@@ -31,6 +35,9 @@ test("CiteLock is reachable and distinguishes readiness from recognition", async
   await page.getByRole("button", { name: "Recognition", exact: true }).click();
   await expect(page.getByText("Recognition is not measured", { exact: true })).toBeVisible();
   await expect(page.getByText(/CiteScore is not an LLM ranking/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Run controlled multi-model panel" }),
+  ).toBeDisabled();
 
   await page.getByRole("button", { name: "Evidence Locker", exact: true }).click();
   await expect(page.getByText("license", { exact: true }).first()).toBeVisible();

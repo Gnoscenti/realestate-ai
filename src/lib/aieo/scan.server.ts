@@ -119,6 +119,14 @@ function siteEvidence(
 
   if (observations.length) {
     for (const [index, claim] of (scrape.claims || []).entries()) {
+      // Quantified production claims remain locked until an independent,
+      // period-matched production adapter is configured. The website
+      // observation is intentionally not allowed into the beta evidence graph.
+      if (
+        claim.field === "transaction_volume" ||
+        claim.field === "transaction_sides"
+      )
+        continue;
       const claimUrl = sanitizeCiteLockPublicUrl(claim.sourceUrl) || sourceUrl;
       items.push({
         id: `site:claim:${claim.claimScope}:${index}`,
@@ -264,6 +272,13 @@ export async function executeCiteLockScan(
         undefined,
       code: scrape.ok ? undefined : "website_unavailable",
     },
+    {
+      source: "independent_production",
+      status: "unavailable",
+      label:
+        "Quantified production claims are suppressed until an authorized independent source is configured",
+      code: "independent_production_adapter_pending",
+    },
   ];
 
   // Prefer the submitted credential. If the site publishes a different one,
@@ -299,6 +314,7 @@ export async function executeCiteLockScan(
 
   return {
     subjectFingerprint: citeLockSubjectFingerprint(input),
+    agentName: input.agentName,
     website: storedWebsite,
     jurisdiction: input.jurisdiction,
     evaluatedAt,

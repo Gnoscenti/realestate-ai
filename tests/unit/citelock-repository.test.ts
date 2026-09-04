@@ -5,6 +5,12 @@ import {
   getLatestCiteLockScan,
   saveCiteLockScan,
 } from "@/lib/aieo/repository.server";
+import {
+  assertRecognitionPanelAvailable,
+  listRecentRecognitionCaptures,
+  saveRecognitionCaptures,
+} from "@/lib/aieo/recognition-repository.server";
+import type { CiteRecognitionCapture } from "@/lib/aieo/recognition-types";
 import type { CiteLockScanRecord } from "@/lib/aieo/scan-types";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 
@@ -14,6 +20,7 @@ function scanAt(
 ): Omit<CiteLockScanRecord, "id"> {
   return {
     subjectFingerprint,
+    agentName: "San Diego Pilot Agent",
     website: "https://pilot-agent.example.org",
     jurisdiction: "US-CA",
     evaluatedAt,
@@ -94,5 +101,63 @@ describe("CiteLock scan repository", () => {
     await expect(
       consumeCiteLockScanQuota(userId, workspace.id),
     ).rejects.toThrow("CiteLock scan limit reached");
+  });
+
+  it("persists immutable Recognition evidence and isolates it by tenant", async () => {
+    const owner = `recognition-owner-${randomUUID()}`;
+    const stranger = `recognition-stranger-${randomUUID()}`;
+    const workspace = await ensurePersonalWorkspace(owner);
+    const scan = await saveCiteLockScan(
+      owner,
+      workspace.id,
+      scanAt(new Date().toISOString()),
+    );
+    const observedAt = new Date().toISOString();
+    const capture: CiteRecognitionCapture = {
+      id: randomUUID(),
+      scanId: scan.id,
+      subjectFingerprint: scan.subjectFingerprint,
+      panelVersion: "test-panel-v1",
+      queryId: "identity",
+      prompt: "Who is the San Diego Pilot Agent?",
+      promptHash: "b".repeat(64),
+      provider: "chatgpt",
+      model: "test-model",
+      location: "San Diego, California, United States",
+      runDate: observedAt.slice(0, 10),
+      status: "succeeded",
+      responseText: "A test response",
+      rawResponse: { id: "provider-response" },
+      responseHash: "c".repeat(64),
+      citations: ["https://agent.example/"],
+      mentioned: true,
+      cited: true,
+      correctIdentity: true,
+      correctBrokerage: false,
+      observedAt,
+    };
+
+    await expect(
+      saveRecognitionCaptures(owner, workspace.id, [capture]),
+    ).resolves.toEqual([capture]);
+    await expect(
+      listRecentRecognitionCaptures(owner, workspace.id, scan.subjectFingerprint),
+    ).resolves.toEqual([capture]);
+    await expect(
+      assertRecognitionPanelAvailable(
+        owner,
+        workspace.id,
+        scan.subjectFingerprint,
+        capture.panelVersion,
+        capture.runDate,
+      ),
+    ).rejects.toThrow("already been captured today");
+    await expect(
+      listRecentRecognitionCaptures(
+        stranger,
+        workspace.id,
+        scan.subjectFingerprint,
+      ),
+    ).rejects.toThrow("Workspace not found");
   });
 });

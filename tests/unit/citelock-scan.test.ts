@@ -196,12 +196,18 @@ describe("CiteLock verified scan", () => {
           id: "site:profile:0:name",
           status: "published",
         }),
-        expect.objectContaining({
-          field: "transaction_volume",
-          claimScope: "sales-volume:2025:full-year",
-          status: "published",
-        }),
         expect.objectContaining({ id: "regulator:license", status: "verified" }),
+      ]),
+    );
+    expect(scan.agentName).toBe("San Diego Pilot Agent");
+    expect(scan.evidence.some((item) => item.field === "transaction_volume")).toBe(false);
+    expect(scan.sourceOutcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "independent_production",
+          status: "unavailable",
+          code: "independent_production_adapter_pending",
+        }),
       ]),
     );
   });

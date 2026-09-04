@@ -6,6 +6,7 @@ import type { CiteLockScanRecord } from "./scan-types";
 type ScanRow = {
   id: string;
   subject_fingerprint: string;
+  agent_name: string;
   website_url: string;
   jurisdiction: CiteLockScanRecord["jurisdiction"];
   evidence: CiteLockScanRecord["evidence"] | string;
@@ -29,6 +30,7 @@ function toRecord(row: ScanRow): CiteLockScanRecord {
   return {
     id: row.id,
     subjectFingerprint: row.subject_fingerprint,
+    agentName: row.agent_name,
     website: row.website_url,
     jurisdiction: row.jurisdiction,
     evidence: jsonValue(row.evidence, []),
@@ -87,17 +89,18 @@ export async function saveCiteLockScan(
   const id = randomUUID();
   const rows = await sql.query<ScanRow>(
     `insert into citelock_scans (
-       id, workspace_id, created_by_user_id, subject_fingerprint, website_url,
+       id, workspace_id, created_by_user_id, subject_fingerprint, agent_name, website_url,
        jurisdiction, evidence, site_audit, profile_patch, source_outcomes,
        evaluated_at
-     ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11)
-     returning id, subject_fingerprint, website_url, jurisdiction, evidence,
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,$12)
+     returning id, subject_fingerprint, agent_name, website_url, jurisdiction, evidence,
                site_audit, profile_patch, source_outcomes, evaluated_at`,
     [
       id,
       workspace.id,
       userId,
       scan.subjectFingerprint,
+      scan.agentName,
       scan.website,
       scan.jurisdiction,
       JSON.stringify(scan.evidence),
@@ -127,13 +130,37 @@ export async function getLatestCiteLockScan(
     sql,
   );
   const rows = await sql.query<ScanRow>(
-    `select id, subject_fingerprint, website_url, jurisdiction, evidence,
+    `select id, subject_fingerprint, agent_name, website_url, jurisdiction, evidence,
             site_audit, profile_patch, source_outcomes, evaluated_at
        from citelock_scans
       where workspace_id = $1 and subject_fingerprint = $2
       order by evaluated_at desc, created_at desc
       limit 1`,
     [workspace.id, subjectFingerprint],
+  );
+  return rows[0] ? toRecord(rows[0]) : null;
+}
+
+export async function getCiteLockScanById(
+  userId: string,
+  workspaceId: string,
+  scanId: string,
+  sqlOverride?: Sql,
+): Promise<CiteLockScanRecord | null> {
+  const sql = sqlOverride || (await getSql());
+  const workspace = await requireWorkspaceAccess(
+    userId,
+    workspaceId,
+    undefined,
+    sql,
+  );
+  const rows = await sql.query<ScanRow>(
+    `select id, subject_fingerprint, agent_name, website_url, jurisdiction, evidence,
+            site_audit, profile_patch, source_outcomes, evaluated_at
+       from citelock_scans
+      where workspace_id = $1 and id = $2
+      limit 1`,
+    [workspace.id, scanId],
   );
   return rows[0] ? toRecord(rows[0]) : null;
 }

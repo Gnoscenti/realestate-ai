@@ -30,10 +30,13 @@ import {
   type CiteLockScanRecord,
 } from "@/lib/aieo/scan-types";
 import {
+  getMyCiteLockRecognition,
   getMyLatestCiteLockScan,
   runMyCiteLockScan,
+  runMyCiteLockRecognition,
 } from "@/lib/aieo/api";
 import type { CiteAgentProfile, CiteProperty } from "@/lib/aieo/provenance";
+import type { CiteRecognitionCapture } from "@/lib/aieo/recognition-types";
 import { useAppStore } from "@/lib/store";
 
 export const Route = createFileRoute("/aieo")({
@@ -58,8 +61,28 @@ function AieoPage() {
   const [scan, setScan] = useState<CiteLockScanRecord | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [recognitionRuns, setRecognitionRuns] = useState<CiteRecognitionCapture[]>([]);
+  const [recognitionBusy, setRecognitionBusy] = useState(false);
   const [jurisdiction, setJurisdiction] = useState<CiteJurisdiction>("US-CA");
   const [scoreClock, setScoreClock] = useState(() => new Date().toISOString());
+
+  useEffect(() => {
+    if (!scan?.id) {
+      setRecognitionRuns([]);
+      return;
+    }
+    let active = true;
+    void getMyCiteLockRecognition({ data: { scanId: scan.id } })
+      .then((runs) => {
+        if (active) setRecognitionRuns(runs);
+      })
+      .catch(() => {
+        // No prior controlled captures is the expected first-run state.
+      });
+    return () => {
+      active = false;
+    };
+  }, [scan?.id]);
 
   useEffect(() => {
     const interval = window.setInterval(
@@ -153,9 +176,19 @@ function AieoPage() {
         properties: reportProperties,
         voice: memory?.preferredVoice,
         evidence: scan?.evidence,
+        recognitionRuns: recognitionRuns.filter(
+          (capture) => capture.status === "succeeded",
+        ),
         evaluatedAt: scoreClock,
       }),
-    [reportProfile, reportProperties, memory?.preferredVoice, scan, scoreClock],
+    [
+      reportProfile,
+      reportProperties,
+      memory?.preferredVoice,
+      scan,
+      recognitionRuns,
+      scoreClock,
+    ],
   );
 
   const runVerifiedScan = async () => {
@@ -187,6 +220,29 @@ function AieoPage() {
     }
   };
 
+  const runRecognition = async () => {
+    if (!scan?.id) {
+      toast.error("Run and save the verified evidence scan first");
+      return;
+    }
+    setRecognitionBusy(true);
+    try {
+      const result = await runMyCiteLockRecognition({
+        data: { scanId: scan.id },
+      });
+      setRecognitionRuns(result.captures);
+      toast.success(
+        `Controlled panel saved across ${result.configuredProviders.join(", ")}`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Recognition panel failed",
+      );
+    } finally {
+      setRecognitionBusy(false);
+    }
+  };
+
   const copy = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -215,12 +271,29 @@ function AieoPage() {
             Lock the agent, brokerage, market, and evidence into one citable graph
           </h1>
           <p className="max-w-3xl text-sm text-[var(--color-fg-muted)]">
-            CiteScore measures verified publishing readiness. Recognition is a
-            separate observed metric and remains unmeasured until controlled
-            model runs exist. No score guarantees a citation or ranking.
+            Verify public identity and licensing, evaluate AI citation
+            readiness, measure actual multi-model recognition, preserve
+            reproducible evidence, and suppress claims that lack authoritative
+            verification. No score guarantees a citation or ranking.
           </p>
         </div>
       </section>
+
+      <Card className="border-[var(--color-warning)]/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <AlertTriangle className="h-4 w-4 text-[var(--color-warning)]" />
+            Beta trust boundary
+          </CardTitle>
+          <CardDescription>
+            Listing and co-listing representation remains locked and labeled
+            unverified until a server-owned provider adapter is authorized.
+            Quantified production claims are suppressed until an independent,
+            period-matched source is configured. RealTrends data is used only
+            by deterministic test fixtures—not as live verification.
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -597,7 +670,51 @@ function AieoPage() {
                     ? `${report.recognition.citationRate}% citation rate, ${report.recognition.identityAccuracy}% correct identity, and ${report.recognition.brokerageAccuracy}% correct brokerage attribution.`
                     : "CiteScore is not an LLM ranking. Freeze these prompts, retain raw answers and citations, and compare model, location, and date over time."}
                 </p>
+                <Button
+                  className="mt-3"
+                  disabled={!scan?.id || recognitionBusy}
+                  onClick={() => void runRecognition()}
+                >
+                  {recognitionBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  Run controlled multi-model panel
+                </Button>
+                <p className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">
+                  One immutable capture per day: four frozen prompts across
+                  OpenAI, xAI, and Perplexity. Provider/model, location, date,
+                  response hash, raw response, and citations are retained.
+                </p>
               </div>
+              {recognitionRuns.length > 0 && (
+                <div className="grid gap-2 md:grid-cols-2">
+                  {recognitionRuns.slice(0, 12).map((capture) => (
+                    <div
+                      key={capture.id}
+                      className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={capture.status === "succeeded" ? "success" : "danger"}>
+                          {capture.provider}
+                        </Badge>
+                        <span className="text-xs">{capture.model}</span>
+                        <span className="ml-auto text-[11px] text-[var(--color-fg-subtle)]">
+                          {capture.runDate}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs font-medium">{capture.queryId}</p>
+                      <p className="mt-1 line-clamp-3 text-xs text-[var(--color-fg-muted)]">
+                        {capture.responseText || capture.errorCode || "No response text"}
+                      </p>
+                      <p className="mt-2 break-all text-[10px] text-[var(--color-fg-subtle)]">
+                        SHA-256 {capture.responseHash}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="space-y-2">
                 {report.queryPlan.map((query) => (
                   <div
