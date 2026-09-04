@@ -46,7 +46,6 @@ export type SocialPost = {
   characterCount: number;
   status: PostStatus;
   imageUrl?: string;
-  videoUrl?: string;
   imaginePrompt?: string;
   mediaSource?: "mls" | "website" | "imagine" | "none";
 };
@@ -958,8 +957,6 @@ export function exportCampaignMarkdown(plan: CampaignPlan): string {
       "",
       `*Visual:* ${post.visualBrief}`,
       `*Alt:* ${post.altText}`,
-      ...(post.imageUrl ? [`*Image:* ${post.imageUrl}`] : []),
-      ...(post.videoUrl ? [`*Video:* ${post.videoUrl}`] : []),
       `*Status:* ${post.status}`,
     );
   }
