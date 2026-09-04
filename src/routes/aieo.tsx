@@ -36,7 +36,7 @@ import {
   runMyCiteLockRecognition,
 } from "@/lib/aieo/api";
 import type { CiteAgentProfile, CiteProperty } from "@/lib/aieo/provenance";
-import type { CiteRecognitionCapture } from "@/lib/aieo/recognition-types";
+import type { CiteRecognitionPublicCapture } from "@/lib/aieo/recognition-types";
 import { useAppStore } from "@/lib/store";
 
 export const Route = createFileRoute("/aieo")({
@@ -61,7 +61,9 @@ function AieoPage() {
   const [scan, setScan] = useState<CiteLockScanRecord | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [recognitionRuns, setRecognitionRuns] = useState<CiteRecognitionCapture[]>([]);
+  const [recognitionRuns, setRecognitionRuns] = useState<
+    CiteRecognitionPublicCapture[]
+  >([]);
   const [recognitionBusy, setRecognitionBusy] = useState(false);
   const [jurisdiction, setJurisdiction] = useState<CiteJurisdiction>("US-CA");
   const [scoreClock, setScoreClock] = useState(() => new Date().toISOString());

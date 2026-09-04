@@ -30,6 +30,11 @@ export type CiteRecognitionCapture = CiteRecognitionRun & {
   errorCode?: string;
 };
 
+export type CiteRecognitionPublicCapture = Omit<
+  CiteRecognitionCapture,
+  "rawResponse"
+>;
+
 export type RecognitionPanelResult = {
   panelVersion: string;
   location: string;

@@ -4,12 +4,21 @@ import { citeLockScanInputSchema } from "./scan-types";
 import {
   RECOGNITION_PANEL_VERSION,
   recognitionRunDate,
+  type CiteRecognitionCapture,
+  type CiteRecognitionPublicCapture,
 } from "./recognition-types";
 import { z } from "zod";
 
 const recognitionInputSchema = z.object({
   scanId: z.string().uuid(),
 });
+
+function publicRecognitionCapture(
+  capture: CiteRecognitionCapture,
+): CiteRecognitionPublicCapture {
+  const { rawResponse: _rawResponse, ...publicCapture } = capture;
+  return publicCapture;
+}
 
 export const runMyCiteLockScan = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -85,13 +94,16 @@ export const runMyCiteLockRecognition = createServerFn({ method: "POST" })
       workspace.id,
       result.captures,
     );
-    return {
-      ...result,
-      captures: await listRecentRecognitionCaptures(
+    const captures = await listRecentRecognitionCaptures(
         context.userId,
         workspace.id,
         scan.subjectFingerprint,
-      ),
+      );
+    return {
+      panelVersion: result.panelVersion,
+      location: result.location,
+      configuredProviders: result.configuredProviders,
+      captures: captures.map(publicRecognitionCapture),
     };
   });
 
@@ -113,9 +125,10 @@ export const getMyCiteLockRecognition = createServerFn({ method: "GET" })
     const { listRecentRecognitionCaptures } = await import(
       "./recognition-repository.server"
     );
-    return listRecentRecognitionCaptures(
+    const captures = await listRecentRecognitionCaptures(
       context.userId,
       workspace.id,
       scan.subjectFingerprint,
     );
+    return captures.map(publicRecognitionCapture);
   });
