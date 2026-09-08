@@ -16,7 +16,7 @@ describe("scrapeRealtorWebsite (integration)", () => {
     delete process.env.ALLOW_PRIVATE_SCRAPE_FOR_TESTS;
   });
 
-  it("pulls identity + multi-page listings from mock site", async () => {
+  it("pulls person-bound identity and multi-page listing observations", async () => {
     const result = await scrapeRealtorWebsite({
       website: site.url,
       agentNameHint: "Morgan Hale",
@@ -24,17 +24,24 @@ describe("scrapeRealtorWebsite (integration)", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.profile.phone).toMatch(/555|858/);
-    expect(result.profile.photoUrl).toBeTruthy();
-    expect(result.profile.email).toContain("@");
-    expect(result.profile.mlsNumber || result.profile.license).toBe("01888777");
+    expect(result.profile.name).toBe("Morgan Hale");
+    expect(result.siteAudit?.homePage.serverRenderedIdentity).toBe(true);
+
+    // The mock deliberately uses Schema.org RealEstateAgent, an organization
+    // subtype, rather than a Person node. Its contact and credential fields
+    // must not be rebound to the person merely because the page title names
+    // Morgan; the submitted license is verified through the regulator path.
+    expect(result.profile.phone).toBeUndefined();
+    expect(result.profile.photoUrl).toBeUndefined();
+    expect(result.profile.email).toBeUndefined();
+    expect(result.profile.license).toBeUndefined();
+
     expect(result.listings.length).toBeGreaterThanOrEqual(3);
-
     const prices = result.listings.map((listing) => listing.price);
-    expect(prices).toContain(9250000);
-    expect(prices).toContain(6495000);
+    expect(prices).toContain(9_250_000);
+    expect(prices).toContain(6_495_000);
 
-    const low = result.listings.find((listing) => listing.price === 2890000);
+    const low = result.listings.find((listing) => listing.price === 2_890_000);
     if (low) {
       expect(low.address).toMatch(/Via del Norte/i);
       expect(low.status).toBe("pending");

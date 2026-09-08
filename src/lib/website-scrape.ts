@@ -3,6 +3,7 @@
  * Used when MLS is not connected (or to enrich MLS credentials).
  */
 import type { Property } from "@/data/seed";
+import type { CiteProperty, SiteAuditSnapshot } from "@/lib/aieo/provenance";
 import { uid } from "@/lib/utils";
 
 export type ScrapedAgentIdentity = {
@@ -10,13 +11,18 @@ export type ScrapedAgentIdentity = {
   phone?: string;
   email?: string;
   photoUrl?: string;
-  /** License / MLS agent ID shown on site */
+  /** MLS agent ID and regulatory license are intentionally separate. */
   mlsNumber?: string;
   license?: string;
+  licenseJurisdiction?: string;
   brokerage?: string;
+  responsibleBrokerName?: string;
+  responsibleBrokerLicense?: string;
+  brokerageBrand?: string;
   bio?: string;
   title?: string;
   address?: string;
+  sameAs?: string[];
 };
 
 export type ScrapedListing = {
@@ -32,8 +38,19 @@ export type ScrapedListing = {
   status: Property["status"];
   description?: string;
   imageUrl?: string;
+  /** Page that contained this observation; distinct from the listing URL. */
+  sourceUrl?: string;
   url?: string;
   type?: Property["type"];
+  transactionType?: "sale" | "lease" | "unknown";
+  pricePeriod?: "total" | "month" | "week" | "day" | "unknown";
+};
+
+export type ScrapedClaim = {
+  field: "transaction_volume";
+  value: string;
+  claimScope: string;
+  sourceUrl: string;
 };
 
 
@@ -51,11 +68,18 @@ export type WebsiteScrapeResult = {
   sourceUrl: string;
   finalUrl?: string;
   profile: ScrapedAgentIdentity;
+  /** Person-bound, page-scoped observations used by CiteLock provenance. */
+  profileObservations?: Array<{
+    sourceUrl: string;
+    profile: ScrapedAgentIdentity;
+  }>;
   listings: ScrapedListing[];
+  claims?: ScrapedClaim[];
   pagesFetched: string[];
   warnings: string[];
   error?: string;
   scrapedAt: string;
+  siteAudit?: SiteAuditSnapshot;
 };
 
 const LISTING_PATH_HINT =
@@ -67,22 +91,36 @@ const AGENT_PATH_HINT =
 export function normalizeSiteUrl(raw: string): string {
   let u = raw.trim();
   if (!u) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^https?:\/\//i.test(u)) return "";
   if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
   try {
     const parsed = new URL(u);
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.username ||
+      parsed.password
+    )
+      return "";
     parsed.hash = "";
     return parsed.toString().replace(/\/$/, "");
   } catch {
-    return u.replace(/\/$/, "");
+    return "";
   }
 }
 
 function absolutize(base: string, href: string | undefined | null): string | undefined {
   if (!href) return undefined;
   const h = href.trim();
-  if (!h || h.startsWith("data:") || h.startsWith("javascript:")) return undefined;
+  if (!h) return undefined;
   try {
-    return new URL(h, base).toString();
+    const url = new URL(h, base);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return url.toString();
   } catch {
     return undefined;
   }
@@ -94,12 +132,27 @@ function stripTags(html: string): string {
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/&#39;|'/g, "'")
-    .replace(/"/g, '"')
+    .replace(
+      /&(#x[0-9a-f]+|#\d+|nbsp|amp|lt|gt|quot|apos);/gi,
+      (entity, code: string) => {
+        const named: Record<string, string> = {
+          nbsp: " ",
+          amp: "&",
+          lt: "<",
+          gt: ">",
+          quot: '"',
+          apos: "'",
+        };
+        const lower = code.toLowerCase();
+        if (named[lower] !== undefined) return named[lower];
+        const value = lower.startsWith("#x")
+          ? Number.parseInt(lower.slice(2), 16)
+          : Number.parseInt(lower.slice(1), 10);
+        return Number.isInteger(value) && value >= 0 && value <= 0x10ffff
+          ? String.fromCodePoint(value)
+          : entity;
+      },
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -108,6 +161,27 @@ function money(s: string | undefined): number {
   if (!s) return 0;
   const n = Number(String(s).replace(/[$,\s]/g, ""));
   return Number.isFinite(n) ? n : 0;
+}
+
+function conservativeListingStatus(
+  ...values: unknown[]
+): ScrapedListing["status"] {
+  const value = values
+    .filter((item) => typeof item === "string")
+    .join(" ")
+    .toLowerCase();
+  if (/\bsold\b|\bclosed\b|soldout|discontinued/.test(value)) return "sold";
+  if (/\bpending\b|under.?contract|active.?under/.test(value)) return "pending";
+  if (/coming.?soon|pre.?market/.test(value)) return "coming_soon";
+  if (
+    /\bfor sale\b|\bfor lease\b|\bfor rent\b|\bactive\b|instock|in stock|available/.test(
+      value,
+    )
+  )
+    return "active";
+  // Property has no unknown status. Pending is deliberately non-publishable in
+  // CiteLock and avoids turning an undated card into a current listing claim.
+  return "pending";
 }
 
 function pickPhone(text: string): string | undefined {
@@ -129,15 +203,183 @@ function pickEmail(text: string): string | undefined {
   return e;
 }
 
-function pickMlsAgentId(text: string): string | undefined {
-  // Prefer agent license (DRE/BRE) over listing MLS numbers
-  const dre = text.match(/\b(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/i);
-  if (dre?.[1]) return dre[1].trim();
-  const agentMls = text.match(
-    /(?:MLS\s*(?:ID|Agent|No\.?|Number))\s*[:#]?\s*([A-Z]{0,4}\d{5,12})/i,
-  );
-  if (agentMls?.[1]) return agentMls[1].trim();
+function pickLicense(text: string, personName?: string): string | undefined {
+  const pattern =
+    /\b(?:CA\s*)?(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    if (personName) {
+      const context = text.slice(
+        Math.max(0, match.index - 180),
+        Math.min(text.length, pattern.lastIndex + 180),
+      );
+      if (!personNameVisible(context, personName)) continue;
+    }
+    return match[1]?.trim();
+  }
   return undefined;
+}
+
+function pickMlsAgentId(text: string): string | undefined {
+  const match = text.match(
+    /(?:MLS\s*(?:ID|Agent(?:\s*ID)?|No\.?|Number))\s*[:#]?\s*([A-Z]{1,4}\d{4,12})/i,
+  );
+  return match?.[1]?.trim();
+}
+
+function extractProductionClaims(
+  text: string,
+  sourceUrl: string,
+  personName?: string,
+): ScrapedClaim[] {
+  const claims: ScrapedClaim[] = [];
+  const seen = new Set<string>();
+  const pattern =
+    /\$\s*([\d,.]+)\s*(million|billion|m|b)\b([^.$]{0,90}?\b(20\d{2})\b)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text))) {
+    const context = text.slice(Math.max(0, match.index - 260), pattern.lastIndex);
+    if (
+      !/clos(?:ed|ing)\s+(?:over|more than|nearly|approximately)?|sales?\s+volume|\bvolume\b|\bproduction\b|transactions?\s+(?:total|volume)|\bin sales\b/i.test(
+        context,
+      )
+    )
+      continue;
+    if (personName && !personNameVisible(context, personName)) continue;
+    const suffix = match[3]!.toLowerCase();
+    const period = /\b(?:first half|h1)\b/.test(suffix)
+      ? "h1"
+      : /\b(?:second half|h2)\b/.test(suffix)
+        ? "h2"
+        : suffix.match(/\bq([1-4])\b/)?.[0] || "full-year";
+    const claimScope = `sales-volume:${match[4]}:${period}`;
+    const value = match[0]!.replace(/\s+/g, " ").trim();
+    const key = `${claimScope}:${value.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    claims.push({
+      field: "transaction_volume",
+      value,
+      claimScope,
+      sourceUrl,
+    });
+  }
+  return claims;
+}
+
+function pickResponsibleBroker(
+  text: string,
+  agentLicense?: string,
+): { name?: string; license?: string } {
+  const re =
+    /([A-Z][A-Za-z0-9&'.,\s]{2,80}?)\s*(?:\||·|–|—)\s*(?:CA\s*)?(?:DRE|BRE|CalBRE|License|Lic\.?)\s*[:#]?\s*(\d{6,10})\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text))) {
+    const license = match[2]?.trim();
+    const name = match[1]?.replace(/\s+/g, " ").trim();
+    if (license && license !== agentLicense && name && name.split(" ").length <= 12) {
+      return { name, license };
+    }
+  }
+  return {};
+}
+
+const PERSON_NAME_STOPWORDS = new Set([
+  "agent",
+  "broker",
+  "realtor",
+  "real",
+  "estate",
+  "salesperson",
+]);
+
+function personNameTokens(value?: string): string[] {
+  return (value || "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(
+      (token) => token.length >= 2 && !PERSON_NAME_STOPWORDS.has(token),
+    );
+}
+
+/** Strict token-set match so a brokerage/team page cannot bind another person. */
+export function realtorNamesMatch(
+  expected?: string,
+  observed?: string,
+): boolean {
+  const left = [...new Set(personNameTokens(expected))].sort();
+  const right = [...new Set(personNameTokens(observed))].sort();
+  return (
+    left.length >= 2 &&
+    left.length === right.length &&
+    left.every((token, index) => token === right[index])
+  );
+}
+
+function personNameVisible(text: string, personName?: string): boolean {
+  const wanted = [...new Set(personNameTokens(personName))];
+  if (wanted.length < 2) return false;
+  const tokens = personNameTokens(text);
+  const width = wanted.length + 2;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const window = new Set(tokens.slice(index, index + width));
+    if (wanted.every((token) => window.has(token))) return true;
+  }
+  return false;
+}
+
+function personNameMatchesPath(url: URL, personName?: string): boolean {
+  const tokens = personNameTokens(personName);
+  if (!tokens.length) return false;
+  let decodedPath = url.pathname;
+  try {
+    decodedPath = decodeURIComponent(url.pathname);
+  } catch {
+    // Keep the serialized path; malformed escapes are not allowed to abort a
+    // scan of otherwise usable public HTML.
+  }
+  const path = decodedPath
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+  const matches = tokens.filter((token) => path.includes(token)).length;
+  return matches >= Math.min(2, tokens.length);
+}
+
+function extractIdentityLinks(
+  html: string,
+  baseUrl: string,
+  personName?: string,
+): string[] {
+  const urls = new Set<string>();
+  const re = /href=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    const absolute = absolutize(baseUrl, match[1]);
+    if (!absolute) continue;
+    const url = new URL(absolute);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const hostIs = (domain: string) =>
+      host === domain || host.endsWith(`.${domain}`);
+    const path = url.pathname.toLowerCase();
+    const namedPerson = personNameMatchesPath(url, personName);
+    const accepted =
+      (hostIs("linkedin.com") && path.startsWith("/in/") && namedPerson) ||
+      (hostIs("realtor.com") &&
+        path.includes("/realestateagents/") &&
+        namedPerson) ||
+      (hostIs("sothebysrealty.com") &&
+        path.includes("/associate/") &&
+        namedPerson) ||
+      ((hostIs("instagram.com") ||
+        hostIs("facebook.com") ||
+        hostIs("youtube.com")) &&
+        namedPerson);
+    if (accepted) urls.add(url.toString());
+  }
+  return [...urls];
 }
 
 function extractMeta(html: string, prop: string): string | undefined {
@@ -171,17 +413,29 @@ function extractJsonLd(html: string): unknown[] {
   return blocks;
 }
 
-function walkJsonLd(nodes: unknown[], visit: (o: Record<string, unknown>) => void) {
-  for (const n of nodes) {
-    if (!n || typeof n !== "object") continue;
-    if (Array.isArray(n)) {
-      walkJsonLd(n, visit);
-      continue;
+function walkJsonLd(
+  nodes: unknown[],
+  visit: (o: Record<string, unknown>) => void,
+) {
+  const seen = new Set<object>();
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
     }
-    const o = n as Record<string, unknown>;
-    visit(o);
-    if (o["@graph"] && Array.isArray(o["@graph"])) walkJsonLd(o["@graph"], visit);
-  }
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    const node = value as Record<string, unknown>;
+    visit(node);
+    for (const [key, child] of Object.entries(node)) {
+      if (key === "@context") continue;
+      if (child && typeof child === "object") walk(child);
+    }
+  };
+
+  walk(nodes);
 }
 
 function typeOf(o: Record<string, unknown>): string {
@@ -190,21 +444,187 @@ function typeOf(o: Record<string, unknown>): string {
   return String(t ?? "");
 }
 
+function schemaTypeTokens(o: Record<string, unknown>): string[] {
+  const values = Array.isArray(o["@type"]) ? o["@type"] : [o["@type"]];
+  return values
+    .filter((value) => typeof value === "string")
+    .map((value) =>
+      String(value)
+        .split(/[\/#]/)
+        .filter(Boolean)
+        .at(-1)!
+        .toLowerCase(),
+    );
+}
+
 function fromJsonLd(
   html: string,
   baseUrl: string,
-): { profile: ScrapedAgentIdentity; listings: ScrapedListing[] } {
+  agentNameHint?: string,
+  pageTitleName?: string,
+): {
+  profile: ScrapedAgentIdentity;
+  listings: ScrapedListing[];
+  hasTargetPerson: boolean;
+  hasConflictingAgentOrganization: boolean;
+} {
   const profile: ScrapedAgentIdentity = {};
   const listings: ScrapedListing[] = [];
   const nodes = extractJsonLd(html);
+  const rootObjects = nodes.filter(
+    (node): node is Record<string, unknown> =>
+      Boolean(node && typeof node === "object" && !Array.isArray(node)),
+  );
+  const byId = new Map<string, Record<string, unknown>>();
+  const people: Record<string, unknown>[] = [];
+  const agentOrganizations: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    if (typeof node["@id"] === "string") {
+      const existing = byId.get(node["@id"]);
+      byId.set(node["@id"], existing ? { ...existing, ...node } : node);
+    }
+    const types = schemaTypeTokens(node);
+    if (types.includes("person")) people.push(node);
+    if (!types.includes("person") && types.includes("realestateagent")) {
+      agentOrganizations.push(node);
+    }
+  });
+
+  const resolveReferences = (value: unknown): Record<string, unknown>[] => {
+    if (Array.isArray(value)) return value.flatMap(resolveReferences);
+    if (typeof value === "string") {
+      const linked = byId.get(value);
+      return linked ? [linked] : [];
+    }
+    if (!value || typeof value !== "object") return [];
+    const reference = value as Record<string, unknown>;
+    if (typeof reference["@id"] === "string") {
+      return [byId.get(reference["@id"]) || reference];
+    }
+    return [reference];
+  };
+  const sameNode = (
+    left?: Record<string, unknown>,
+    right?: Record<string, unknown>,
+  ): boolean => {
+    if (!left || !right) return false;
+    if (left === right) return true;
+    return (
+      typeof left["@id"] === "string" &&
+      typeof right["@id"] === "string" &&
+      left["@id"] === right["@id"]
+    );
+  };
+  const isSchemaType = (
+    node: Record<string, unknown>,
+    type: string,
+  ): boolean => schemaTypeTokens(node).includes(type);
+  const pageEntities: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    const types = schemaTypeTokens(node);
+    if (
+      types.some((type) =>
+        ["profilepage", "webpage", "aboutpage", "contactpage"].includes(type),
+      )
+    ) {
+      pageEntities.push(...resolveReferences(node.mainEntity));
+    }
+  });
+  const peopleMatching = (name?: string) =>
+    name
+      ? people.filter(
+        (candidate) =>
+          typeof candidate.name === "string" &&
+            realtorNamesMatch(name, candidate.name),
+      )
+      : [];
+  const primaryPeople = people.filter((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const explicitMatches = peopleMatching(agentNameHint);
+  const titleMatches = agentNameHint ? [] : peopleMatching(pageTitleName);
+  const targetPerson = agentNameHint
+    ? explicitMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      explicitMatches[0]
+    : titleMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      titleMatches[0] ||
+      primaryPeople[0] ||
+      (people.length === 1 ? people[0] : undefined);
+  const targetName =
+    agentNameHint ||
+    pageTitleName ||
+    (typeof targetPerson?.name === "string" ? targetPerson.name : undefined);
+  const linkedAgentOrganizations = targetPerson
+    ? ["worksFor", "affiliation", "memberOf"].flatMap((key) =>
+        resolveReferences(targetPerson[key]).filter((candidate) =>
+          isSchemaType(candidate, "realestateagent"),
+        ),
+      )
+    : [];
+  const samePageUrl = (value: unknown): boolean => {
+    if (typeof value !== "string") return false;
+    try {
+      const candidate = new URL(value, baseUrl);
+      const page = new URL(baseUrl);
+      candidate.hash = "";
+      page.hash = "";
+      return (
+        candidate.href.replace(/\/$/, "") === page.href.replace(/\/$/, "")
+      );
+    } catch {
+      return false;
+    }
+  };
+  const pagePrimaryAgent = agentOrganizations.find((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const linkedAgent = agentOrganizations.find((candidate) =>
+    linkedAgentOrganizations.some((linked) => sameNode(candidate, linked)),
+  );
+  const containingAgent = targetPerson
+    ? agentOrganizations.find((candidate) =>
+        ["employee", "agent", "founder", "member"].some((key) =>
+          resolveReferences(candidate[key]).some((nested) =>
+            sameNode(nested, targetPerson),
+          ),
+        ),
+      )
+    : undefined;
+  const namedAgent = targetName
+    ? agentOrganizations.find(
+        (candidate) =>
+          typeof candidate.name === "string" &&
+          realtorNamesMatch(targetName, candidate.name),
+      )
+    : undefined;
+  const pageUrlAgent = agentOrganizations.find(
+    (candidate) =>
+      samePageUrl(candidate.url) || samePageUrl(candidate.mainEntityOfPage),
+  );
+  const standaloneAgent =
+    !targetPerson && pageEntities.length === 0
+      ? agentOrganizations.find((candidate) =>
+          rootObjects.some((root) => sameNode(candidate, root)),
+        )
+      : undefined;
+  const soleUnopposedAgent =
+    !targetPerson &&
+    pageEntities.length === 0 &&
+    agentOrganizations.length === 1
+      ? agentOrganizations[0]
+      : undefined;
+  const conflictingAgentOrganization =
+    pagePrimaryAgent ||
+    linkedAgent ||
+    containingAgent ||
+    namedAgent ||
+    pageUrlAgent ||
+    standaloneAgent ||
+    soleUnopposedAgent;
 
   walkJsonLd(nodes, (o) => {
-    const t = typeOf(o).toLowerCase();
-    if (
-      t.includes("person") ||
-      t.includes("realestateagent") ||
-      t.includes("localbusiness")
-    ) {
+    const types = schemaTypeTokens(o);
+    if (o === targetPerson) {
       if (typeof o.name === "string" && !profile.name) profile.name = o.name;
       if (typeof o.telephone === "string" && !profile.phone)
         profile.phone = o.telephone;
@@ -221,18 +641,74 @@ function fromJsonLd(
       if (typeof o.jobTitle === "string") profile.title = o.jobTitle;
       if (o.worksFor && typeof o.worksFor === "object") {
         const w = o.worksFor as Record<string, unknown>;
-        if (typeof w.name === "string") profile.brokerage = w.name;
+        const linked =
+          typeof w["@id"] === "string" ? byId.get(w["@id"]) : undefined;
+        const organization = linked || w;
+        if (typeof organization.name === "string") {
+          profile.brokerage = organization.name;
+          profile.brokerageBrand = organization.name;
+        }
       }
     }
 
+    const nativeRealEstate = types.some((type) =>
+      [
+        "realestatelisting",
+        "residence",
+        "house",
+        "apartment",
+        "apartmentcomplex",
+        "singlefamilyresidence",
+      ].includes(type),
+    );
+    const genericCommerce =
+      types.includes("product") || types.includes("offer");
+    const preOffers =
+      o.offers && typeof o.offers === "object"
+        ? (o.offers as Record<string, unknown>)
+        : undefined;
+    const realEstateContext = [
+      o.category,
+      o.additionalType,
+      o.listingType,
+      o.businessFunction,
+      preOffers?.category,
+      preOffers?.businessFunction,
+    ]
+      .filter((item) => typeof item === "string")
+      .join(" ");
+    const addressObject =
+      o.address && typeof o.address === "object"
+        ? (o.address as Record<string, unknown>)
+        : undefined;
+    const addressIdentity =
+      typeof o.address === "string"
+        ? o.address
+        : typeof addressObject?.streetAddress === "string"
+          ? addressObject.streetAddress
+          : "";
+    const identifierValue =
+      typeof o.identifier === "string"
+        ? o.identifier
+        : o.identifier && typeof o.identifier === "object"
+          ? String(
+              (o.identifier as Record<string, unknown>).value ||
+                (o.identifier as Record<string, unknown>).propertyID ||
+                "",
+            )
+          : "";
+    const genericPropertyIdentity =
+      /\d{1,6}\s+[a-z0-9.'\-\s]{2,60}/i.test(addressIdentity) ||
+      /(?:mls|listing)\s*(?:id|no|number|#)?\s*[:#-]?\s*[a-z0-9-]{5,}/i.test(
+        identifierValue,
+      );
+    const genericListingIntent =
+      /\breal[\s-]*estate\s+listing\b|\bproperty\s+listing\b|\bfor\s+(?:sale|lease|rent)\b|\b(?:sell|lease|rent)\b/i.test(
+        realEstateContext,
+      );
     if (
-      t.includes("realestatelisting") ||
-      t.includes("product") ||
-      t.includes("residence") ||
-      t.includes("house") ||
-      t.includes("apartment") ||
-      t.includes("singlefamilyresidence") ||
-      t.includes("offer")
+      nativeRealEstate ||
+      (genericCommerce && genericPropertyIdentity && genericListingIntent)
     ) {
       const name = typeof o.name === "string" ? o.name : "";
       const desc =
@@ -245,6 +721,21 @@ function fromJsonLd(
         if (typeof off.price === "number") price = off.price;
         if (typeof off.price === "string") price = money(off.price);
       }
+      const offers = preOffers;
+      const transactionContext = [
+        o.category,
+        o.businessFunction,
+        o.listingType,
+        offers?.businessFunction,
+        offers?.category,
+      ]
+        .filter((item) => typeof item === "string")
+        .join(" ");
+      const transactionType = /lease|rent/i.test(transactionContext)
+        ? "lease"
+        : /sell|sale/i.test(transactionContext)
+          ? "sale"
+          : "unknown";
       let address = "";
       let city = "";
       if (typeof o.address === "string") address = o.address;
@@ -274,8 +765,12 @@ function fromJsonLd(
             : undefined;
       const url =
         typeof o.url === "string" ? absolutize(baseUrl, o.url) : undefined;
+      const hasPropertyIdentity =
+        address.length > 8 || Boolean(identifierValue);
       if (
-        (price > 50000 || address.length > 8 || name.length > 5) &&
+        (nativeRealEstate
+          ? price > 50000 || hasPropertyIdentity || name.length > 5
+          : hasPropertyIdentity) &&
         !(isJunkListingTitle(name) && isJunkListingTitle(address))
       ) {
         const title = isJunkListingTitle(name) ? address || "Listing" : name || address || "Listing";
@@ -287,7 +782,19 @@ function fromJsonLd(
           beds,
           baths,
           sqft,
-          status: "active",
+          mlsNumber:
+            identifierValue.match(/[A-Z0-9-]{5,}/i)?.[0] || undefined,
+          status: conservativeListingStatus(
+            o.availability,
+            o.itemAvailability,
+            o.status,
+            o.standardStatus,
+            offers?.availability,
+            offers?.itemAvailability,
+          ),
+          transactionType,
+          pricePeriod:
+            transactionType === "lease" ? "month" : transactionType === "sale" ? "total" : "unknown",
           description: desc?.slice(0, 400),
           imageUrl: image,
           url,
@@ -296,15 +803,166 @@ function fromJsonLd(
     }
   });
 
-  return { profile, listings };
+  if (typeof conflictingAgentOrganization?.name === "string") {
+    profile.brokerage ||= conflictingAgentOrganization.name;
+    profile.brokerageBrand ||= conflictingAgentOrganization.name;
+  }
+
+  return {
+    profile,
+    listings,
+    hasTargetPerson: Boolean(targetPerson),
+    hasConflictingAgentOrganization: Boolean(conflictingAgentOrganization),
+  };
+}
+
+/**
+ * Extract contact fields only from a Person node bound to the submitted name.
+ * Global tel/mail/footer values are intentionally excluded from this object.
+ */
+function structuredPersonFromJsonLd(
+  html: string,
+  baseUrl: string,
+  agentNameHint?: string,
+  pageTitleName?: string,
+): ScrapedAgentIdentity {
+  const nodes = extractJsonLd(html);
+  const byId = new Map<string, Record<string, unknown>>();
+  const people: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    if (typeof node["@id"] === "string") {
+      const existing = byId.get(node["@id"]);
+      byId.set(node["@id"], existing ? { ...existing, ...node } : node);
+    }
+    if (schemaTypeTokens(node).includes("person")) people.push(node);
+  });
+  const resolveReferences = (value: unknown): Record<string, unknown>[] => {
+    if (Array.isArray(value)) return value.flatMap(resolveReferences);
+    if (typeof value === "string") {
+      const linked = byId.get(value);
+      return linked ? [linked] : [];
+    }
+    if (!value || typeof value !== "object") return [];
+    const reference = value as Record<string, unknown>;
+    if (typeof reference["@id"] === "string") {
+      return [byId.get(reference["@id"]) || reference];
+    }
+    return [reference];
+  };
+  const sameNode = (
+    left?: Record<string, unknown>,
+    right?: Record<string, unknown>,
+  ): boolean =>
+    Boolean(
+      left &&
+        right &&
+        (left === right ||
+          (typeof left["@id"] === "string" &&
+            typeof right["@id"] === "string" &&
+            left["@id"] === right["@id"])),
+    );
+  const pageEntities: Record<string, unknown>[] = [];
+  walkJsonLd(nodes, (node) => {
+    if (
+      schemaTypeTokens(node).some((type) =>
+        ["profilepage", "webpage", "aboutpage", "contactpage"].includes(type),
+      )
+    ) {
+      pageEntities.push(...resolveReferences(node.mainEntity));
+    }
+  });
+  const matchesName = (candidate: Record<string, unknown>, name?: string) =>
+    Boolean(
+      name &&
+        typeof candidate.name === "string" &&
+        realtorNamesMatch(name, candidate.name),
+    );
+  const primaryPeople = people.filter((candidate) =>
+    pageEntities.some((entity) => sameNode(candidate, entity)),
+  );
+  const explicitMatches = people.filter((candidate) =>
+    matchesName(candidate, agentNameHint),
+  );
+  const titleMatches = agentNameHint
+    ? []
+    : people.filter((candidate) => matchesName(candidate, pageTitleName));
+  const person = agentNameHint
+    ? explicitMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      explicitMatches[0]
+    : titleMatches.find((candidate) => primaryPeople.includes(candidate)) ||
+      titleMatches[0] ||
+      primaryPeople[0] ||
+      (people.length === 1 ? people[0] : undefined);
+  if (!person || typeof person.name !== "string") return {};
+
+  const profile: ScrapedAgentIdentity = { name: person.name };
+  if (typeof person.telephone === "string")
+    profile.phone = person.telephone;
+  if (typeof person.email === "string") profile.email = person.email;
+  if (typeof person.description === "string")
+    profile.bio = person.description.slice(0, 600);
+  if (typeof person.jobTitle === "string") profile.title = person.jobTitle;
+  if (typeof person.image === "string")
+    profile.photoUrl = absolutize(baseUrl, person.image);
+  if (person.image && typeof person.image === "object") {
+    const image = person.image as Record<string, unknown>;
+    if (typeof image.url === "string")
+      profile.photoUrl = absolutize(baseUrl, image.url);
+  }
+  if (typeof person.address === "string") profile.address = person.address;
+  if (person.address && typeof person.address === "object") {
+    const address = person.address as Record<string, unknown>;
+    profile.address = [
+      address.streetAddress,
+      address.addressLocality,
+      address.addressRegion,
+      address.postalCode,
+    ]
+      .filter((part) => typeof part === "string" && part.trim())
+      .join(", ");
+  }
+
+  const sameAsValues = Array.isArray(person.sameAs)
+    ? person.sameAs
+    : [person.sameAs];
+  profile.sameAs = sameAsValues
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => absolutize(baseUrl, value))
+    .filter((value): value is string => Boolean(value));
+
+  if (person.worksFor && typeof person.worksFor === "object") {
+    const reference = person.worksFor as Record<string, unknown>;
+    const linked =
+      typeof reference["@id"] === "string"
+        ? byId.get(reference["@id"])
+        : undefined;
+    const organization = linked || reference;
+    if (typeof organization.name === "string") {
+      profile.brokerage = organization.name;
+      profile.brokerageBrand = organization.name;
+    }
+  }
+  return profile;
 }
 
 function extractTelMailto(html: string): { phone?: string; email?: string } {
   const phone = html.match(/href=["']tel:([^"']+)["']/i)?.[1];
   const email = html.match(/href=["']mailto:([^"'?]+)/i)?.[1];
+  const safeDecode = (value?: string) => {
+    if (!value) return undefined;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return undefined;
+    }
+  };
+  const decodedPhone = safeDecode(phone);
+  const decodedEmail = safeDecode(email);
   return {
-    phone: phone ? decodeURIComponent(phone).replace(/[^\d+()-\s]/g, "").trim() : undefined,
-    email: email ? decodeURIComponent(email).trim() : undefined,
+    phone: decodedPhone
+      ? decodedPhone.replace(/[^\d+()-\s]/g, "").trim()
+      : undefined,
+    email: decodedEmail?.trim(),
   };
 }
 
@@ -362,29 +1020,55 @@ function extractLinks(html: string, baseUrl: string): string[] {
   return [...hrefs];
 }
 
-function parseListingCards(html: string, baseUrl: string): ScrapedListing[] {
-  const text = stripTags(html);
+function parseListingText(text: string, baseUrl: string): ScrapedListing[] {
   const listings: ScrapedListing[] = [];
   const priceRe = /\$\s?([\d,]{3,})(?:\.\d{2})?/g;
-  let m: RegExpExecArray | null;
+  const prices = [...text.matchAll(priceRe)];
   const seen = new Set<string>();
   const streetRe =
     /\d{1,5}\s+[A-Za-z0-9.'\-\s]{2,40}(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Drive|Dr|Lane|Ln|Way|Court|Ct|Circle|Cir|Place|Pl|Terrace|Ter)\b\.?/i;
 
-  while ((m = priceRe.exec(text))) {
+  for (const [priceIndexInList, m] of prices.entries()) {
+    if (m.index === undefined) continue;
+    const priceIndex = m.index;
     const price = money(m[1]);
-    if (price < 75000 || price > 200000000) continue;
+    const previousIndex = prices[priceIndexInList - 1]?.index;
+    const nextIndex = prices[priceIndexInList + 1]?.index;
+    // Midpoints keep facts from adjacent cards out of this observation while
+    // allowing either "address then price" or "price then address" layouts.
+    const segmentStart =
+      previousIndex === undefined
+        ? Math.max(0, priceIndex - 180)
+        : Math.floor((previousIndex + priceIndex) / 2);
+    const segmentEnd =
+      nextIndex === undefined
+        ? Math.min(text.length, priceIndex + 180)
+        : Math.floor((priceIndex + nextIndex) / 2);
+    const segment = text.slice(segmentStart, segmentEnd);
+    const localPriceIndex = priceIndex - segmentStart;
+    const before = segment.slice(0, localPriceIndex);
+    const after = segment.slice(localPriceIndex);
+    const leasePrice =
+      /\bfor lease\b|\bfor rent\b|\brental\b|\/\s*mo\b|per\s+month/i.test(
+        segment,
+      );
+    if ((!leasePrice && price < 75000) || price > 200000000) continue;
 
-    // Prefer text AFTER the price; cut at next price so status doesn't bleed
-    let afterEnd = Math.min(text.length, m.index + 120);
-    const nextPrice = text.slice(m.index + 1, afterEnd).search(/\$\s?[\d,]{3,}/);
-    if (nextPrice >= 0) afterEnd = m.index + 1 + nextPrice;
-    const after = text.slice(m.index, afterEnd);
-    const before = text.slice(Math.max(0, m.index - 60), m.index);
-    const window = after.length > 20 ? after : before + after;
+    const marker = /\b(?:for sale|for lease|for rent|coming soon|pending|sold|closed)\b/gi;
+    let markerIndex = -1;
+    for (const match of before.matchAll(marker))
+      markerIndex = match.index ?? markerIndex;
+    const boundedBefore = markerIndex >= 0 ? before.slice(markerIndex) : before;
+    const window = `${boundedBefore} ${after}`;
+    const statusContext = window;
+
+    const beforeAddresses = [
+      ...boundedBefore.matchAll(new RegExp(streetRe.source, "gi")),
+    ];
 
     const addr =
       after.match(streetRe)?.[0] ??
+      beforeAddresses.at(-1)?.[0] ??
       window.match(streetRe)?.[0] ??
       after.match(
         /\d{1,5}\s+[A-Za-z][A-Za-z0-9.'\-\s]{4,50},\s*[A-Za-z\s]{2,30}/,
@@ -404,11 +1088,21 @@ function parseListingCards(html: string, baseUrl: string): ScrapedListing[] {
     );
     const mls = window.match(/MLS[#:\s]*([A-Z]{0,4}\d{5,12})/i)?.[1];
 
-    // Status only from this tight window (avoid bleeding next listing)
-    let status: ScrapedListing["status"] = "active";
-    if (/\bpending\b|under contract/i.test(window)) status = "pending";
-    else if (/\bsold\b|\bclosed\b/i.test(window)) status = "sold";
-    else if (/coming\s*soon/i.test(window)) status = "coming_soon";
+    // No explicit status is never equivalent to Active. Website cards remain
+    // unverified regardless, but their local state must also fail closed.
+    const status = conservativeListingStatus(statusContext);
+    const transactionType = /\bfor lease\b|\bfor rent\b|\brental\b/i.test(
+      statusContext,
+    )
+      ? "lease"
+      : /\bfor sale\b/i.test(statusContext)
+        ? "sale"
+        : "unknown";
+    const pricePeriod = /\/\s*mo\b|per\s+month|monthly/i.test(statusContext)
+      ? "month"
+      : transactionType === "sale"
+        ? "total"
+        : "unknown";
 
     listings.push({
       title: addr.trim(),
@@ -419,12 +1113,39 @@ function parseListingCards(html: string, baseUrl: string): ScrapedListing[] {
       sqft: Number.isFinite(sqft) && sqft > 200 ? sqft : undefined,
       mlsNumber: mls,
       status,
+      transactionType,
+      pricePeriod,
     });
     if (listings.length >= 40) break;
   }
 
   void baseUrl;
   return listings;
+}
+
+function parseListingCards(html: string, baseUrl: string): ScrapedListing[] {
+  const isolated: ScrapedListing[] = [];
+  const blockPattern = /<(p|li|article|section)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let block: RegExpExecArray | null;
+  while ((block = blockPattern.exec(html))) {
+    const text = stripTags(block[2] || "");
+    if ((text.match(/\$\s?[\d,]{3,}/g) || []).length !== 1) continue;
+    isolated.push(...parseListingText(text, baseUrl));
+  }
+  const exactCards = dedupeListings(isolated);
+  const isolatedFacts = new Set(
+    exactCards.map(
+      (listing) =>
+        `${listing.price}:${listing.address.toLowerCase().replace(/\s+/g, " ")}`,
+    ),
+  );
+  const fallback = parseListingText(stripTags(html), baseUrl).filter(
+    (listing) =>
+      !isolatedFacts.has(
+        `${listing.price}:${listing.address.toLowerCase().replace(/\s+/g, " ")}`,
+      ),
+  );
+  return dedupeListings([...exactCards, ...fallback]);
 }
 
 function mergeProfile(
@@ -446,42 +1167,100 @@ function mergeProfile(
 }
 
 function dedupeListings(items: ScrapedListing[]): ScrapedListing[] {
-  const out: ScrapedListing[] = [];
-  const keys = new Set<string>();
+  const byObservation = new Map<string, ScrapedListing>();
   for (const l of items) {
-    const k = (
-      l.mlsNumber ||
-      `${l.address}|${l.price}`
-    )
+    const identity = (l.mlsNumber || l.address)
       .toLowerCase()
       .replace(/\s+/g, " ");
-    if (keys.has(k)) continue;
-    keys.add(k);
-    out.push(l);
+    const key = [
+      identity,
+      l.status,
+      l.price,
+      l.transactionType || "unknown",
+      l.pricePeriod || "unknown",
+    ].join("|");
+    const current = byObservation.get(key);
+    if (!current || (!current.url && l.url)) byObservation.set(key, l);
   }
-  return out;
+  return [...byObservation.values()];
 }
 
 /** Pure HTML parse — works client or server once HTML is fetched */
 export function parseRealtorWebsiteHtml(
   html: string,
   pageUrl: string,
-): { profile: ScrapedAgentIdentity; listings: ScrapedListing[] } {
+  agentNameHint?: string,
+): {
+  profile: ScrapedAgentIdentity;
+  structuredPersonProfile: ScrapedAgentIdentity;
+  listings: ScrapedListing[];
+  claims: ScrapedClaim[];
+} {
   const base = pageUrl;
   const text = stripTags(html);
-  const fromLd = fromJsonLd(html, base);
+  // og:title often "Jane Doe | Realtor in …". Resolve the candidate person
+  // before examining global footer links so brand profiles cannot become the
+  // person's sameAs graph.
+  const ogTitle = extractMeta(html, "og:title") || stripTags(
+    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "",
+  );
+  const titleName = ogTitle?.split(/[|\-–—]/)[0]?.trim();
+  const fromLd = fromJsonLd(html, base, agentNameHint, titleName);
+  const structuredPersonProfile = structuredPersonFromJsonLd(
+    html,
+    base,
+    agentNameHint,
+    titleName,
+  );
   const telMail = extractTelMailto(html);
+  const personName =
+    structuredPersonProfile.name ||
+    fromLd.profile.name ||
+    agentNameHint ||
+    titleName;
 
+  const license = fromLd.profile.license || pickLicense(text, personName);
+  const licenseJurisdiction = /\b(?:CA\s*)?(?:DRE|BRE|CalBRE)\b/i.test(text)
+    ? "CA"
+    : undefined;
+  const responsibleBroker = pickResponsibleBroker(text, license);
+  // A RealEstateAgent node is an organization in Schema.org. When one is
+  // present, accept each contact field only when it came from the matched
+  // Person node; one proven field must never authorize unrelated fallbacks.
+  const resolveContactField = (
+    personValue: string | undefined,
+    htmlFallback: () => string | undefined,
+  ): string | undefined => {
+    if (fromLd.hasTargetPerson && personValue) return personValue;
+    return fromLd.hasConflictingAgentOrganization
+      ? undefined
+      : htmlFallback();
+  };
   let profile: ScrapedAgentIdentity = {
     ...fromLd.profile,
-    phone: fromLd.profile.phone || telMail.phone || pickPhone(text),
-    email: fromLd.profile.email || telMail.email || pickEmail(text),
-    photoUrl: fromLd.profile.photoUrl || extractPhoto(html, base),
-    mlsNumber:
-      fromLd.profile.mlsNumber ||
-      pickMlsAgentId(text) ||
-      undefined,
-    license: fromLd.profile.license || pickMlsAgentId(text),
+    name: fromLd.profile.name || titleName,
+    phone: resolveContactField(
+      fromLd.profile.phone,
+      () => telMail.phone || pickPhone(text),
+    ),
+    email: resolveContactField(
+      fromLd.profile.email,
+      () => telMail.email || pickEmail(text),
+    ),
+    photoUrl: resolveContactField(fromLd.profile.photoUrl, () =>
+      extractPhoto(html, base),
+    ),
+    mlsNumber: fromLd.profile.mlsNumber || pickMlsAgentId(text),
+    license,
+    licenseJurisdiction,
+    responsibleBrokerName:
+      fromLd.profile.responsibleBrokerName || responsibleBroker.name,
+    responsibleBrokerLicense:
+      fromLd.profile.responsibleBrokerLicense || responsibleBroker.license,
+    sameAs: [
+      ...(fromLd.profile.sameAs || []),
+      ...extractIdentityLinks(html, base, personName),
+    ].filter((url, index, all) => all.indexOf(url) === index),
     bio:
       fromLd.profile.bio ||
       extractMeta(html, "og:description") ||
@@ -489,18 +1268,81 @@ export function parseRealtorWebsiteHtml(
       undefined,
   };
 
-  // og:title often "Jane Doe | Realtor in …"
-  const ogTitle = extractMeta(html, "og:title") || stripTags(
-    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "",
-  );
   if (ogTitle && !profile.name) {
     profile.name = ogTitle.split(/[|\-–—]/)[0]?.trim();
   }
 
   const cardListings = parseListingCards(html, base);
-  const listings = dedupeListings([...fromLd.listings, ...cardListings]);
+  const listings = dedupeListings([...fromLd.listings, ...cardListings]).map(
+    (listing) => ({ ...listing, sourceUrl: listing.sourceUrl || pageUrl }),
+  );
 
-  return { profile, listings };
+  return {
+    profile,
+    structuredPersonProfile,
+    listings,
+    claims: extractProductionClaims(
+      text,
+      pageUrl,
+      structuredPersonProfile.name || agentNameHint || profile.name,
+    ),
+  };
+}
+
+export function auditWebsitePageHtml(
+  html: string,
+  pageUrl: string,
+  identityHint?: {
+    name?: string;
+    license?: string;
+    observedName?: string;
+  },
+  responseHeaders?: { xRobotsTag?: string },
+): SiteAuditSnapshot["homePage"] {
+  const schemaTypes = new Set<string>();
+  walkJsonLd(extractJsonLd(html), (node) => {
+    const types = Array.isArray(node["@type"])
+      ? node["@type"].map(String)
+      : [String(node["@type"] || "")];
+    for (const type of types) if (type) schemaTypes.add(type);
+  });
+  const canonical =
+    html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]+href=["']([^"']+)["']/i)?.[1] ||
+    html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*canonical[^"']*["']/i)?.[1];
+  const robots = [
+    extractMeta(html, "robots"),
+    extractMeta(html, "googlebot"),
+    responseHeaders?.xRobotsTag,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const canonicalUrl = absolutize(pageUrl, canonical);
+  const sameOriginCanonical = (() => {
+    if (!canonicalUrl) return undefined;
+    try {
+      return new URL(canonicalUrl).origin === new URL(pageUrl).origin
+        ? canonicalUrl
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const text = stripTags(html).toLowerCase();
+  const name = identityHint?.name?.trim();
+  const observedName = identityHint?.observedName?.trim();
+  return {
+    url: pageUrl,
+    httpOk: true,
+    canonical: sameOriginCanonical,
+    indexable: !/(?:^|[,\s])(?:noindex|none)(?:$|[,\s])/i.test(robots),
+    serverRenderedIdentity: Boolean(
+      name &&
+        observedName &&
+        personNameVisible(text, name) &&
+        realtorNamesMatch(name, observedName),
+    ),
+    schemaTypes: [...schemaTypes].sort(),
+  };
 }
 
 export function scoreInternalLinks(
@@ -529,9 +1371,10 @@ export function scoreInternalLinks(
 
 export function scrapedListingsToProperties(
   listings: ScrapedListing[],
-  agentName: string,
+  _agentName: string,
   areaFallback: string,
-): Property[] {
+  observedAt = new Date().toISOString(),
+): CiteProperty[] {
   const accents = ["#5b8def", "#3dceb0", "#e0a855", "#e86a6a", "#9b7bff"];
   return listings.map((l, i) => {
     const price = l.price || 0;
@@ -572,8 +1415,18 @@ export function scrapedListingsToProperties(
       accent: accents[i % accents.length]!,
       pattern: (i % 4) + 1,
       mlsNumber: l.mlsNumber,
-      listingSide: "mine" as const,
-      listAgentName: agentName,
+      source: {
+        kind: "website" as const,
+        url: l.url,
+        observedAt,
+        evidenceLevel: "site_published" as const,
+      },
+      representation: {
+        role: "unknown" as const,
+      },
+      visibility: "public" as const,
+      transactionType: l.transactionType || "unknown",
+      pricePeriod: l.pricePeriod || "unknown",
       imageUrl: l.imageUrl,
       photoUrls: l.imageUrl ? [l.imageUrl] : [],
     };
@@ -596,6 +1449,7 @@ export function emptyScrape(url: string, error?: string): WebsiteScrapeResult {
     sourceUrl: url,
     profile: {},
     listings: [],
+    claims: [],
     pagesFetched: [],
     warnings: [],
     error,
