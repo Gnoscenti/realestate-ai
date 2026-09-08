@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
+import type { CiteAgentProfile } from "@/lib/aieo/provenance";
 import {
   SEED_ACTIVITY,
   SEED_DEALS,
@@ -515,13 +516,26 @@ export const useAppStore = create<AppState>()(
         const now = new Date().toISOString();
         const scrape = opts?.websiteScrape;
         const sp = scrape?.profile;
-        const profile: AgentProfile = {
+        const inputCite = input as CiteAgentProfile;
+        const profile: CiteAgentProfile = {
           ...input,
           phone: sp?.phone || input.phone,
           email: sp?.email || input.email,
           photoUrl: sp?.photoUrl || input.photoUrl,
           agentMlsId: sp?.mlsNumber || input.agentMlsId,
-          license: sp?.license || sp?.mlsNumber || input.license,
+          license: sp?.license || input.license,
+          licenseJurisdiction:
+            sp?.licenseJurisdiction || inputCite.licenseJurisdiction,
+          responsibleBrokerName:
+            sp?.responsibleBrokerName || inputCite.responsibleBrokerName,
+          responsibleBrokerLicense:
+            sp?.responsibleBrokerLicense || inputCite.responsibleBrokerLicense,
+          brokerageBrand: sp?.brokerageBrand || inputCite.brokerageBrand,
+          officeAddress: sp?.address || inputCite.officeAddress,
+          sameAs: sp?.sameAs || inputCite.sameAs,
+          canonicalProfileUrl:
+            scrape?.finalUrl || inputCite.canonicalProfileUrl || input.website,
+          siteAudit: scrape?.siteAudit || inputCite.siteAudit,
           bio: sp?.bio || input.bio,
           title: sp?.title || input.title,
           brokerage: input.brokerage || sp?.brokerage,
@@ -535,13 +549,13 @@ export const useAppStore = create<AppState>()(
             ? `${scrape.listings.length} listings · ${scrape.pagesFetched.length} pages`
             : undefined,
           onboardedAt: now,
-          lastMlsSyncAt: now,
         };
         const fromSite = scrape?.ok
           ? scrapedListingsToProperties(
               scrape.listings,
               profile.name,
               profile.areaOfOperations,
+              scrape.scrapedAt,
             )
           : [];
         const identity = applyProfileIdentity(profile);
@@ -581,26 +595,39 @@ export const useAppStore = create<AppState>()(
       applyWebsiteScrape: (scrape) => {
         const current = get().agentProfile;
         if (!current) return { listings: 0, profilePatched: false };
+        const currentCite = current as CiteAgentProfile;
         const sp = scrape.profile;
-        const profile: AgentProfile = {
+        const profile: CiteAgentProfile = {
           ...current,
           phone: sp.phone || current.phone,
           email: sp.email || current.email,
           photoUrl: sp.photoUrl || current.photoUrl,
           agentMlsId: sp.mlsNumber || current.agentMlsId,
-          license: sp.license || sp.mlsNumber || current.license,
+          license: sp.license || current.license,
+          licenseJurisdiction:
+            sp.licenseJurisdiction || currentCite.licenseJurisdiction,
+          responsibleBrokerName:
+            sp.responsibleBrokerName || currentCite.responsibleBrokerName,
+          responsibleBrokerLicense:
+            sp.responsibleBrokerLicense || currentCite.responsibleBrokerLicense,
+          brokerageBrand: sp.brokerageBrand || currentCite.brokerageBrand,
+          officeAddress: sp.address || currentCite.officeAddress,
+          sameAs: sp.sameAs?.length ? sp.sameAs : currentCite.sameAs,
+          canonicalProfileUrl:
+            scrape.finalUrl || currentCite.canonicalProfileUrl || current.website,
+          siteAudit: scrape.siteAudit || currentCite.siteAudit,
           bio: sp.bio || current.bio,
           title: sp.title || current.title,
           brokerage: sp.brokerage || current.brokerage,
           dataSource: scrape.ok ? "website" : current.dataSource,
           lastWebsiteScrapeAt: scrape.scrapedAt,
           websiteScrapeSummary: `${scrape.listings.length} listings · ${scrape.pagesFetched.length} pages`,
-          lastMlsSyncAt: new Date().toISOString(),
         };
         const fromSite = scrapedListingsToProperties(
           scrape.listings,
           profile.name,
           profile.areaOfOperations,
+          scrape.scrapedAt,
         );
         // Replace only previous website-sourced inventory; keep manual/import
         const kept = get().properties.filter(
@@ -655,11 +682,9 @@ export const useAppStore = create<AppState>()(
       updateAgentProfile: (patch) => {
         const current = get().agentProfile;
         if (!current) return;
-        const now = new Date().toISOString();
         const profile: AgentProfile = {
           ...current,
           ...patch,
-          lastMlsSyncAt: now,
         };
         set({
           agentProfile: profile,
