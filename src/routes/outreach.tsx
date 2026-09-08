@@ -107,7 +107,7 @@ function OutreachPage() {
   const lead = leads.find((l) => l.id === leadId) ?? activeLeads[0];
 
   // A property choice belongs to one lead; switching clients cannot reuse it.
-  const showingProperty = showingSelection?.leadId === lead?.id
+  const showingProperty = showingSelection && lead && showingSelection.leadId === lead.id
     ? properties.find((property) => property.id === showingSelection.propertyId)
     : undefined;
 
