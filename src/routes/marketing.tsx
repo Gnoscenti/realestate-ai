@@ -17,13 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -52,14 +46,12 @@ import {
 } from "@/lib/social-agent";
 import { myListings } from "@/lib/mls";
 import { cn } from "@/lib/utils";
-import {
-  attachMediaToPosts,
-  listingPhotoUrls,
-  pickListingMedia,
-} from "@/lib/imagine-media";
+import { attachMediaToPosts, listingPhotoUrls, pickListingMedia } from "@/lib/imagine-media";
 import { SOCIAL_NETWORKS } from "@/lib/social-accounts";
 import { Image as ImageIcon, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
+import { ActualPhotoStudio } from "@/components/marketing/actual-photo-studio";
 import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
 
 const searchSchema = z.object({
@@ -104,21 +96,22 @@ function MarketingPage() {
 
   const validGoals = GOAL_OPTIONS.map((g) => g.value);
   const initialGoal = (
-    goalParam && validGoals.includes(goalParam as CampaignGoal)
-      ? goalParam
-      : "just_listed"
+    goalParam && validGoals.includes(goalParam as CampaignGoal) ? goalParam : "just_listed"
   ) as CampaignGoal;
 
   const [goal, setGoal] = useState<CampaignGoal>(initialGoal);
   const [propertyId, setPropertyId] = useState(
     propertyParam && properties.some((p) => p.id === propertyParam)
       ? propertyParam
-      : book[0]?.id ?? properties[0]?.id ?? "",
+      : (book[0]?.id ?? properties[0]?.id ?? ""),
   );
   const [voice, setVoice] = useState<string>(VOICE_PRESETS[0]);
   // hydrate preferred voice after memory loads
   useEffect(() => {
-    if (memory?.preferredVoice && VOICE_PRESETS.includes(memory.preferredVoice as typeof VOICE_PRESETS[number])) {
+    if (
+      memory?.preferredVoice &&
+      VOICE_PRESETS.includes(memory.preferredVoice as (typeof VOICE_PRESETS)[number])
+    ) {
       setVoice(memory.preferredVoice);
     } else if (memory?.preferredVoice) {
       setVoice(memory.preferredVoice);
@@ -131,9 +124,8 @@ function MarketingPage() {
     "stories",
   ]);
   const [running, setRunning] = useState(false);
-  const [steps, setSteps] = useState<AgentStep[]>(() =>
-    getAgentPipeline(initialGoal),
-  );
+  const [openHouseWhen, setOpenHouseWhen] = useState("");
+  const [steps, setSteps] = useState<AgentStep[]>(() => getAgentPipeline(initialGoal));
   const [activePlan, setActivePlan] = useState<CampaignPlan | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [tab, setTab] = useState("agent");
@@ -172,110 +164,90 @@ function MarketingPage() {
   const postUsesCampaignPhoto = (post: SocialPost): boolean =>
     Boolean(
       activePlan?.propertyId &&
-        campaignProperty?.id === activePlan.propertyId &&
-        post.imageUrl &&
-        post.mediaSource === "listing_record" &&
-        campaignPhotoUrls.includes(post.imageUrl),
+      campaignProperty?.id === activePlan.propertyId &&
+      post.imageUrl &&
+      post.mediaSource === "listing_record" &&
+      campaignPhotoUrls.includes(post.imageUrl),
     );
 
   const selectedPost = useMemo(() => {
     if (!activePlan || !selectedPostId) return activePlan?.posts[0] ?? null;
-    return (
-      activePlan.posts.find((p) => p.id === selectedPostId) ??
-      activePlan.posts[0] ??
-      null
-    );
+    return activePlan.posts.find((p) => p.id === selectedPostId) ?? activePlan.posts[0] ?? null;
   }, [activePlan, selectedPostId]);
 
   const togglePlatform = (p: SocialPlatform) => {
-    setPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p],
-    );
+    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
 
   const runAgent = async () => {
-    if (
-      platforms.filter((p) => p !== "stories").length === 0 &&
-      !platforms.includes("instagram")
-    ) {
+    if (platforms.filter((p) => p !== "stories").length === 0 && !platforms.includes("instagram")) {
       toast.error("Select at least one platform");
       return;
     }
-    setRunning(true);
-    setTab("agent");
-    const pipeline = getAgentPipeline(goal);
-    setSteps(pipeline.map((s) => ({ ...s, status: "pending" })));
-
-    const advance = async (idx: number) => {
-      setSteps((prev) =>
-        prev.map((s, i) =>
-          i === idx
-            ? { ...s, status: "running" }
-            : i < idx
-              ? { ...s, status: "done" }
-              : s,
-        ),
-      );
-      await new Promise((r) => setTimeout(r, 320 + idx * 80));
-      setSteps((prev) =>
-        prev.map((s, i) => (i === idx ? { ...s, status: "done" } : s)),
-      );
-    };
-
-    for (let i = 0; i < pipeline.length; i++) {
-      await advance(i);
+    if (goal === "open_house" && !openHouseWhen.trim()) {
+      toast.error("Enter the confirmed open-house date, time and time zone.");
+      return;
     }
+    setRunning(true);
+    try {
+      const agentName = profile?.name || "your local agent";
+      const site = profile?.website ? profile.website.replace(/^https?:\/\//, "") : undefined;
+      const area = profile?.areaOfOperations || property?.city || "your market";
 
-    const agentName = profile?.name || "your local agent";
-    const site = profile?.website
-      ? profile.website.replace(/^https?:\/\//, "")
-      : undefined;
-    const area = profile?.areaOfOperations || property?.city || "your market";
+      let plan = runSocialContentAgent({
+        goal,
+        platforms,
+        voice,
+        property,
+        agentName,
+        marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
+        openHouseWhen: openHouseWhen.trim(),
+      });
 
-    let plan = runSocialContentAgent({
-      goal,
-      platforms,
-      voice,
-      property,
-      agentName,
-      marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
-      openHouseWhen: "Sat 1–4 PM",
-    });
+      // Attach actual listing / website photos only (no generated property media).
+      plan = {
+        ...plan,
+        posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
+      };
 
-    // Attach actual listing / website photos only (no generated property media).
-    plan = {
-      ...plan,
-      posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
-    };
-
-    // Inject website into CTAs where useful — never "000 view listing" junk
-    if (site) {
+      // Inject website into CTAs where useful — never "000 view listing" junk
+      if (site) {
+        plan.posts = plan.posts.map((p) => ({
+          ...p,
+          cta: /view listing|000 view/i.test(p.cta)
+            ? `Message for details · ${site}`
+            : p.cta.includes("link in bio")
+              ? p.cta
+              : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
+        }));
+      }
       plan.posts = plan.posts.map((p) => ({
         ...p,
-        cta: /view listing|000 view/i.test(p.cta)
-          ? `Message for details · ${site}`
-          : p.cta.includes("link in bio")
-            ? p.cta
-            : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
+        hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+        body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+        cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
+        visualBrief: p.visualBrief
+          .replace(/JUST LISTED/gi, "New to market")
+          .replace(/view count|000 views|fake engagement/gi, "")
+          .trim(),
       }));
-    }
-    plan.posts = plan.posts.map((p) => ({
-      ...p,
-      hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-      body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-      cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
-      visualBrief: p.visualBrief
-        .replace(/JUST LISTED/gi, "New to market")
-        .replace(/view count|000 views|fake engagement/gi, "")
-        .trim(),
-    }));
 
-    saveCampaign(plan);
-    setActivePlan(plan);
-    setSelectedPostId(plan.posts[0]?.id ?? null);
-    setRunning(false);
-    setTab("pack");
-    toast.success(`Campaign ready — ${plan.posts.length} assets for ${agentName}`);
+      saveCampaign(plan);
+      setActivePlan(plan);
+      setSelectedPostId(plan.posts[0]?.id ?? null);
+      setSteps(
+        getAgentPipeline(goal).map((step) => ({
+          ...step,
+          status: step.id === "qa" ? "pending" : "done",
+        })),
+      );
+      setTab("pack");
+      toast.success("Campaign draft saved. Review every claim and proposed posting time.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Campaign could not be saved. Retry.");
+    } finally {
+      setRunning(false);
+    }
   };
 
   const downloadPack = () => {
@@ -301,11 +273,7 @@ function MarketingPage() {
           : status === "published"
             ? "Legacy publish mark"
             : "Draft";
-    return (
-      <Badge variant={v}>
-        {label}
-      </Badge>
-    );
+    return <Badge variant={v}>{label}</Badge>;
   };
 
   return (
@@ -323,7 +291,7 @@ function MarketingPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="accent">
                 <Bot className="h-3 w-3" />
-                Content Agent
+                Campaign drafts
               </Badge>
               {profile && (
                 <Badge variant="secondary">
@@ -335,8 +303,8 @@ function MarketingPage() {
               Social media marketing engine
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Pulls from active listings saved in this workspace. Campaigns sign as{" "}
-              {profile?.name ?? "you"}
+              Prepares editable drafts from saved property details. No live MLS connection or
+              automatic publishing. Drafts sign as {profile?.name ?? "you"}
               {profile?.website ? ` · ${profile.website.replace(/^https?:\/\//, "")}` : ""}.
             </p>
           </div>
@@ -347,7 +315,7 @@ function MarketingPage() {
               ) : (
                 <Wand2 className="h-4 w-4" />
               )}
-              {running ? "Agent running…" : "Run Content Agent"}
+              {running ? "Preparing draft…" : "Prepare campaign draft"}
             </Button>
             {activePlan && (
               <Button variant="secondary" onClick={downloadPack}>
@@ -359,6 +327,8 @@ function MarketingPage() {
         </div>
       </div>
 
+      <ActualPhotoStudio />
+      <SocialBillingControls />
       <SocialMediaGenerator />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -370,7 +340,7 @@ function MarketingPage() {
                 Campaign brief
               </CardTitle>
               <CardDescription>
-                MLS listings first — content grounded in your active inventory
+                Use saved property details and review all claims before posting
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -399,8 +369,25 @@ function MarketingPage() {
                 </p>
               </div>
 
+              {goal === "open_house" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-open-house-time">
+                    Confirmed open-house date, time and time zone
+                  </Label>
+                  <Input
+                    id="campaign-open-house-time"
+                    value={openHouseWhen}
+                    maxLength={160}
+                    onChange={(event) => setOpenHouseWhen(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Only use a schedule confirmed by the property representative.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <Label>MLS listing</Label>
+                <Label>Saved property</Label>
                 <Select value={propertyId} onValueChange={setPropertyId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select listing" />
@@ -482,7 +469,7 @@ function MarketingPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Your MLS book</CardTitle>
+              <CardTitle className="text-base">Your saved property book</CardTitle>
               <CardDescription>Quick-start content from your listings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -496,9 +483,7 @@ function MarketingPage() {
                   }}
                   className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-bg-elevated)]"
                 >
-                  <div className="font-medium text-[var(--color-fg)]">
-                    {p.title}
-                  </div>
+                  <div className="font-medium text-[var(--color-fg)]">{p.title}</div>
                   <div className="text-[var(--color-fg-subtle)]">
                     {p.mlsNumber ?? "—"} · {p.status}
                     {p.listingSide === "mine" ? " · Yours" : ""}
@@ -515,7 +500,7 @@ function MarketingPage() {
             <CardContent className="space-y-2">
               {campaigns.length === 0 ? (
                 <p className="text-sm text-[var(--color-fg-muted)]">
-                  No campaigns yet — run the agent on an MLS listing.
+                  No campaigns yet. Prepare a draft from a saved property.
                 </p>
               ) : (
                 campaigns.map((c) => (
@@ -534,9 +519,7 @@ function MarketingPage() {
                         : "border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)]",
                     )}
                   >
-                    <div className="text-sm font-medium text-[var(--color-fg)]">
-                      {c.title}
-                    </div>
+                    <div className="text-sm font-medium text-[var(--color-fg)]">{c.title}</div>
                     <div className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
                       {c.posts.length} posts · {c.durationDays}d
                     </div>
@@ -550,7 +533,7 @@ function MarketingPage() {
         <div className="lg:col-span-8 space-y-4">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="h-auto flex-wrap">
-              <TabsTrigger value="agent">Agent run</TabsTrigger>
+              <TabsTrigger value="agent">Draft checklist</TabsTrigger>
               <TabsTrigger value="pack">Content pack</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
               <TabsTrigger value="queue">Review status</TabsTrigger>
@@ -560,10 +543,9 @@ function MarketingPage() {
             <TabsContent value="agent" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Pipeline</CardTitle>
+                  <CardTitle className="text-base">Draft preparation and review</CardTitle>
                   <CardDescription>
-                    Grounded in your MLS pull for{" "}
-                    {profile?.areaOfOperations ?? "your market"}
+                    Uses saved details for {profile?.areaOfOperations ?? "your market"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -585,9 +567,7 @@ function MarketingPage() {
                         <div className="text-sm font-medium text-[var(--color-fg)]">
                           {i + 1}. {step.label}
                         </div>
-                        <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
-                          {step.detail}
-                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{step.detail}</p>
                       </div>
                     </div>
                   ))}
@@ -599,7 +579,7 @@ function MarketingPage() {
               {!activePlan ? (
                 <Card>
                   <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Select an MLS listing and run the Content Agent.
+                    Select a saved property and prepare a campaign draft.
                   </CardContent>
                 </Card>
               ) : (
@@ -608,9 +588,7 @@ function MarketingPage() {
                     <CardHeader className="pb-2">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <CardTitle className="text-base">
-                            {activePlan.title}
-                          </CardTitle>
+                          <CardTitle className="text-base">{activePlan.title}</CardTitle>
                           <CardDescription className="mt-1">
                             {activePlan.objective} · Voice: {activePlan.brandVoice}
                           </CardDescription>
@@ -684,9 +662,7 @@ function MarketingPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() =>
-                                void copyText(composeFullCaption(selectedPost))
-                              }
+                              onClick={() => void copyText(composeFullCaption(selectedPost))}
                             >
                               <Copy className="h-3.5 w-3.5" />
                               Copy
@@ -695,12 +671,11 @@ function MarketingPage() {
                           <CardContent className="space-y-4">
                             {selectedPost.mediaSource === "imagine" && (
                               <div className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs text-[var(--color-danger)]">
-                                Legacy generated media is hidden. Replace it with
-                                an actual property photo before publishing.
+                                Legacy generated media is hidden. Replace it with an actual property
+                                photo before publishing.
                               </div>
                             )}
-                            {selectedPost.imageUrl &&
-                              selectedPost.mediaSource !== "imagine" && (
+                            {selectedPost.imageUrl && selectedPost.mediaSource !== "imagine" && (
                               <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                                 <img
                                   src={selectedPost.imageUrl}
@@ -708,16 +683,15 @@ function MarketingPage() {
                                   className="max-h-56 w-full object-cover"
                                 />
                                 <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  Photo attached to listing record · source not
-                                  independently verified
+                                  Photo attached to listing record · source not independently
+                                  verified
                                 </div>
                               </div>
                             )}
                             {!postUsesCampaignPhoto(selectedPost) && (
                               <div className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-fg-muted)]">
-                                Approval is locked until this post uses a photo
-                                from the campaign’s own listing record. Reapply
-                                photos under Handles &amp; photos.
+                                Approval is locked until this post uses a photo from the campaign’s
+                                own listing record. Reapply photos under Handles &amp; photos.
                               </div>
                             )}
                             <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm leading-relaxed text-[var(--color-fg)] font-sans">
@@ -742,45 +716,29 @@ function MarketingPage() {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              {(
-                                ["approved", "draft"] as const
-                              ).map((st) => (
+                              {(["approved", "draft"] as const).map((st) => (
                                 <Button
                                   key={st}
                                   size="sm"
-                                  variant={
-                                    selectedPost.status === st
-                                      ? "default"
-                                      : "outline"
-                                  }
+                                  variant={selectedPost.status === st ? "default" : "outline"}
                                   className="capitalize"
                                   disabled={
-                                    st === "approved" &&
-                                    !postUsesCampaignPhoto(selectedPost)
+                                    st === "approved" && !postUsesCampaignPhoto(selectedPost)
                                   }
                                   onClick={() => {
-                                    if (
-                                      st === "approved" &&
-                                      !postUsesCampaignPhoto(selectedPost)
-                                    ) {
+                                    if (st === "approved" && !postUsesCampaignPhoto(selectedPost)) {
                                       toast.error(
                                         "Apply this campaign’s actual listing photos first",
                                       );
                                       return;
                                     }
-                                    setCampaignPostStatus(
-                                      activePlan.id,
-                                      selectedPost.id,
-                                      st,
-                                    );
+                                    setCampaignPostStatus(activePlan.id, selectedPost.id, st);
                                     setActivePlan((prev) =>
                                       prev
                                         ? {
                                             ...prev,
                                             posts: prev.posts.map((p) =>
-                                              p.id === selectedPost.id
-                                                ? { ...p, status: st }
-                                                : p,
+                                              p.id === selectedPost.id ? { ...p, status: st } : p,
                                             ),
                                           }
                                         : prev,
@@ -792,12 +750,8 @@ function MarketingPage() {
                                     );
                                   }}
                                 >
-                                  {st === "approved" && (
-                                    <Check className="h-3.5 w-3.5" />
-                                  )}
-                                  {st === "approved"
-                                    ? "Approve locally"
-                                    : "Draft"}
+                                  {st === "approved" && <Check className="h-3.5 w-3.5" />}
+                                  {st === "approved" ? "Approve locally" : "Draft"}
                                 </Button>
                               ))}
                             </div>
@@ -828,9 +782,7 @@ function MarketingPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {Array.from({ length: activePlan.durationDays }, (_, day) => {
-                      const dayPosts = activePlan.posts.filter(
-                        (p) => p.dayOffset === day,
-                      );
+                      const dayPosts = activePlan.posts.filter((p) => p.dayOffset === day);
                       if (!dayPosts.length) return null;
                       return (
                         <div key={day}>
@@ -847,9 +799,7 @@ function MarketingPage() {
                                   <Badge variant="secondary">
                                     {PLATFORM_META[p.platform].label}
                                   </Badge>
-                                  <div className="mt-1 truncate text-sm">
-                                    {p.hook}
-                                  </div>
+                                  <div className="mt-1 truncate text-sm">{p.hook}</div>
                                 </div>
                                 <Button
                                   size="sm"
@@ -876,92 +826,79 @@ function MarketingPage() {
               {!activePlan ? (
                 <Card>
                   <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Review campaign drafts here. Direct social publishing is
-                    not connected in this beta.
+                    Review campaign drafts here. Direct social publishing is not connected in this
+                    beta.
                   </CardContent>
                 </Card>
               ) : (
                 <div className="grid gap-3">
-                  {(["queued", "approved", "published", "draft"] as const).map(
-                    (bucket) => {
-                      const list = activePlan.posts.filter(
-                        (p) => p.status === bucket,
-                      );
-                      if (!list.length) return null;
-                      return (
-                        <Card key={bucket}>
-                          <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center gap-2 text-base capitalize">
-                              <Share2 className="h-4 w-4" />
-                              {bucket === "approved"
-                                ? "Approved locally"
-                                : bucket === "queued"
-                                  ? "Legacy queue marks"
-                                  : bucket === "published"
-                                    ? "Legacy publish marks"
-                                    : "Drafts"}{" "}
-                              ({list.length})
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="space-y-2">
-                            {list.map((p) => (
-                              <div
-                                key={p.id}
-                                className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 sm:flex-row sm:items-center sm:justify-between"
-                              >
-                                <div>
-                                  <div className="text-sm font-medium">
-                                    {PLATFORM_META[p.platform].label} · Day{" "}
-                                    {p.dayOffset}
-                                  </div>
-                                  <div className="text-xs text-[var(--color-fg-muted)] line-clamp-1">
-                                    {p.hook}
-                                  </div>
+                  {(["queued", "approved", "published", "draft"] as const).map((bucket) => {
+                    const list = activePlan.posts.filter((p) => p.status === bucket);
+                    if (!list.length) return null;
+                    return (
+                      <Card key={bucket}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="flex items-center gap-2 text-base capitalize">
+                            <Share2 className="h-4 w-4" />
+                            {bucket === "approved"
+                              ? "Approved locally"
+                              : bucket === "queued"
+                                ? "Legacy queue marks"
+                                : bucket === "published"
+                                  ? "Legacy publish marks"
+                                  : "Drafts"}{" "}
+                            ({list.length})
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {list.map((p) => (
+                            <div
+                              key={p.id}
+                              className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <div className="text-sm font-medium">
+                                  {PLATFORM_META[p.platform].label} · Day {p.dayOffset}
                                 </div>
-                                <div className="flex gap-2">
-                                  {bucket !== "draft" && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => {
-                                        setCampaignPostStatus(
-                                          activePlan.id,
-                                          p.id,
-                                          "draft",
-                                        );
-                                        setActivePlan((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                posts: prev.posts.map((x) =>
-                                                  x.id === p.id
-                                                    ? { ...x, status: "draft" }
-                                                    : x,
-                                                ),
-                                              }
-                                            : prev,
-                                        );
-                                      }}
-                                    >
-                                      Return to draft
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      void copyText(composeFullCaption(p))
-                                    }
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
+                                <div className="text-xs text-[var(--color-fg-muted)] line-clamp-1">
+                                  {p.hook}
                                 </div>
                               </div>
-                            ))}
-                          </CardContent>
-                        </Card>
-                      );
-                    },
-                  )}
+                              <div className="flex gap-2">
+                                {bucket !== "draft" && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setCampaignPostStatus(activePlan.id, p.id, "draft");
+                                      setActivePlan((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              posts: prev.posts.map((x) =>
+                                                x.id === p.id ? { ...x, status: "draft" } : x,
+                                              ),
+                                            }
+                                          : prev,
+                                      );
+                                    }}
+                                  >
+                                    Return to draft
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void copyText(composeFullCaption(p))}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>
@@ -974,9 +911,8 @@ function MarketingPage() {
                     Saved planning handles
                   </CardTitle>
                   <CardDescription>
-                    These handles are labels for planning and copy only. Social
-                    OAuth and direct publishing are not connected in this beta;
-                    nothing here posts to a network.
+                    These handles are labels for planning and copy only. Social OAuth and direct
+                    publishing are not connected in this beta; nothing here posts to a network.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -988,13 +924,10 @@ function MarketingPage() {
                         className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
-                          <div className="font-medium text-[var(--color-fg)]">
-                            {acct.label}
-                          </div>
+                          <div className="font-medium text-[var(--color-fg)]">{acct.label}</div>
                           {acct.connected ? (
                             <div className="text-xs text-[var(--color-fg-muted)]">
-                              Saved as {acct.handle} · not authenticated with the
-                              network
+                              Saved as {acct.handle} · not authenticated with the network
                             </div>
                           ) : (
                             <Input
@@ -1054,20 +987,15 @@ function MarketingPage() {
                     Actual listing photos
                   </CardTitle>
                   <CardDescription>
-                    Use only photos attached to the active campaign’s own
-                    listing record. Generated or generatively altered property
-                    imagery is disabled.
+                    Use only photos attached to the active campaign’s own listing record. Generated
+                    or generatively altered property imagery is disabled.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {(() => {
-                    const pick = pickListingMedia(
-                      campaignProperty,
-                      profile?.photoUrl,
-                    );
+                    const pick = pickListingMedia(campaignProperty, profile?.photoUrl);
                     const propertyMismatch = Boolean(
-                      activePlan?.propertyId &&
-                        propertyId !== activePlan.propertyId,
+                      activePlan?.propertyId && propertyId !== activePlan.propertyId,
                     );
                     return (
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -1080,12 +1008,12 @@ function MarketingPage() {
                             />
                           ) : (
                             <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No property photo yet. Add actual photos before creating
-                              social media.
+                              No property photo yet. Add actual photos before creating social media.
                             </div>
                           )}
                           <div className="p-3 text-xs text-[var(--color-fg-muted)]">
-                            Source: <strong className="text-[var(--color-fg)]">listing record</strong>
+                            Source:{" "}
+                            <strong className="text-[var(--color-fg)]">listing record</strong>
                             {" · "}
                             {pick.reason}
                           </div>
@@ -1121,9 +1049,7 @@ function MarketingPage() {
                                 campaignProperty.id !== activePlan.propertyId ||
                                 propertyMismatch
                               ) {
-                                toast.error(
-                                  "Select the property assigned to this campaign",
-                                );
+                                toast.error("Select the property assigned to this campaign");
                                 return;
                               }
                               const next = {
@@ -1144,12 +1070,9 @@ function MarketingPage() {
                               ? "Apply actual listing photos"
                               : "Add property photos first"}
                           </Button>
-                          {campaignProperty?.photoUrls &&
-                            campaignProperty.photoUrls.length > 1 && (
+                          {campaignProperty?.photoUrls && campaignProperty.photoUrls.length > 1 && (
                             <div className="flex gap-2 overflow-x-auto pt-1">
-                              {campaignProperty.photoUrls
-                                .slice(0, 6)
-                                .map((url) => (
+                              {campaignProperty.photoUrls.slice(0, 6).map((url) => (
                                 <img
                                   key={url}
                                   src={url}
@@ -1178,8 +1101,8 @@ function MarketingPage() {
                   Fair housing & brand QA
                 </div>
                 <p className="text-xs text-[var(--color-fg-muted)]">
-                  Agent avoids exclusionary language, keeps one CTA, respects
-                  platform length caps. Always review before publish.
+                  Agent avoids exclusionary language, keeps one CTA, respects platform length caps.
+                  Always review before publish.
                 </p>
               </div>
             </CardContent>

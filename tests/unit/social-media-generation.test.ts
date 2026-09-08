@@ -6,10 +6,7 @@ import {
   buildOrshotModifications,
   loadOrshotTemplateConfig,
 } from "@/lib/social-media/templates.server";
-import {
-  ORSHOT_RENDER_ENDPOINT,
-  renderOrshotImage,
-} from "@/lib/social-media/orshot.server";
+import { ORSHOT_RENDER_ENDPOINT, renderOrshotImage } from "@/lib/social-media/orshot.server";
 import {
   completeSocialMediaImageJob,
   createSocialMediaJob,
@@ -60,10 +57,7 @@ const configuredEnv = {
 } as NodeJS.ProcessEnv;
 
 function approvedModifications() {
-  const template = loadOrshotTemplateConfig(
-    "workspace-1",
-    configuredEnv,
-  ).templates[0]!;
+  const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
   return buildOrshotModifications(
     template,
     {
@@ -107,12 +101,10 @@ async function seedListing(userId: string) {
 describe("social media URL and template policy", () => {
   it("requires an explicit photo host allowlist", () => {
     expect(publicHttpsUrl("https://photos.example.com/home.jpg", {})).toBeNull();
-    expect(
-      publicHttpsUrl("https://photos.example.com/home.jpg", configuredEnv),
-    ).toBe("https://photos.example.com/home.jpg");
-    expect(
-      publicHttpsUrl("https://unapproved.example/home.jpg", configuredEnv),
-    ).toBeNull();
+    expect(publicHttpsUrl("https://photos.example.com/home.jpg", configuredEnv)).toBe(
+      "https://photos.example.com/home.jpg",
+    );
+    expect(publicHttpsUrl("https://unapproved.example/home.jpg", configuredEnv)).toBeNull();
     expect(
       publicHttpsUrl("https://127.0.0.1/home.jpg", {
         SOCIAL_MEDIA_PHOTO_HOST_ALLOWLIST: "127.0.0.1",
@@ -129,15 +121,13 @@ describe("social media URL and template policy", () => {
       height: 1200,
     };
     for (const content_type of SOCIAL_MEDIA_APPROVED_RASTER_MIME_TYPES) {
-      expect(
-        listingPhotoEligibility({ ...photo, content_type }, configuredEnv),
-      ).toMatchObject({ url: photo.source_url, reason: null });
+      expect(listingPhotoEligibility({ ...photo, content_type }, configuredEnv)).toMatchObject({
+        url: photo.source_url,
+        reason: null,
+      });
     }
     expect(
-      listingPhotoEligibility(
-        { ...photo, content_type: " IMAGE/AVIF " },
-        configuredEnv,
-      ),
+      listingPhotoEligibility({ ...photo, content_type: " IMAGE/AVIF " }, configuredEnv),
     ).toMatchObject({ url: photo.source_url, reason: null });
 
     for (const invalid of [
@@ -236,15 +226,9 @@ describe("social media URL and template policy", () => {
 
 describe("Orshot adapter", () => {
   it("uses only the official studio endpoint and data.content URL", async () => {
-    const template = loadOrshotTemplateConfig(
-      "workspace-1",
-      configuredEnv,
-    ).templates[0]!;
+    const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
     const fetchImpl = vi.fn(
-      async (
-        _input: Parameters<typeof fetch>[0],
-        _init?: Parameters<typeof fetch>[1],
-      ) =>
+      async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
         new Response(
           JSON.stringify({
             data: { content: "https://renders.example.com/result.png" },
@@ -266,9 +250,7 @@ describe("Orshot adapter", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe(ORSHOT_RENDER_ENDPOINT);
-    expect((init.headers as Record<string, string>).Authorization).toBe(
-      "Bearer secret-test-key",
-    );
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer secret-test-key");
     const body = JSON.parse(String(init.body));
     expect(body).toMatchObject({
       templateId: 12345,
@@ -286,10 +268,7 @@ describe("Orshot adapter", () => {
   });
 
   it("rejects a successful response from an unapproved output host", async () => {
-    const template = loadOrshotTemplateConfig(
-      "workspace-1",
-      configuredEnv,
-    ).templates[0]!;
+    const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
     await expect(
       renderOrshotImage(
         {
@@ -315,15 +294,10 @@ describe("Orshot adapter", () => {
   });
 
   it("rejects unknown keys and unapproved photo URLs before fetch", async () => {
-    const template = loadOrshotTemplateConfig(
-      "workspace-1",
-      configuredEnv,
-    ).templates[0]!;
+    const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
     const fetchImpl = vi.fn(
-      async (
-        _input: Parameters<typeof fetch>[0],
-        _init?: Parameters<typeof fetch>[1],
-      ) => new Response(null, { status: 500 }),
+      async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+        new Response(null, { status: 500 }),
     );
     await expect(
       renderOrshotImage(
@@ -364,10 +338,7 @@ describe("Orshot adapter", () => {
   ])(
     "classifies provider HTTP $status without exposing its body",
     async ({ status, code, ambiguousProviderOutcome }) => {
-      const template = loadOrshotTemplateConfig(
-        "workspace-1",
-        configuredEnv,
-      ).templates[0]!;
+      const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
       await expect(
         renderOrshotImage(
           {
@@ -389,10 +360,7 @@ describe("Orshot adapter", () => {
   );
 
   it("quarantines malformed success and transport-timeout outcomes", async () => {
-    const template = loadOrshotTemplateConfig(
-      "workspace-1",
-      configuredEnv,
-    ).templates[0]!;
+    const template = loadOrshotTemplateConfig("workspace-1", configuredEnv).templates[0]!;
     const input = {
       jobId: randomUUID(),
       template,
@@ -423,17 +391,40 @@ describe("Orshot adapter", () => {
 
 describe("tenant ownership, idempotency, quota, and cascades", () => {
   it("rejects empty photo selections and looks up the requested job kind", async () => {
-    const seeded=await seedListing("social-kind-"+randomUUID());
-    await expect(resolveOwnedListingMedia(seeded.sql,seeded.workspace.id,seeded.listingId,[],configuredEnv))
-      .resolves.toBeNull();
-    const id=randomUUID();
-    const intent={listingId:seeded.listingId,kind:"video" as const,templateKey:"setup-test",mediaIds:[seeded.mediaId]};
-    await createSocialMediaJob(seeded.sql,{...intent,id,workspaceId:seeded.workspace.id,
-      userId:seeded.userId,provider:"video_setup",status:"processing"});
-    await expect(getActiveSocialMediaJobForIntent(seeded.sql,seeded.workspace.id,seeded.userId,intent))
-      .resolves.toMatchObject({id,kind:"video"});
-    await expect(getActiveSocialMediaJobForIntent(seeded.sql,seeded.workspace.id,seeded.userId,{...intent,kind:"image"}))
-      .resolves.toBeNull();
+    const seeded = await seedListing("social-kind-" + randomUUID());
+    await expect(
+      resolveOwnedListingMedia(
+        seeded.sql,
+        seeded.workspace.id,
+        seeded.listingId,
+        [],
+        configuredEnv,
+      ),
+    ).resolves.toBeNull();
+    const id = randomUUID();
+    const intent = {
+      listingId: seeded.listingId,
+      kind: "video" as const,
+      templateKey: "setup-test",
+      mediaIds: [seeded.mediaId],
+    };
+    await createSocialMediaJob(seeded.sql, {
+      ...intent,
+      id,
+      workspaceId: seeded.workspace.id,
+      userId: seeded.userId,
+      provider: "video_setup",
+      status: "processing",
+    });
+    await expect(
+      getActiveSocialMediaJobForIntent(seeded.sql, seeded.workspace.id, seeded.userId, intent),
+    ).resolves.toMatchObject({ id, kind: "video" });
+    await expect(
+      getActiveSocialMediaJobForIntent(seeded.sql, seeded.workspace.id, seeded.userId, {
+        ...intent,
+        kind: "image",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("resolves only same-workspace listing media IDs", async () => {
@@ -491,23 +482,13 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       }),
     ).resolves.toBe(true);
     await expect(
-      getSocialMediaJob(
-        owner.sql,
-        owner.workspace.id,
-        owner.userId,
-        jobId,
-      ),
+      getSocialMediaJob(owner.sql, owner.workspace.id, owner.userId, jobId),
     ).resolves.toMatchObject({
       id: jobId,
       asset: { contentUrl: "https://renders.example.com/result.png" },
     });
     await expect(
-      getSocialMediaJob(
-        stranger.sql,
-        stranger.workspace.id,
-        stranger.userId,
-        jobId,
-      ),
+      getSocialMediaJob(stranger.sql, stranger.workspace.id, stranger.userId, jobId),
     ).resolves.toBeNull();
   });
 
@@ -549,27 +530,12 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       mediaIds: [seeded.mediaId],
     });
     const reservations = await Promise.all([
-      reserveSocialMediaQuotaAndChargeJob(
-        seeded.sql,
-        seeded.workspace.id,
-        jobId,
-        entitlement,
-      ),
-      reserveSocialMediaQuotaAndChargeJob(
-        seeded.sql,
-        seeded.workspace.id,
-        jobId,
-        entitlement,
-      ),
+      reserveSocialMediaQuotaAndChargeJob(seeded.sql, seeded.workspace.id, jobId, entitlement),
+      reserveSocialMediaQuotaAndChargeJob(seeded.sql, seeded.workspace.id, jobId, entitlement),
     ]);
     expect(reservations.filter(Boolean)).toHaveLength(1);
     await expect(
-      reserveSocialMediaQuotaAndChargeJob(
-        seeded.sql,
-        seeded.workspace.id,
-        jobId,
-        entitlement,
-      ),
+      reserveSocialMediaQuotaAndChargeJob(seeded.sql, seeded.workspace.id, jobId, entitlement),
     ).resolves.toBe(false);
     await expect(
       seeded.sql.query<{ used_units: number }>(
@@ -625,12 +591,7 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       [seeded.workspace.id],
     );
     await expect(
-      reserveSocialMediaQuotaAndChargeJob(
-        seeded.sql,
-        seeded.workspace.id,
-        jobId,
-        entitlement,
-      ),
+      reserveSocialMediaQuotaAndChargeJob(seeded.sql, seeded.workspace.id, jobId, entitlement),
     ).resolves.toBe(false);
     await expect(
       seeded.sql.query<{ unit_count: number }>(
@@ -642,9 +603,7 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
   });
 
   it("locks both job and entitlement rows in the reservation statement", async () => {
-    const query = vi.fn(async (_text: string, _params?: unknown[]) => [
-      { reserved: false },
-    ]);
+    const query = vi.fn(async (_text: string, _params?: unknown[]) => [{ reserved: false }]);
     const sql = { query } as unknown as Sql;
     await reserveSocialMediaQuotaAndChargeJob(sql, "workspace-1", randomUUID(), {
       enabled: true,
@@ -656,9 +615,7 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       message: "Available",
     });
     expect(query).toHaveBeenCalledOnce();
-    expect(String(query.mock.calls[0]?.[0])).toMatch(
-      /for update of j, e/i,
-    );
+    expect(String(query.mock.calls[0]?.[0])).toMatch(/for update of j, e/i);
   });
 
   it("quarantines a stale job and rejects a late completion asset", async () => {
@@ -683,11 +640,7 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       [jobId, seeded.workspace.id],
     );
     await expect(
-      reconcileRecentSocialMediaImageJob(
-        seeded.sql,
-        seeded.workspace.id,
-        userId,
-      ),
+      reconcileRecentSocialMediaImageJob(seeded.sql, seeded.workspace.id, userId),
     ).resolves.toMatchObject({
       id: jobId,
       status: "attention_required",
@@ -779,32 +732,30 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       mediaIds: [seeded.mediaId],
     };
     const failedId = randomUUID();
-    await expect(
-      createSocialMediaJob(seeded.sql, { ...base, id: failedId }),
-    ).resolves.toBe(true);
+    await expect(createSocialMediaJob(seeded.sql, { ...base, id: failedId })).resolves.toBe(true);
     await markSocialMediaJob(seeded.sql, seeded.workspace.id, failedId, {
       status: "failed",
       errorCode: "provider_rate_limit",
       errorMessage: "Rate limited before a render was accepted.",
     });
     const uncertainId = randomUUID();
-    await expect(
-      createSocialMediaJob(seeded.sql, { ...base, id: uncertainId }),
-    ).resolves.toBe(true);
+    await expect(createSocialMediaJob(seeded.sql, { ...base, id: uncertainId })).resolves.toBe(
+      true,
+    );
     await markSocialMediaJob(seeded.sql, seeded.workspace.id, uncertainId, {
       status: "attention_required",
       errorCode: "provider_timeout",
       errorMessage: "Provider outcome is uncertain.",
     });
-    await expect(
-      createSocialMediaJob(seeded.sql, { ...base, id: randomUUID() }),
-    ).resolves.toBe(false);
+    await expect(createSocialMediaJob(seeded.sql, { ...base, id: randomUUID() })).resolves.toBe(
+      false,
+    );
 
     const blockedBase = { ...base, templateKey: "classic" };
     const blockedId = randomUUID();
-    await expect(
-      createSocialMediaJob(seeded.sql, { ...blockedBase, id: blockedId }),
-    ).resolves.toBe(true);
+    await expect(createSocialMediaJob(seeded.sql, { ...blockedBase, id: blockedId })).resolves.toBe(
+      true,
+    );
     await markSocialMediaJob(seeded.sql, seeded.workspace.id, blockedId, {
       status: "blocked",
       errorCode: "quota_exhausted",
@@ -835,9 +786,9 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
     };
     await expect(createSocialMediaJob(seeded.sql, input)).resolves.toBe(true);
     await expect(createSocialMediaJob(seeded.sql, input)).resolves.toBe(false);
-    await expect(
-      createSocialMediaJob(seeded.sql, { ...input, id: randomUUID() }),
-    ).resolves.toBe(false);
+    await expect(createSocialMediaJob(seeded.sql, { ...input, id: randomUUID() })).resolves.toBe(
+      false,
+    );
     await expect(
       seeded.sql.query<{ count: number }>(
         `select count(*)::int as count from social_media_jobs
@@ -847,9 +798,7 @@ describe("tenant ownership, idempotency, quota, and cascades", () => {
       ),
     ).resolves.toEqual([{ count: 1 }]);
     await expect(
-      seeded.sql.query("delete from workspaces where id = $1", [
-        seeded.workspace.id,
-      ]),
+      seeded.sql.query("delete from workspaces where id = $1", [seeded.workspace.id]),
     ).resolves.toBeDefined();
     await expect(
       seeded.sql.query<{ count: number }>(
@@ -886,11 +835,7 @@ describe("social image request identity", () => {
       templateKey: "modern",
       mediaIds: ["media-lead", "media-detail"],
     };
-    const first = requestIdentityForSocialImage(
-      null,
-      intent,
-      createRequestId,
-    );
+    const first = requestIdentityForSocialImage(null, intent, createRequestId);
     const transportRetry = requestIdentityForSocialImage(
       first,
       { ...intent, mediaIds: [...intent.mediaIds] },

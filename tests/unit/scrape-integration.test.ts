@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMockRealtorSite } from "../fixtures/mock-realtor-site.mjs";
 import { scrapeRealtorWebsite } from "@/lib/scrape-site.server";
@@ -47,4 +48,22 @@ describe("scrapeRealtorWebsite (integration)", () => {
       expect(low.status).toBe("pending");
     }
   });
+  it("preserves visible credentials explicitly labeled with the target name", async () => {
+    const html = "<html><head><title>Jamie Cole | Realtor</title></head><body>" +
+      "<p>Jamie Cole — DRE #01234567</p><p>Jamie Cole — MLS Agent ID: JC12345</p></body></html>";
+    const server = createServer((_request, response) => {
+      response.setHeader("Content-Type", "text/html"); response.end(html);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Fixture did not bind");
+      const result = await scrapeRealtorWebsite({
+        website: "http://127.0.0.1:" + address.port, agentNameHint: "Jamie Cole", maxPages: 1,
+      });
+      expect(result.profile).toMatchObject({ name: "Jamie Cole", license: "01234567", licenseJurisdiction: "CA", mlsNumber: "JC12345" });
+      expect(result.profileObservations?.[0]?.profile.license).toBe("01234567");
+    } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+  });
+
 });

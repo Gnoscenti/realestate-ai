@@ -75,7 +75,7 @@ interface JobRow {
   listing_id: string;
   kind: SocialMediaJobKind;
   template_key: string;
-  provider: "orshot" | "video_setup";
+  provider: "orshot" | "video_setup" | "builtin";
   status: SocialMediaJobStatus;
   error_code: string | null;
   error_message: string | null;
@@ -126,17 +126,10 @@ interface SocialMediaJobIntent {
   mediaIds: string[];
 }
 
-export function serverSocialMediaIntentKey(
-  input: SocialMediaJobIntent,
-): string {
+export function serverSocialMediaIntentKey(input: SocialMediaJobIntent): string {
   return createHash("sha256")
     .update(
-      JSON.stringify([
-        input.listingId,
-        input.kind,
-        input.templateKey,
-        ...input.mediaIds,
-      ]),
+      JSON.stringify([input.listingId, input.kind, input.templateKey, ...input.mediaIds]),
       "utf8",
     )
     .digest("hex");
@@ -178,11 +171,7 @@ export function listingPhotoEligibility(
   }
 
   const contentType = row.content_type?.trim().toLowerCase() ?? "";
-  if (
-    !SOCIAL_MEDIA_APPROVED_RASTER_MIME_TYPES.some(
-      (approved) => approved === contentType,
-    )
-  ) {
+  if (!SOCIAL_MEDIA_APPROVED_RASTER_MIME_TYPES.some((approved) => approved === contentType)) {
     return {
       url: null,
       reason:
@@ -211,8 +200,7 @@ export function listingPhotoEligibility(
     ? { url, reason: null }
     : {
         url: null,
-        reason:
-          "This photo is not on a permitted server-owned public HTTPS origin.",
+        reason: "This photo is not on a permitted server-owned public HTTPS origin.",
       };
 }
 
@@ -368,17 +356,17 @@ export async function getSocialMediaEntitlement(
   const periodEnd = asIso(row?.current_period_end ?? null);
   const verified = Boolean(
     row &&
-      (row.status === "active" || row.status === "trialing") &&
-      row.stripe_customer_id?.trim() &&
-      row.stripe_subscription_id?.trim() &&
-      row.stripe_price_id?.trim() &&
-      row.included_units > 0 &&
-      row.hard_limit_units != null &&
-      row.hard_limit_units > 0 &&
-      periodStart &&
-      periodEnd &&
-      now >= new Date(periodStart) &&
-      now < new Date(periodEnd),
+    (row.status === "active" || row.status === "trialing") &&
+    row.stripe_customer_id?.trim() &&
+    row.stripe_subscription_id?.trim() &&
+    row.stripe_price_id?.trim() &&
+    row.included_units > 0 &&
+    row.hard_limit_units != null &&
+    row.hard_limit_units > 0 &&
+    periodStart &&
+    periodEnd &&
+    now >= new Date(periodStart) &&
+    now < new Date(periodEnd),
   );
   if (!verified || !row || !periodStart || !periodEnd) {
     return {
@@ -388,8 +376,7 @@ export async function getSocialMediaEntitlement(
       periodEnd: null,
       limitUnits: 0,
       usedUnits: 0,
-      message:
-        "Social media rendering requires a verified active premium entitlement.",
+      message: "Social media rendering requires a verified active premium entitlement.",
     };
   }
 
@@ -491,13 +478,7 @@ export async function reserveSocialMediaQuotaAndChargeJob(
      )
      select exists(select 1 from quota)
         and exists(select 1 from charged) as reserved`,
-    [
-      workspaceId,
-      entitlement.periodStart,
-      entitlement.periodEnd,
-      entitlement.limitUnits,
-      jobId,
-    ],
+    [workspaceId, entitlement.periodStart, entitlement.periodEnd, entitlement.limitUnits, jobId],
   );
   return rows[0]?.reserved === true;
 }
@@ -511,7 +492,7 @@ export async function createSocialMediaJob(
     listingId: string;
     kind: SocialMediaJobKind;
     templateKey: string;
-    provider: "orshot" | "video_setup";
+    provider: "orshot" | "video_setup" | "builtin";
     status: "processing" | "setup_required";
     mediaIds: string[];
     providerJobId?: string;
@@ -585,9 +566,7 @@ export async function getActiveSocialMediaJobForIntent(
       limit 1`,
     [workspaceId, userId, serverSocialMediaIntentKey(input), input.kind],
   );
-  return rows[0]
-    ? getSocialMediaJob(sql, workspaceId, userId, rows[0].id)
-    : null;
+  return rows[0] ? getSocialMediaJob(sql, workspaceId, userId, rows[0].id) : null;
 }
 
 export async function mediaJobMatchesInput(
@@ -668,7 +647,7 @@ export async function completeSocialMediaImageJob(
 ): Promise<boolean> {
   const rows = await sql.query<{ completed: boolean }>(
     `with candidate as materialized (
-       select 1 from social_media_jobs
+       select provider from social_media_jobs
         where id = $1 and workspace_id = $2
           and status = 'processing' and unit_count = 1
         for update
@@ -676,7 +655,7 @@ export async function completeSocialMediaImageJob(
        insert into social_media_assets (
          id, job_id, workspace_id, kind, provider, content_url, content_type
        )
-       select $1 || ':image', $1, $2, 'image', 'orshot', $3, 'image/png'
+       select $1 || ':image', $1, $2, 'image', provider, $3, 'image/png'
          from candidate
        on conflict (job_id, kind) do nothing
        returning id
@@ -698,6 +677,16 @@ export async function completeSocialMediaImageJob(
   return rows[0]?.completed === true;
 }
 
+export async function recoverInterruptedBuiltinJobs(sql: Sql, workspaceId: string, userId: string) {
+  await sql.query(
+    "update social_media_jobs set status='failed',error_code='provider_timeout'," +
+      "error_message='This built-in export was interrupted. Start a new export.',completed_at=now(),updated_at=now() " +
+      "where workspace_id=$1 and user_id=$2 and provider='builtin' and status in ('processing','attention_required') " +
+      "and updated_at<now()-interval '2 minutes'",
+    [workspaceId, userId],
+  );
+}
+
 export async function getSocialMediaJob(
   sql: Sql,
   workspaceId: string,
@@ -709,12 +698,14 @@ export async function getSocialMediaJob(
   // the bounded 50-second Orshot timeout) quarantine it for operator review.
   await sql.query(
     `update social_media_jobs
-        set status = 'attention_required',
+        set status = case when provider='builtin' then 'failed' else 'attention_required' end,
             error_code = 'provider_timeout',
-            error_message = 'This render was interrupted. Support must check the provider outcome before any retry.',
+            error_message = case when provider='builtin'
+              then 'This built-in export was interrupted. Start a new export.'
+              else 'This render was interrupted. Support must check the provider outcome before any retry.' end,
             updated_at = now(), completed_at = now()
       where id = $1 and workspace_id = $2 and user_id = $3
-        and status = 'processing'
+        and (status = 'processing' or (provider='builtin' and status='attention_required'))
         and updated_at < now() - interval '2 minutes'`,
     [jobId, workspaceId, userId],
   );
@@ -778,12 +769,14 @@ export async function reconcileRecentSocialMediaImageJob(
 ): Promise<SocialMediaJobView | null> {
   await sql.query(
     `update social_media_jobs
-        set status = 'attention_required',
+        set status = case when provider='builtin' then 'failed' else 'attention_required' end,
             error_code = 'provider_timeout',
-            error_message = 'This render was interrupted. Support must check the provider outcome before any retry.',
+            error_message = case when provider='builtin'
+              then 'This built-in export was interrupted. Start a new export.'
+              else 'This render was interrupted. Support must check the provider outcome before any retry.' end,
             updated_at = now(), completed_at = now()
       where workspace_id = $1 and user_id = $2 and kind = 'image'
-        and status = 'processing'
+        and (status = 'processing' or (provider='builtin' and status='attention_required'))
         and updated_at < now() - interval '2 minutes'`,
     [workspaceId, userId],
   );
@@ -795,7 +788,5 @@ export async function reconcileRecentSocialMediaImageJob(
       limit 1`,
     [workspaceId, userId],
   );
-  return rows[0]
-    ? getSocialMediaJob(sql, workspaceId, userId, rows[0].id)
-    : null;
+  return rows[0] ? getSocialMediaJob(sql, workspaceId, userId, rows[0].id) : null;
 }

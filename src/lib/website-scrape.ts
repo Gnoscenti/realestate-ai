@@ -227,6 +227,26 @@ function pickMlsAgentId(text: string): string | undefined {
   return match?.[1]?.trim();
 }
 
+/** Only credentials directly labeled with this person's name can cross the
+ * server profile boundary. Page-wide/footer matches remain observations. */
+function namedVisibleCredentials(html: string, personName?: string): ScrapedAgentIdentity {
+  if (!personName || personName.trim().split(/\s+/).length < 2) return {};
+  const escapePart = (value: string) => value.split("").map((char) =>
+    "\\^$.*+?()[]{}|".includes(char) ? "\\" + char : char).join("");
+  const name = personName.trim().split(/\s+/).map(escapePart).join("\\s+");
+  const prefix = "(?:^|[^\\p{L}])" + name + "\\s*[:|,·–—-]?\\s*";
+  const text = stripTags(html);
+  const unique = (suffix: string): string | undefined => {
+    const matches = [...text.matchAll(new RegExp(prefix + suffix, "giu"))]
+      .map((match) => match[1]!.trim());
+    const values = [...new Set(matches)];
+    return values.length === 1 ? values[0] : undefined;
+  };
+  const license = unique("(?:CA\\s*)?(?:DRE|BRE|CalBRE)\\s*[:#]?\\s*(\\d{6,10})\\b");
+  const mlsNumber = unique("MLS\\s*Agent(?:\\s*(?:ID|No\\.?|Number))?\\s*[:#]?\\s*([A-Z]{1,4}\\d{4,12})\\b");
+  return { license, licenseJurisdiction: license ? "CA" : undefined, mlsNumber };
+}
+
 function extractProductionClaims(
   text: string,
   sourceUrl: string,
@@ -1193,6 +1213,7 @@ export function parseRealtorWebsiteHtml(
 ): {
   profile: ScrapedAgentIdentity;
   structuredPersonProfile: ScrapedAgentIdentity;
+  personBoundCredentials: ScrapedAgentIdentity;
   listings: ScrapedListing[];
   claims: ScrapedClaim[];
 } {
@@ -1280,6 +1301,7 @@ export function parseRealtorWebsiteHtml(
   return {
     profile,
     structuredPersonProfile,
+    personBoundCredentials: namedVisibleCredentials(html, personName),
     listings,
     claims: extractProductionClaims(
       text,

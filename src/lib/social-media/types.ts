@@ -4,10 +4,7 @@ const recordIdSchema = z
   .string()
   .min(1)
   .max(240)
-  .refine(
-    (value) => value === value.trim() && !/[\u0000-\u001f]/.test(value),
-    "Invalid record ID",
-  );
+  .refine((value) => value === value.trim() && !/[\u0000-\u001f]/.test(value), "Invalid record ID");
 
 export const templateKeySchema = z
   .string()
@@ -39,18 +36,11 @@ export const socialMediaJobLookupSchema = z.object({
   jobId: z.uuid(),
 });
 
-export type GenerateSocialMediaInput = z.infer<
-  typeof generateSocialMediaSchema
->;
+export type GenerateSocialMediaInput = z.infer<typeof generateSocialMediaSchema>;
 
 export type SocialMediaJobKind = "image" | "video";
 export type SocialMediaJobStatus =
-  | "processing"
-  | "completed"
-  | "failed"
-  | "blocked"
-  | "setup_required"
-  | "attention_required";
+  "processing" | "completed" | "failed" | "blocked" | "setup_required" | "attention_required";
 
 export interface SocialMediaPhotoView {
   id: string;
@@ -115,7 +105,7 @@ export interface SocialMediaJobView {
   kind: SocialMediaJobKind;
   templateKey: string;
   mediaIds: string[];
-  provider: "orshot" | "video_setup";
+  provider: "orshot" | "video_setup" | "builtin";
   status: SocialMediaJobStatus;
   errorCode: string | null;
   errorMessage: string | null;

@@ -189,6 +189,9 @@ function personBoundProfile(
     : {};
   return {
     name: observedName,
+    license: structured.license || parsed.personBoundCredentials.license,
+    licenseJurisdiction: structured.licenseJurisdiction || parsed.personBoundCredentials.licenseJurisdiction,
+    mlsNumber: structured.mlsNumber || parsed.personBoundCredentials.mlsNumber,
     phone: structured.phone,
     email: structured.email,
     photoUrl: structured.photoUrl,

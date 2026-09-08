@@ -315,7 +315,7 @@ function platformEnabled(
   return selected.includes(platform);
 }
 
-/** Agentic planner: goal + inventory → multi-platform campaign */
+/** Deterministic draft planner; supplied facts and proposed posting slots require human review. */
 export function runSocialContentAgent(input: {
   goal: CampaignGoal;
   platforms: SocialPlatform[];
@@ -471,7 +471,10 @@ export function runSocialContentAgent(input: {
       break;
     }
     case "open_house": {
-      const when = input.openHouseWhen || "Sat 1–4 PM";
+      const when = input.openHouseWhen?.trim();
+      if (!when || when.length > 160) {
+        throw new Error("Enter the confirmed open-house date, time and time zone.");
+      }
       add(
         "instagram",
         "feed_post",
@@ -891,7 +894,7 @@ export function runSocialContentAgent(input: {
       (a, b) =>
         a.dayOffset - b.dayOffset || a.timeSlot.localeCompare(b.timeSlot),
     ),
-    calendarNote: `${durationDays}-day roll-out. Best windows: weekdays 8–11am & 5–7pm local; open-house pushes 24h + 2h before.`,
+    calendarNote: `${durationDays}-day roll-out. Suggested slots only: confirm your audience/time zone and event schedule. No posts are scheduled or published.`,
     createdAt: new Date().toISOString(),
   };
 }
@@ -901,8 +904,8 @@ export function getAgentPipeline(goal: CampaignGoal): AgentStep[] {
   return [
     {
       id: "brief",
-      label: "Ingest brief",
-      detail: `Goal: ${label}. Pull inventory, audience, brand voice.`,
+      label: "Use supplied brief",
+      detail: `Goal: ${label}. Use saved details, selected audience and brand voice.`,
       status: "pending",
     },
     {
@@ -919,14 +922,14 @@ export function getAgentPipeline(goal: CampaignGoal): AgentStep[] {
     },
     {
       id: "calendar",
-      label: "Build calendar",
-      detail: "Schedule day/time slots and cross-post variants.",
+      label: "Draft posting slots",
+      detail: "Propose day/time slots and platform variants for your review.",
       status: "pending",
     },
     {
       id: "qa",
-      label: "QA & compliance",
-      detail: "Length limits, fair housing tone, one-CTA rule.",
+      label: "Human review required",
+      detail: "Confirm listing facts, photo rights, fair housing language and posting times. This is not an automated compliance approval.",
       status: "pending",
     },
   ];

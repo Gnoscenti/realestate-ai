@@ -3,10 +3,8 @@ export type DbSource = "neon" | "pglite";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const rawDatabaseUrl = typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+const databaseUrl = rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -15,6 +13,10 @@ const databaseUrl =
  * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
+// An ephemeral process-local database is never a production persistence layer.
+if (typeof process !== "undefined" && process.env.NODE_ENV === "production" && !databaseUrl) {
+  throw new Error("DATABASE_URL is required in production. Ephemeral storage is refused.");
+}
 
 /**
  * Minimal shared SQL surface, satisfied by both Neon and PGLite. Both the
@@ -25,14 +27,8 @@ export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
  *   const rows2 = await sql.query("select * from todos where id = $1", [id]);
  */
 export interface Sql {
-  <T = Record<string, unknown>>(
-    strings: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<T[]>;
-  query<T = Record<string, unknown>>(
-    text: string,
-    params?: unknown[],
-  ): Promise<T[]>;
+  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 }
 
 /**
@@ -138,13 +134,9 @@ async function createPgliteSql(): Promise<Sql> {
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const doneRows = await pg.query<{ name: string }>(
-      "select name from _migrations",
-    );
+    const doneRows = await pg.query<{ name: string }>("select name from _migrations");
     const done = new Set(doneRows.rows.map((r) => r.name));
-    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) =>
-      a.localeCompare(b),
-    )) {
+    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) => a.localeCompare(b))) {
       const name = path.split("/").pop() as string;
       if (done.has(name)) continue;
       // Apply + record atomically (parity with scripts/migrate.mjs) so a failed
