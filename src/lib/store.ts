@@ -1467,9 +1467,9 @@ export const useAppStore = create<AppState>()(
         if (status === "published" || status === "queued") {
           get().pushActivity({
             type: "marketing",
-            title: status === "published" ? "Post published" : "Post queued",
-            description: `Campaign ${campaignId} · ${status}`,
-            badge: "Social",
+            title: "Legacy local campaign state changed",
+            description: `Campaign ${campaignId} · ${status} locally · no social-network request was sent`,
+            badge: "Planning only",
           });
         }
       },

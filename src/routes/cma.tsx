@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   BarChart3,
   Copy,
@@ -52,6 +52,7 @@ function CmaPage() {
     () => (subject ? generateCmaReport(subject, properties) : null),
     [subject, properties],
   );
+  const hasComparisonSet = (report?.comps.length ?? 0) > 0;
 
   const exportText = () => {
     if (!report || !subject) return "";
@@ -62,9 +63,7 @@ function CmaPage() {
       profile ? `Prepared by ${profile.name} · ${profile.areaOfOperations}` : "",
       profile?.website ? profile.website : "",
       "",
-      `Suggested list: ${formatCurrency(report.suggestedList)}`,
-      "",
-      "Comparables:",
+      "Workspace comparison set (not verified sold comps):",
       ...report.comps.map(
         (c) =>
           `• ${c.title} | ${c.address} | ${formatCurrency(c.price)} | ${c.sqft} sqft | ${formatCurrency(c.ppsf)}/sf | ${c.adj}`,
@@ -87,7 +86,7 @@ function CmaPage() {
           <div className="mb-2 flex flex-wrap gap-2">
             <Badge variant="default">
               <BarChart3 className="h-3 w-3" />
-              CMA Studio
+              CMA planning beta
             </Badge>
             {profile && (
               <Badge variant="secondary">
@@ -97,12 +96,12 @@ function CmaPage() {
             )}
           </div>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            Comparative market analysis
+            Comparison planning
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Built on your MLS-synced inventory
-            {profile ? ` for ${profile.areaOfOperations}` : ""}. Subject
-            properties and comps include MLS numbers from your feed.
+            Uses properties saved in this browser workspace
+            {profile ? ` for ${profile.areaOfOperations}` : ""}. This planning
+            beta does not retrieve or verify Closed/Sold comps automatically.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -130,7 +129,7 @@ function CmaPage() {
               key={p.id}
               type="button"
               onClick={() => setSubjectId(p.id)}
-              className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]"
+              className="min-h-11 rounded-full border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]"
             >
               Your listing · {p.neighborhood}
               {p.mlsNumber ? ` · ${p.mlsNumber}` : ""}
@@ -139,7 +138,49 @@ function CmaPage() {
         </div>
       )}
 
-      {report && subject && (
+      {!subject && (
+        <Card>
+          <CardHeader>
+            <CardTitle>No subject property yet</CardTitle>
+            <CardDescription>
+              Add or import a real property before building a workspace
+              comparison set.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && subject && !hasComparisonSet && (
+        <Card>
+          <CardHeader>
+            <CardTitle>More comparison data needed</CardTitle>
+            <CardDescription>
+              No other saved properties are available for a basic comparison
+              view. A price recommendation is never calculated from this
+              browser set. Verified Closed/Sold analysis requires an authorized
+              MLS import or licensed RESO feed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && subject && hasComparisonSet && (
         <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <Card className="md:col-span-2">
@@ -164,14 +205,14 @@ function CmaPage() {
             <Card>
               <CardContent className="flex h-full flex-col justify-center p-6">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                  Suggested list price
+                  Price recommendation
                 </div>
-                <div className="mt-2 font-display text-3xl font-semibold tabular text-[var(--color-success)]">
-                  {formatCurrency(report.suggestedList)}
+                <div className="mt-2 font-display text-xl font-semibold text-[var(--color-fg)]">
+                  Not calculated
                 </div>
                 <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
-                  Derived from weighted MLS comps · current ask{" "}
-                  {formatCurrency(subject.price)}
+                  Browser-saved records are not verified sold comps. Import an
+                  authorized Closed/Sold source before pricing client property.
                 </p>
               </CardContent>
             </Card>
@@ -180,10 +221,10 @@ function CmaPage() {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle>Comparable sales & actives</CardTitle>
+                <CardTitle>Workspace comparison set</CardTitle>
                 <CardDescription>
-                  Ranked by type, neighborhood, and size proximity from your MLS
-                  pull
+                  Other saved properties ranked by type, neighborhood, and size.
+                  Verify source, status, and closing data before client use.
                 </CardDescription>
               </div>
               <FileSpreadsheet className="h-5 w-5 text-[var(--color-fg-subtle)]" />
@@ -193,12 +234,12 @@ function CmaPage() {
                 <thead>
                   <tr className="border-b border-[var(--color-border)] text-[11px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
                     <th className="pb-3 pr-3 font-medium">Property</th>
-                    <th className="pb-3 pr-3 font-medium">Price</th>
+                    <th className="pb-3 pr-3 font-medium">Saved asking price</th>
                     <th className="pb-3 pr-3 font-medium">Sqft</th>
-                    <th className="pb-3 pr-3 font-medium">$/sf</th>
+                    <th className="pb-3 pr-3 font-medium">Asking $/sf</th>
                     <th className="pb-3 pr-3 font-medium">Beds/Baths</th>
                     <th className="pb-3 pr-3 font-medium">DOM</th>
-                    <th className="pb-3 font-medium">Adjustment</th>
+                    <th className="pb-3 font-medium">Objective difference</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,20 +320,20 @@ function CmaPage() {
                 const text = exportText();
                 try {
                   await navigator.clipboard.writeText(text);
-                  toast.success("CMA copied");
+                  toast.success("Planning comparison copied");
                 } catch {
                   toast.message("Select text to copy");
                 }
                 pushActivity({
                   type: "valuation",
-                  title: "CMA exported",
+                  title: "Planning comparison exported",
                   description: subject.title,
-                  badge: "CMA",
+                  badge: "Planning",
                 });
               }}
             >
               <Copy className="h-4 w-4" />
-              Copy CMA package
+              Copy planning package
             </Button>
             <Button
               variant="secondary"
@@ -301,7 +342,7 @@ function CmaPage() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `cma-${subject.id}.txt`;
+                a.download = `planning-comparison-${subject.id}.txt`;
                 a.click();
                 URL.revokeObjectURL(url);
                 toast.success("Download started");

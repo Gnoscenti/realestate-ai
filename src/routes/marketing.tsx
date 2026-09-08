@@ -52,9 +52,13 @@ import {
 } from "@/lib/social-agent";
 import { myListings } from "@/lib/mls";
 import { cn } from "@/lib/utils";
-import { attachMediaToPosts, buildImaginePrompt, pickListingMedia } from "@/lib/imagine-media";
-import { SOCIAL_NETWORKS, networkForPlatform } from "@/lib/social-accounts";
-import { Image as ImageIcon, Link2, Power } from "lucide-react";
+import {
+  attachMediaToPosts,
+  listingPhotoUrls,
+  pickListingMedia,
+} from "@/lib/imagine-media";
+import { SOCIAL_NETWORKS } from "@/lib/social-accounts";
+import { Image as ImageIcon, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const searchSchema = z.object({
@@ -90,9 +94,7 @@ function MarketingPage() {
   const socialAccounts = useAppStore((s) => s.socialAccounts);
   const connectSocialAccount = useAppStore((s) => s.connectSocialAccount);
   const disconnectSocialAccount = useAppStore((s) => s.disconnectSocialAccount);
-  const setSocialAutoPost = useAppStore((s) => s.setSocialAutoPost);
   const [handleDrafts, setHandleDrafts] = useState<Record<string, string>>({});
-  const [imagineBusy, setImagineBusy] = useState(false);
 
   const book = useMemo(() => {
     const mine = myListings(properties);
@@ -152,7 +154,28 @@ function MarketingPage() {
     }
   }, [campaigns, activePlan]);
 
+  useEffect(() => {
+    if (
+      activePlan?.propertyId &&
+      properties.some((candidate) => candidate.id === activePlan.propertyId)
+    ) {
+      setPropertyId(activePlan.propertyId);
+    }
+  }, [activePlan?.id, activePlan?.propertyId, properties]);
+
   const property = properties.find((p) => p.id === propertyId);
+  const campaignProperty = activePlan?.propertyId
+    ? properties.find((candidate) => candidate.id === activePlan.propertyId)
+    : undefined;
+  const campaignPhotoUrls = listingPhotoUrls(campaignProperty);
+  const postUsesCampaignPhoto = (post: SocialPost): boolean =>
+    Boolean(
+      activePlan?.propertyId &&
+        campaignProperty?.id === activePlan.propertyId &&
+        post.imageUrl &&
+        post.mediaSource === "listing_record" &&
+        campaignPhotoUrls.includes(post.imageUrl),
+    );
 
   const selectedPost = useMemo(() => {
     if (!activePlan || !selectedPostId) return activePlan?.posts[0] ?? null;
@@ -214,13 +237,11 @@ function MarketingPage() {
       voice,
       property,
       agentName,
-      marketNote: /rancho|rsf|del mar|solana|fairbanks|bridges/i.test(area)
-        ? `${area}: thin estate inventory, association-aware pricing, private-tour culture. Lead with land, Covenant/Bridges clarity, and lifestyle — not portal Zestimates.${site ? ` More at ${site}.` : ""}`
-        : `${area} mid-band inventory remains competitive; well-priced homes with strong media still clear in weeks, not months.${site ? ` More at ${site}.` : ""}`,
+      marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
       openHouseWhen: "Sat 1–4 PM",
     });
 
-    // Attach listing / website photos + Imagine prompts (no fake view-count overlays)
+    // Attach actual listing / website photos only (no generated property media).
     plan = {
       ...plan,
       posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
@@ -248,16 +269,6 @@ function MarketingPage() {
         .trim(),
     }));
 
-    // Auto-queue posts for networks with autoPost ON
-    plan.posts = plan.posts.map((p) => {
-      const net = networkForPlatform(p.platform);
-      const acct = socialAccounts.find((a) => a.id === net);
-      if (acct?.connected && acct.autoPost) {
-        return { ...p, status: "queued" as const };
-      }
-      return p;
-    });
-
     saveCampaign(plan);
     setActivePlan(plan);
     setSelectedPostId(plan.posts[0]?.id ?? null);
@@ -280,17 +291,18 @@ function MarketingPage() {
   };
 
   const statusBadge = (status: SocialPost["status"]) => {
-    const v =
-      status === "published"
-        ? "success"
+    const v = status === "approved" ? "default" : "secondary";
+    const label =
+      status === "approved"
+        ? "Approved locally"
         : status === "queued"
-          ? "accent"
-          : status === "approved"
-            ? "default"
-            : "secondary";
+          ? "Legacy queue mark"
+          : status === "published"
+            ? "Legacy publish mark"
+            : "Draft";
     return (
-      <Badge variant={v as "success"} className="capitalize">
-        {status}
+      <Badge variant={v}>
+        {label}
       </Badge>
     );
   };
@@ -322,7 +334,7 @@ function MarketingPage() {
               Social media marketing engine
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Pulls from your MLS-synced active book. Campaigns sign as{" "}
+              Pulls from active listings saved in this workspace. Campaigns sign as{" "}
               {profile?.name ?? "you"}
               {profile?.website ? ` · ${profile.website.replace(/^https?:\/\//, "")}` : ""}.
             </p>
@@ -433,9 +445,10 @@ function MarketingPage() {
                       <button
                         key={p}
                         type="button"
+                        aria-pressed={on}
                         onClick={() => togglePlatform(p)}
                         className={cn(
-                          "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                          "min-h-11 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                           on
                             ? "border-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-border))] bg-[var(--color-primary-soft)] text-[var(--color-primary)]"
                             : "border-[var(--color-border)] text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]",
@@ -478,7 +491,7 @@ function MarketingPage() {
                     setPropertyId(p.id);
                     setGoal("just_listed");
                   }}
-                  className="w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-bg-elevated)]"
+                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-bg-elevated)]"
                 >
                   <div className="font-medium text-[var(--color-fg)]">
                     {p.title}
@@ -537,8 +550,8 @@ function MarketingPage() {
               <TabsTrigger value="agent">Agent run</TabsTrigger>
               <TabsTrigger value="pack">Content pack</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              <TabsTrigger value="queue">Publish queue</TabsTrigger>
-              <TabsTrigger value="accounts">Accounts</TabsTrigger>
+              <TabsTrigger value="queue">Review status</TabsTrigger>
+              <TabsTrigger value="accounts">Handles & photos</TabsTrigger>
             </TabsList>
 
             <TabsContent value="agent" className="space-y-4">
@@ -677,21 +690,31 @@ function MarketingPage() {
                             </Button>
                           </CardHeader>
                           <CardContent className="space-y-4">
-                            {selectedPost.imageUrl && (
+                            {selectedPost.mediaSource === "imagine" && (
+                              <div className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs text-[var(--color-danger)]">
+                                Legacy generated media is hidden. Replace it with
+                                an actual property photo before publishing.
+                              </div>
+                            )}
+                            {selectedPost.imageUrl &&
+                              selectedPost.mediaSource !== "imagine" && (
                               <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
                                 <img
                                   src={selectedPost.imageUrl}
                                   alt={selectedPost.altText}
                                   className="max-h-56 w-full object-cover"
-                                  crossOrigin="anonymous"
                                 />
                                 <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  {selectedPost.mediaSource === "imagine"
-                                    ? "Grok Imagine"
-                                    : selectedPost.mediaSource === "mls"
-                                      ? "MLS photo"
-                                      : "Website photo"}
+                                  Photo attached to listing record · source not
+                                  independently verified
                                 </div>
+                              </div>
+                            )}
+                            {!postUsesCampaignPhoto(selectedPost) && (
+                              <div className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-fg-muted)]">
+                                Approval is locked until this post uses a photo
+                                from the campaign’s own listing record. Reapply
+                                photos under Handles &amp; photos.
                               </div>
                             )}
                             <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm leading-relaxed text-[var(--color-fg)] font-sans">
@@ -717,12 +740,7 @@ function MarketingPage() {
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {(
-                                [
-                                  "approved",
-                                  "queued",
-                                  "published",
-                                  "draft",
-                                ] as const
+                                ["approved", "draft"] as const
                               ).map((st) => (
                                 <Button
                                   key={st}
@@ -733,7 +751,20 @@ function MarketingPage() {
                                       : "outline"
                                   }
                                   className="capitalize"
+                                  disabled={
+                                    st === "approved" &&
+                                    !postUsesCampaignPhoto(selectedPost)
+                                  }
                                   onClick={() => {
+                                    if (
+                                      st === "approved" &&
+                                      !postUsesCampaignPhoto(selectedPost)
+                                    ) {
+                                      toast.error(
+                                        "Apply this campaign’s actual listing photos first",
+                                      );
+                                      return;
+                                    }
                                     setCampaignPostStatus(
                                       activePlan.id,
                                       selectedPost.id,
@@ -751,13 +782,19 @@ function MarketingPage() {
                                           }
                                         : prev,
                                     );
-                                    toast.success(`Marked ${st}`);
+                                    toast.success(
+                                      st === "approved"
+                                        ? "Approved locally for review"
+                                        : "Returned to draft",
+                                    );
                                   }}
                                 >
                                   {st === "approved" && (
                                     <Check className="h-3.5 w-3.5" />
                                   )}
-                                  {st}
+                                  {st === "approved"
+                                    ? "Approve locally"
+                                    : "Draft"}
                                 </Button>
                               ))}
                             </div>
@@ -836,7 +873,8 @@ function MarketingPage() {
               {!activePlan ? (
                 <Card>
                   <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Approve posts, then manage the queue here.
+                    Review campaign drafts here. Direct social publishing is
+                    not connected in this beta.
                   </CardContent>
                 </Card>
               ) : (
@@ -852,7 +890,14 @@ function MarketingPage() {
                           <CardHeader className="pb-2">
                             <CardTitle className="flex items-center gap-2 text-base capitalize">
                               <Share2 className="h-4 w-4" />
-                              {bucket} ({list.length})
+                              {bucket === "approved"
+                                ? "Approved locally"
+                                : bucket === "queued"
+                                  ? "Legacy queue marks"
+                                  : bucket === "published"
+                                    ? "Legacy publish marks"
+                                    : "Drafts"}{" "}
+                              ({list.length})
                             </CardTitle>
                           </CardHeader>
                           <CardContent className="space-y-2">
@@ -871,18 +916,14 @@ function MarketingPage() {
                                   </div>
                                 </div>
                                 <div className="flex gap-2">
-                                  {bucket !== "published" && (
+                                  {bucket !== "draft" && (
                                     <Button
                                       size="sm"
                                       onClick={() => {
-                                        const next =
-                                          bucket === "queued"
-                                            ? "published"
-                                            : "queued";
                                         setCampaignPostStatus(
                                           activePlan.id,
                                           p.id,
-                                          next,
+                                          "draft",
                                         );
                                         setActivePlan((prev) =>
                                           prev
@@ -890,7 +931,7 @@ function MarketingPage() {
                                                 ...prev,
                                                 posts: prev.posts.map((x) =>
                                                   x.id === p.id
-                                                    ? { ...x, status: next }
+                                                    ? { ...x, status: "draft" }
                                                     : x,
                                                 ),
                                               }
@@ -898,7 +939,7 @@ function MarketingPage() {
                                         );
                                       }}
                                     >
-                                      {bucket === "queued" ? "Publish" : "Queue"}
+                                      Return to draft
                                     </Button>
                                   )}
                                   <Button
@@ -927,11 +968,12 @@ function MarketingPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Link2 className="h-4 w-4 text-[var(--color-primary)]" />
-                    Connected accounts
+                    Saved planning handles
                   </CardTitle>
                   <CardDescription>
-                    Connect each network, then use the Auto-post switch when you want
-                    approved content queued automatically. You stay in control.
+                    These handles are labels for planning and copy only. Social
+                    OAuth and direct publishing are not connected in this beta;
+                    nothing here posts to a network.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -948,7 +990,8 @@ function MarketingPage() {
                           </div>
                           {acct.connected ? (
                             <div className="text-xs text-[var(--color-fg-muted)]">
-                              Connected as {acct.handle}
+                              Saved as {acct.handle} · not authenticated with the
+                              network
                             </div>
                           ) : (
                             <Input
@@ -965,35 +1008,13 @@ function MarketingPage() {
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          {acct.connected && (
-                            <button
-                              type="button"
-                              className={cn(
-                                "flex min-h-[40px] items-center gap-2 rounded-full border px-3 text-xs font-semibold transition",
-                                acct.autoPost
-                                  ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
-                                  : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
-                              )}
-                              onClick={() => {
-                                setSocialAutoPost(acct.id, !acct.autoPost);
-                                toast.message(
-                                  acct.autoPost
-                                    ? `${acct.label} auto-post off`
-                                    : `${acct.label} auto-post on — approved posts queue automatically`,
-                                );
-                              }}
-                            >
-                              <Power className="h-3.5 w-3.5" />
-                              Auto-post {acct.autoPost ? "ON" : "OFF"}
-                            </button>
-                          )}
                           {acct.connected ? (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => {
                                 disconnectSocialAccount(acct.id);
-                                toast.message(`${acct.label} disconnected`);
+                                toast.message(`${acct.label} handle cleared`);
                               }}
                             >
                               Disconnect
@@ -1008,10 +1029,12 @@ function MarketingPage() {
                                   return;
                                 }
                                 connectSocialAccount(acct.id, h);
-                                toast.success(`${acct.label} connected`);
+                                toast.success(
+                                  `${acct.label} handle saved locally — publishing is not connected`,
+                                );
                               }}
                             >
-                              Connect
+                              Save handle
                             </Button>
                           )}
                         </div>
@@ -1025,92 +1048,110 @@ function MarketingPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <ImageIcon className="h-4 w-4 text-[var(--color-primary)]" />
-                    Grok Imagine + listing photos
+                    Actual listing photos
                   </CardTitle>
                   <CardDescription>
-                    AI picks photos from your website or MLS listing. When no photo
-                    exists, a Grok Imagine prompt is prepared for creative generation.
+                    Use only photos attached to the active campaign’s own
+                    listing record. Generated or generatively altered property
+                    imagery is disabled.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {(() => {
-                    const pick = pickListingMedia(property, profile?.photoUrl);
+                    const pick = pickListingMedia(
+                      campaignProperty,
+                      profile?.photoUrl,
+                    );
+                    const propertyMismatch = Boolean(
+                      activePlan?.propertyId &&
+                        propertyId !== activePlan.propertyId,
+                    );
                     return (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
                           {pick.imageUrl ? (
                             <img
                               src={pick.imageUrl}
-                              alt={property?.title || "Listing"}
+                              alt={campaignProperty?.title || "Listing"}
                               className="h-44 w-full object-cover"
-                              crossOrigin="anonymous"
                             />
                           ) : (
                             <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No website/MLS photo yet — Imagine will create from facts
+                              No property photo yet. Add actual photos before creating
+                              social media.
                             </div>
                           )}
                           <div className="p-3 text-xs text-[var(--color-fg-muted)]">
-                            Source: <strong className="text-[var(--color-fg)]">{pick.source}</strong>
+                            Source: <strong className="text-[var(--color-fg)]">listing record</strong>
                             {" · "}
                             {pick.reason}
                           </div>
                         </div>
                         <div className="space-y-2">
                           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                            Imagine prompt
+                            Photo policy
                           </div>
-                          <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
-                            {pick.imaginePrompt}
-                          </pre>
+                          <p className="rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
+                            {pick.reason}
+                          </p>
                           <Button
                             className="min-h-[44px] w-full"
-                            disabled={!activePlan || imagineBusy}
+                            disabled={
+                              !activePlan ||
+                              !activePlan.propertyId ||
+                              !campaignProperty ||
+                              propertyMismatch ||
+                              !pick.imageUrl
+                            }
                             onClick={() => {
                               if (!activePlan) {
                                 toast.message("Run the Content Agent first");
                                 return;
                               }
-                              setImagineBusy(true);
-                              const prompt = buildImaginePrompt(property, pick.imageUrl ? "enhance" : "create");
+                              if (!pick.imageUrl) {
+                                toast.error("Add actual property photos first");
+                                return;
+                              }
+                              if (
+                                !campaignProperty ||
+                                !activePlan.propertyId ||
+                                campaignProperty.id !== activePlan.propertyId ||
+                                propertyMismatch
+                              ) {
+                                toast.error(
+                                  "Select the property assigned to this campaign",
+                                );
+                                return;
+                              }
                               const next = {
                                 ...activePlan,
-                                posts: activePlan.posts.map((post) => ({
-                                  ...post,
-                                  imaginePrompt: prompt,
-                                  mediaSource: pick.imageUrl
-                                    ? (post.mediaSource ?? pick.source)
-                                    : ("imagine" as const),
-                                  imageUrl: pick.imageUrl || post.imageUrl,
-                                  visualBrief: pick.imageUrl
-                                    ? `${post.visualBrief} · AI-selected listing photo`
-                                    : `Grok Imagine · ${prompt.slice(0, 100)}…`,
-                                })),
+                                posts: attachMediaToPosts(
+                                  activePlan.posts,
+                                  campaignProperty,
+                                  profile?.photoUrl,
+                                ),
                               };
                               saveCampaign(next);
                               setActivePlan(next);
-                              setImagineBusy(false);
-                              toast.success(
-                                pick.imageUrl
-                                  ? "AI applied listing photos to this campaign"
-                                  : "Imagine prompts attached — generate creatives from the brief",
-                              );
+                              toast.success("Actual listing photos applied");
                             }}
                           >
                             <Sparkles className="h-4 w-4" />
-                            {property?.photoUrls?.length || property?.imageUrl
-                              ? "Use AI-picked listing photos"
-                              : "Attach Grok Imagine prompts"}
+                            {pick.imageUrl
+                              ? "Apply actual listing photos"
+                              : "Add property photos first"}
                           </Button>
-                          {property?.photoUrls && property.photoUrls.length > 1 && (
+                          {campaignProperty?.photoUrls &&
+                            campaignProperty.photoUrls.length > 1 && (
                             <div className="flex gap-2 overflow-x-auto pt-1">
-                              {property.photoUrls.slice(0, 6).map((url) => (
+                              {campaignProperty.photoUrls
+                                .slice(0, 6)
+                                .map((url) => (
                                 <img
                                   key={url}
                                   src={url}
                                   alt=""
                                   className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-[var(--color-border)]"
-                                  crossOrigin="anonymous"
                                 />
                               ))}
                             </div>

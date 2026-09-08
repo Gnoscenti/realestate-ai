@@ -47,7 +47,12 @@ export type SocialPost = {
   status: PostStatus;
   imageUrl?: string;
   imaginePrompt?: string;
-  mediaSource?: "mls" | "website" | "imagine" | "none";
+  mediaSource?:
+    | "mls"
+    | "website"
+    | "listing_record"
+    | "imagine"
+    | "none";
 };
 
 export type CampaignPlan = {
@@ -323,7 +328,7 @@ export function runSocialContentAgent(input: {
 }): CampaignPlan {
   const agent = input.agentName || "your local agent";
   const p = input.property;
-  const neighborhood = p?.neighborhood ?? input.lead?.location ?? "San Diego";
+  const neighborhood = p?.neighborhood ?? input.lead?.location ?? "your market";
   const voice = input.voice || "Professional & warm";
   const platforms =
     input.platforms.length > 0
@@ -371,7 +376,7 @@ export function runSocialContentAgent(input: {
   const feats = p?.features.slice(0, 3).join(", ") ?? "thoughtful finishes";
   const market =
     input.marketNote ||
-    `${neighborhood} mid-band inventory is competitive — well-presented homes still move when priced to comps.`;
+    `Add a broker-reviewed ${neighborhood} market note with its data source and as-of date before publishing.`;
 
   switch (input.goal) {
     case "just_listed": {

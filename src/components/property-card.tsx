@@ -61,6 +61,7 @@ export function PropertyCard({
   onToggleFavorite,
   onView,
   onTour,
+  tourLabel = "Tour",
 }: {
   property: Property;
   matchScore?: number;
@@ -68,6 +69,7 @@ export function PropertyCard({
   onToggleFavorite?: () => void;
   onView?: () => void;
   onTour?: () => void;
+  tourLabel?: string;
 }) {
   return (
     <Card className="overflow-hidden transition-[border-color] duration-150 hover:border-[var(--color-border-strong)]">
@@ -144,8 +146,8 @@ export function PropertyCard({
           >
             Details
           </Button>
-          <Button size="sm" className="flex-1" onClick={onTour}>
-            Tour
+          <Button size="sm" className="min-h-11 flex-1" onClick={onTour}>
+            {tourLabel}
           </Button>
           {onToggleFavorite && (
             <Button

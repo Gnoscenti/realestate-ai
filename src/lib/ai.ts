@@ -30,9 +30,15 @@ function topLeads(leads: Lead[], n = 5) {
   return [...leads].sort((a, b) => b.score - a.score).slice(0, n);
 }
 
+const STEERING_TERM_PATTERN =
+  /\b(famil(?:y|ies)|schools?|crime|safe(?:ty)?|religion|church|synagogue|mosque|ethnic(?:ity)?|race|racial)\b/i;
+
 function matchProperties(query: string, properties: Property[]): Property[] {
   const q = query.toLowerCase();
-  const tokens = q.split(/[^a-z0-9.$]+/).filter(Boolean);
+  const tokens = q
+    .split(/[^a-z0-9.$]+/)
+    .filter(Boolean)
+    .filter((token) => !STEERING_TERM_PATTERN.test(token));
 
   const budgetMatch = q.match(/under\s*\$?([\d.]+)\s*(k|m)?/i);
   let maxBudget: number | null = null;
@@ -56,10 +62,6 @@ function matchProperties(query: string, properties: Property[]): Property[] {
       if (q.includes("investment") || q.includes("rental") || q.includes("roi")) {
         if (p.type === "multi" || p.capRate) score += 25;
         if (p.features.some((f) => /adu|rental|duplex/i.test(f))) score += 15;
-      }
-      if (q.includes("family") || q.includes("school")) {
-        if (p.beds >= 3) score += 12;
-        if (p.features.some((f) => /school|yard|family/i.test(f))) score += 15;
       }
       if (q.includes("adu") && p.features.some((f) => /adu/i.test(f))) score += 30;
       if (q.includes("ocean") || q.includes("coast") || q.includes("beach")) {
@@ -96,11 +98,14 @@ export function searchProperties(query: string, properties: Property[]): {
   }
   const results = matchProperties(query, properties);
   const top = results.slice(0, 12);
+  const steeringNote = STEERING_TERM_PATTERN.test(query)
+    ? "Protected-class and neighborhood-steering terms were ignored; results use objective property facts. "
+    : "";
   return {
     results: top.length ? top : properties.filter((p) => p.status === "active").slice(0, 6),
     interpretation: top.length
-      ? `Matched ${top.length} properties for “${query.trim()}”. Ranked by AI relevance.`
-      : `No strong matches — showing active inventory. Try neighborhoods, beds, budget, or features like ADU.`,
+      ? `${steeringNote}Matched ${top.length} properties for “${query.trim()}”. Ranked by saved-field relevance.`
+      : `${steeringNote}No strong matches — showing active inventory. Try location, beds, budget, property type, or objective features like ADU.`,
   };
 }
 
@@ -110,94 +115,6 @@ export function propertyMatchScore(property: Property, query: string): number {
   if (!ranked.length) return 42;
   const base = 55 + Math.min(40, property.features.length * 4);
   return Math.min(99, base + (property.status === "active" ? 5 : 0));
-}
-
-export function generateAvm(input: {
-  address: string;
-  type: string;
-  sqft: number;
-  beds: number;
-  baths: number;
-  yearBuilt: number;
-  condition: number;
-}): {
-  value: number;
-  low: number;
-  high: number;
-  confidence: number;
-  ppsf: number;
-  comps: { address: string; price: number; sqft: number; distance: string; days: number }[];
-  insight: string;
-} {
-  const isRsf =
-    /rancho|rsf|fairbanks|bridges|covenant|del mar|solana/i.test(input.address);
-  const basePpsf = isRsf
-    ? 950
-    : input.type.toLowerCase().includes("condo")
-      ? 620
-      : input.type.toLowerCase().includes("town")
-        ? 480
-        : input.type.toLowerCase().includes("multi")
-          ? 550
-          : 520;
-
-  const ageAdj = Math.max(0.85, 1 - Math.max(0, 2026 - input.yearBuilt - 20) * 0.003);
-  const sizeAdj = input.sqft > 2500 ? 0.97 : input.sqft < 900 ? 1.06 : 1;
-  const bedAdj = 1 + (input.beds - 3) * 0.02;
-  const bathAdj = 1 + (input.baths - 2) * 0.015;
-  const condAdj = 0.9 + input.condition * 0.04;
-
-  const ppsf = Math.round(basePpsf * ageAdj * sizeAdj * bedAdj * bathAdj * condAdj);
-  const value = Math.round((ppsf * input.sqft) / 1000) * 1000;
-  const confidence = Math.min(
-    96,
-    72 +
-      (input.address.length > 8 ? 8 : 0) +
-      (input.sqft > 0 ? 6 : 0) +
-      (input.yearBuilt > 1900 ? 4 : 0) +
-      input.condition * 2,
-  );
-  const spread = 0.04 + (100 - confidence) * 0.0015;
-
-  const comps = [
-    {
-      address: input.address
-        ? input.address.replace(/\d+/, (n) => String(parseInt(n, 10) + 12))
-        : "6122 El Apajo",
-      price: Math.round(value * 0.98),
-      sqft: Math.round(input.sqft * 0.96),
-      distance: "0.4 mi",
-      days: 15,
-    },
-    {
-      address: isRsf ? "Nearby Covenant comparable" : "Nearby comparable B",
-      price: Math.round(value * 1.04),
-      sqft: Math.round(input.sqft * 1.05),
-      distance: "0.7 mi",
-      days: 8,
-    },
-    {
-      address: isRsf ? "Fairbanks Ranch estate comp" : "Nearby comparable C",
-      price: Math.round(value * 0.95),
-      sqft: Math.round(input.sqft * 0.92),
-      distance: "1.2 mi",
-      days: 22,
-    },
-  ];
-
-  return {
-    value,
-    low: Math.round(value * (1 - spread)),
-    high: Math.round(value * (1 + spread)),
-    confidence,
-    ppsf,
-    comps,
-    insight: isRsf
-      ? "RSF corridor: weight lot, association (Covenant vs Bridges vs non-assoc), and guest house quality over raw $/sf."
-      : input.condition >= 4
-        ? "Condition premium supported by recent renovated sales within 0.3 mi."
-        : "Value sensitive to finish quality — renovations could lift mid-band estimate 4–7%.",
-  };
 }
 
 export function generateListingCopy(opts: {
@@ -231,7 +148,7 @@ export function generateListingCopy(opts: {
     Investors:
       "Strong fundamentals for yield-focused buyers: demand drivers, rental depth, and value-add levers.",
     Families:
-      "Space to gather, rooms that work hard, and a location that fits school runs and weekends alike.",
+      "Space to gather, rooms that work hard, and a location that supports daily routines and weekends alike.",
   };
 
   const body = `${toneOpen[opts.tone] || toneOpen.Professional}
@@ -288,7 +205,7 @@ Thanks for connecting — I wanted to get back to you quickly while inventory is
 
 Based on what you shared (${pref}, ${lead.location}, budget ${budget}), I'll curate a short list of fits and any below-market opportunities.
 
-Next step: reply with your preferred tour windows (weekday evening / weekend morning), and whether schools, outdoor space, or privacy matter most.
+Next step: reply with your preferred tour windows (weekday evening / weekend morning), and whether commute, outdoor space, accessibility, or privacy matter most.
 
 I'll send 2–3 matches within a few hours.
 
@@ -336,7 +253,7 @@ Notes
 ${lead.notes}
 
 Local knowledge
-${kb || "• Pull corridor KB entry for schools / association before tour"}
+${kb || "• Pull public amenity and association facts from approved sources before tour"}
 
 Talk tracks
 1. Confirm timeline and financing status in first 2 minutes.
@@ -450,7 +367,7 @@ export function generateCmaReport(
 ): {
   headline: string;
   subjectSummary: string;
-  suggestedList: number;
+  suggestedList: null;
   comps: {
     title: string;
     address: string;
@@ -480,13 +397,12 @@ export function generateCmaReport(
     .slice(0, 5)
     .map(({ p }) => {
       const ppsf = Math.round(p.price / p.sqft);
-      const subPpsf = Math.round(subject.price / subject.sqft);
-      const adj =
-        ppsf > subPpsf * 1.05
-          ? "Superior finish / location — adjust down for subject"
-          : ppsf < subPpsf * 0.95
-            ? "Inferior condition/lot — subject premium supported"
-            : "In-band comparable";
+      const sqftDelta = p.sqft - subject.sqft;
+      const locationNote =
+        p.neighborhood === subject.neighborhood
+          ? "same saved neighborhood"
+          : "different saved neighborhood";
+      const adj = `${sqftDelta >= 0 ? "+" : ""}${sqftDelta.toLocaleString()} sqft vs subject · ${locationNote} · asking record only`;
       return {
         title: p.title,
         address: p.address,
@@ -500,35 +416,34 @@ export function generateCmaReport(
       };
     });
 
-  const avgPpsf =
-    comps.reduce((s, c) => s + c.ppsf, 0) / Math.max(1, comps.length) ||
-    subject.pricePerSqft;
-  const suggestedList = Math.round((avgPpsf * subject.sqft) / 5000) * 5000;
   const rsf = /rancho|fairbanks|bridges|covenant|del mar/i.test(
     `${subject.neighborhood} ${subject.city}`,
   );
 
   return {
-    headline: `CMA · ${subject.title}`,
+    headline: `Comparison planning · ${subject.title}`,
     subjectSummary: `${subject.address}, ${subject.neighborhood} · ${subject.beds}bd/${subject.baths}ba · ${subject.sqft.toLocaleString()} sqft · ${subject.daysOnMarket} DOM${subject.mlsNumber ? ` · MLS# ${subject.mlsNumber}` : ""}`,
-    suggestedList,
+    // Browser-saved inventory does not contain verified ClosePrice/CloseDate
+    // provenance, so this local helper must never produce a price conclusion.
+    suggestedList: null,
     comps,
     strategy: rsf
       ? [
           "Match association type before sqft (Covenant vs Bridges vs non-assoc).",
+          "Verify source, status, close date, and close price before treating any record as a comp.",
           "Lead listing media with lot, trail/golf, and guest house if present.",
           "Use private-tour culture over high-traffic open houses when privacy is the brand.",
-          "Weekly seller brief: feedback themes + three-band pricing recommendation.",
+          "Use the weekly seller brief for feedback themes; pricing requires broker-reviewed sold data.",
         ]
       : [
-          "Price at mid-band of adjusted comps for 14–21 day attention window.",
+          "Review authorized Closed/Sold records with a broker before setting or changing price.",
           "Refresh media if DOM > 21 with no offer path.",
           "Pre-list inspection summary reduces renegotiation risk.",
           "Launch social + email to sphere same day as MLS live.",
         ],
     buyerValueScript: rsf
-      ? `In the ${RSF_MARKET_META.primary} corridor, portal estimates miss association, lot usability, and guest-house quality. My role is hyper-local comps, off-market access, and a clear fee for a defined marketing + negotiation plan — not a lockbox and a listing link.`
-      : `Post-NAR, buyers need clarity: I earn my fee by filtering inventory, running true comps, negotiating repairs/credits, and managing timelines so you don't overpay or miss contingencies.`,
+      ? `In the ${RSF_MARKET_META.primary} corridor, association, lot usability, and guest-house quality matter. My role is to verify the data, prepare a broker-reviewed comparison, and deliver a defined marketing and negotiation plan.`
+      : `Post-NAR, buyers need clarity: I earn my fee by filtering inventory, verifying the source of comparable sales, negotiating repairs and credits, and managing timelines and contingencies.`,
   };
 }
 

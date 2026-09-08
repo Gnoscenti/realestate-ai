@@ -52,18 +52,18 @@ const modules = [
   },
   {
     to: "/cma",
-    title: "CMA Studio",
+    title: "Comparison Planning",
     description:
-      "One-click comps, list-price guidance, and value scripts for listing presentations.",
+      "Review saved properties and learn what verified sold data is still required.",
     icon: BarChart3,
-    features: ["Comps", "List price", "Value script"],
+    features: ["Saved records", "Source checks", "Workflow"],
     highlight: true,
   },
   {
     to: "/marketing",
     title: "Social Content Agent",
     description:
-      "Agentic multi-platform campaigns: strategy, posts, reels, calendar, publish queue.",
+      "Draft multi-platform campaigns with actual listing photos and local review states.",
     icon: Megaphone,
     features: ["Agentic", "Multi-platform", "Calendar"],
     highlight: true,
@@ -86,11 +86,11 @@ const modules = [
   },
   {
     to: "/market",
-    title: "Market & Valuation",
+    title: "Market Data Setup",
     description:
-      "Hybrid AVM, forecasts, and renovation what-if scenarios.",
+      "Prepare authorized Closed/Sold sources before client-facing valuation work.",
     icon: TrendingUp,
-    features: ["AVM", "Forecast", "What-if"],
+    features: ["Source checks", "MLS data", "Broker review"],
   },
   {
     to: "/transactions",

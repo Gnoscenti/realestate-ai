@@ -4,13 +4,12 @@
  */
 import type { Property } from "@/data/seed";
 
-export type MediaSource = "mls" | "website" | "none";
+export type MediaSource = "listing_record" | "none";
 
 export type MediaPick = {
   imageUrl: string;
   source: MediaSource;
   reason: string;
-  imaginePrompt: string;
   needsRealPhoto: boolean;
 };
 
@@ -30,14 +29,12 @@ export function pickListingMedia(
   const urls = listingPhotoUrls(property);
 
   if (urls[0]) {
-    const fromMls = Boolean(property?.mlsNumber || property?.listingSide);
     return {
       imageUrl: urls[0],
-      source: fromMls ? "mls" : "website",
-      reason: fromMls
-        ? "Primary photo from MLS / listing inventory"
-        : "Primary photo from your website inventory",
-      imaginePrompt: buildImaginePrompt(property, "enhance"),
+      // The browser Property model does not retain original photo provenance.
+      // Label it only as a photo attached to this listing record.
+      source: "listing_record",
+      reason: "Actual photo saved with this listing (source not independently verified)",
       needsRealPhoto: false,
     };
   }
@@ -47,31 +44,8 @@ export function pickListingMedia(
     source: "none",
     reason:
       "No listing photo yet — scan your agent website or connect MLS so we use real photos (we never invent property images from text).",
-    imaginePrompt: "",
     needsRealPhoto: true,
   };
-}
-
-/**
- * Prompts only for enhancing / animating an existing real photo.
- * "create" is a deprecated no-op (never invent photos from facts).
- */
-export function buildImaginePrompt(
-  property?: Property | null,
-  mode: "enhance" | "video" | "create" = "enhance",
-): string {
-  if (mode === "create") return "";
-  if (!property) {
-    return mode === "video"
-      ? "Slow cinematic pan across a luxury home exterior, natural light, no text, no logos, no people."
-      : "Editorial real estate social crop, soft California light, no text, no logos, no people.";
-  }
-  const feats = property.features.slice(0, 4).join(", ") || "premium finishes";
-  const base = `${property.beds}bd ${property.type} in ${property.neighborhood}, ${property.city}: ${feats}`;
-  if (mode === "video") {
-    return `Slow cinematic reveal of this real listing exterior/interior. ${base}. Natural light, empty of people, no text overlays, no watermarks.`;
-  }
-  return `Editorial real estate social crop of this home. ${base}. Clean composition, golden hour, no text overlays, no fake view counts, no watermarks.`;
 }
 
 export function attachMediaToPosts<
@@ -80,7 +54,12 @@ export function attachMediaToPosts<
     altText: string;
     imageUrl?: string;
     imaginePrompt?: string;
-    mediaSource?: "mls" | "website" | "imagine" | "none";
+    mediaSource?:
+      | "mls"
+      | "website"
+      | "listing_record"
+      | "imagine"
+      | "none";
   },
 >(posts: T[], property?: Property | null, agentPhoto?: string | null): T[] {
   const pick = pickListingMedia(property, agentPhoto);
@@ -100,15 +79,13 @@ export function attachMediaToPosts<
     return {
       ...p,
       imageUrl: url,
-      mediaSource: (pick.source === "mls" ? "mls" : "website") as
-        | "mls"
-        | "website",
-      imaginePrompt: pick.imaginePrompt,
+      mediaSource: "listing_record" as const,
+      imaginePrompt: undefined,
       visualBrief: `${p.visualBrief} · Listing photo ${1 + (i % gallery.length)} of ${gallery.length}`,
     };
   });
 }
 
 export function needsPhotoCta(_property?: Property | null): string {
-  return "Open MLS Hub → scan your agent website (or connect MLS) so we pull real photoUrls. Marketing never invents property images from text.";
+  return "Open MLS Hub → scan your agent website (or connect MLS) so we can use actual property photos. Marketing never invents or generatively alters property imagery.";
 }
