@@ -41,11 +41,12 @@ import {
 } from "@/lib/ai";
 import { cn, formatCurrency } from "@/lib/utils";
 import { buildFiveMinuteProtocol } from "@/lib/edge-pack";
+import { BuyerSellerFaqPanel, ShowingFollowUpPanel } from "@/components/outreach/faq-showing-panels";
 import { SPEED_TO_LEAD_SLA_MINUTES } from "@/lib/competitors";
 
 const searchSchema = z.object({
   lead: z.string().optional(),
-  mode: z.enum(["instant", "nurture", "brief", "reactivate", "agreement"]).optional(),
+  mode: z.enum(["instant", "nurture", "brief", "reactivate", "agreement", "faq", "showing"]).optional(),
 });
 
 export const Route = createFileRoute("/outreach")({
@@ -90,6 +91,10 @@ function OutreachPage() {
       : activeLeads[0]?.id ?? "",
   );
   const [tab, setTab] = useState(modeParam ?? "instant");
+  const [showingSelection, setShowingSelection] = useState<{
+    leadId: string;
+    propertyId: string;
+  } | null>(null);
   const [channel, setChannel] = useState<"sms" | "email" | "voicemail">("sms");
 
   useEffect(() => {
@@ -100,6 +105,11 @@ function OutreachPage() {
   }, [modeParam]);
 
   const lead = leads.find((l) => l.id === leadId) ?? activeLeads[0];
+
+  // A property choice belongs to one lead; switching clients cannot reuse it.
+  const showingProperty = showingSelection && lead && showingSelection.leadId === lead.id
+    ? properties.find((property) => property.id === showingSelection.propertyId)
+    : undefined;
 
   const instant = useMemo(
     () => (lead ? generateInstantResponse(lead, channel) : null),
@@ -168,7 +178,7 @@ function OutreachPage() {
         </div>
         <div className="w-full max-w-xs">
           <Select value={lead.id} onValueChange={setLeadId}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Client">
               <User className="h-4 w-4 opacity-50" />
               <SelectValue />
             </SelectTrigger>
@@ -312,6 +322,8 @@ function OutreachPage() {
           <TabsTrigger value="instant">Instant reply</TabsTrigger>
           <TabsTrigger value="brief">Call brief</TabsTrigger>
           <TabsTrigger value="nurture">Nurture sequence</TabsTrigger>
+          <TabsTrigger value="showing">Showing follow-up</TabsTrigger>
+          <TabsTrigger value="faq">Buyer / Seller FAQ</TabsTrigger>
           <TabsTrigger value="reactivate">Sphere reactivate</TabsTrigger>
           <TabsTrigger value="agreement">Buyer agreement</TabsTrigger>
         </TabsList>
@@ -435,6 +447,46 @@ function OutreachPage() {
             <Check className="h-4 w-4" />
             Enroll in nurture
           </Button>
+        </TabsContent>
+
+        <TabsContent value="showing" className="space-y-3">
+          <label htmlFor="showing-property" className="block text-sm font-medium">
+            Showing property
+          </label>
+          <select
+            id="showing-property"
+            value={showingProperty?.id ?? ""}
+            onChange={(event) => setShowingSelection({
+              leadId: lead.id,
+              propertyId: event.target.value,
+            })}
+            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-sm"
+          >
+            <option value="">Select the property this client is touring</option>
+            {properties.map((property) => (
+              <option key={property.id} value={property.id}>
+                {property.title} — {property.address}
+              </option>
+            ))}
+          </select>
+          {showingProperty ? (
+            <ShowingFollowUpPanel
+              lead={lead}
+              property={showingProperty}
+              profile={profile}
+              onLogged={() => markSent("Showing follow-up sequence started")}
+            />
+          ) : (
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              {properties.length
+                ? "Select the showing property before copying or logging a sequence."
+                : "Add a property in Properties, then select it here to prepare the showing sequence."}
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="faq" className="space-y-3">
+          <BuyerSellerFaqPanel profile={profile} />
         </TabsContent>
 
         <TabsContent value="reactivate">
