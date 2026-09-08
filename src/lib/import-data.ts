@@ -385,28 +385,11 @@ export const LISTING_CSV_TEMPLATE = `Address,Price,Beds,Baths,Sqft,City,Neighbor
 123 Example Lane,4250000,5,5.5,5200,Rancho Santa Fe,The Covenant,SDP1234567,active,house,mine
 `;
 
-/** Detect classic seed/demo rows so we can purge them from tester devices */
+/** Only identifiers assigned to bundled fixtures can identify sample records. */
 export function looksLikeSeedLead(l: Lead): boolean {
-  if (/^lead_\d+$/.test(l.id)) return true;
-  if (/@email\.com$/i.test(l.email)) return true;
-  if (/\(555\)/.test(l.phone)) return true;
-  const seedNames = [
-    "Sarah Johnson",
-    "Mike Chen",
-    "Emily Rodriguez",
-    "David Park",
-    "Jessica Williams",
-    "Robert Kim",
-  ];
-  return seedNames.includes(l.name);
+  return /^lead_\d+$/.test(l.id);
 }
 
 export function looksLikeSeedProperty(p: Property): boolean {
-  if (/^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id)) return true;
-  if (p.description?.includes("Seed") || p.description?.includes("sample market"))
-    return true;
-  // Generated MLS pull used synthetic mls numbers with SDP + random
-  if (p.listAgentName && /Market Agent|Office Peer/i.test(p.listAgentName))
-    return true;
-  return false;
+  return /^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id);
 }
