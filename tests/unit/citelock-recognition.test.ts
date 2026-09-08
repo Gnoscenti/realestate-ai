@@ -59,7 +59,10 @@ function adapter(id: RecognitionProviderAdapter["id"]): RecognitionProviderAdapt
           "San Diego Pilot Agent is licensed as 01234567 under Pacific Coast Real Estate Inc.",
         raw: {
           authorization: "must-not-persist",
-          citations: ["https://agent.example/profile#bio"],
+          ...(id === "perplexity"
+            ? { citations: ["https://agent.example/profile#bio"] }
+            : { output: [{ type: "message", content: [{ type: "output_text",
+                annotations: [{ type: "url_citation", url: "https://agent.example/profile#bio" }] }] }] }),
         },
       };
     },
@@ -106,4 +109,19 @@ describe("CiteLock controlled Recognition runner", () => {
       runRecognitionPanel(scan, [adapter("chatgpt"), adapter("grok")], () => NOW),
     ).rejects.toThrow("requires three configured providers");
   });
+  it("does not promote request echoes or scattered name tokens into evidence", async () => {
+    const providers = (["chatgpt", "grok", "perplexity"] as const).map((id) => ({
+      id, model: "test-model",
+      async run() {
+        return {
+          status: "succeeded" as const,
+          text: "San Diego is a region. Another Pilot works here. Ask an Agent.",
+          raw: { request: { url: "https://agent.example/" }, help_url: "https://docs.example.org/" },
+        };
+      },
+    }));
+    const result = await runRecognitionPanel(scan, providers, () => NOW);
+    expect(result.captures.every((capture) => !capture.cited && !capture.mentioned)).toBe(true);
+  });
+
 });
