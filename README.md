@@ -1,112 +1,62 @@
 # RealEstate AI — Agent OS
 
-AI-native workspace for real estate professionals, evolved from the [realestate-ai-ios](https://github.com/Gnoscenti/realestate-ai-ios) product vision into a full web + Capacitor (iOS) app.
+An authenticated workspace for real estate professionals, focused on CiteLock visibility evidence and actual-photo social images. The current controlled Recognition panel covers San Diego. Web and Capacitor/iOS share the product foundation.
 
-**Built for Rancho Santa Fe and surrounding San Diego luxury corridors**, with adaptive agent memory, MLS-style inventory, CMA, calendar/vendors, and a social content agent.
-
-> **Beta scope.** Inventory is simulated rather than pulled from a live MLS/IDX feed, calendar "connect" is a local toggle with no OAuth, and Market Knowledge is static curated content. The Stripe charge is real and server-verified.
+**Release status:** the integrated code and local durable PostgreSQL workflows are tested. Hosted production activation and live external-provider acceptance remain incomplete. [Implementation and operations](docs/flagship-operations.md) explains the evidence; [activation and blocker decisions](docs/activation-and-blocker-register.md) records the remaining steps, costs and working alternatives.
 
 ## Product surface
 
-| Module | What it does |
+| Module | Implemented behavior and limits |
 | --- | --- |
-| **Command Center** | Ranked daily actions (speed-to-lead, follow-ups, content gaps, calendar prep) with scripted packs |
-| **Onboarding** | Name, area of operations, website, MLS selection. Generates a **simulated** inventory for your market so Content Agent and CMA work immediately. This is not a live MLS/IDX feed and no real listings are pulled — see `pullActiveListingsFromMls` |
-| **Instant Response** | Speed-to-lead scripts + compliance outline |
-| **CMA Studio** | Hybrid AVM / comps tuned for RSF estates |
-| **Content Agent** | Agentic social campaigns (IG, FB, LinkedIn, email) using brand memory |
-| **RSF Knowledge** | Covenants, HOAs, neighborhoods, talk tracks — static curated content, not a live market data feed |
-| **Calendar & Vendors** | Local calendar UI (no OAuth, nothing is imported yet), AI reminders, contractor directory |
-| **Billing** | Stripe checkout — **one-time $9.99 for 30 days of access**, no subscription and no renewal; 5 free beta codes |
-| **Feedback Board** | Pre-launch comments by product section (unlocked via code or paid access) |
-| **iOS / Capacitor** | Safe areas, bottom tabs, native status bar / keyboard / haptics bridge |
+| **CiteLock Readiness** | Deterministic evidence-based readiness, CA DRE/person-binding checks and explicit gaps. It is not an LLM ranking or verified sales-volume claim. |
+| **CiteLock Recognition** | Controlled OpenAI/xAI/Perplexity API panel with persisted prompt hashes, responses, provider citations, per-provider results and comparable history differences. All three credentials are required. No live three-provider acceptance has yet been observed for this release. |
+| **Actual-photo image studio** | Authenticated upload, server image validation/checksum, private durable retention, actual 1080×1080 PNG export and deletion. Free beta: ten exports/day and 100 MiB/workspace. Agent confirms permission; this does not verify MLS role or listing status. |
+| **Paid social rendering** | Orshot job/entitlement/host/template boundary, optional public Blob delivery, retained output, Stripe Checkout/portal/signed lifecycle webhook. Setup required until the real accounts, template layers and billing flow pass acceptance. |
+| **Video / direct publishing** | Video: Setup required. Publishing: Planned. Download images and post manually. |
+| **Authorized comps** | Role-gated, tenant-scoped Closed/Sold CSV import with permission/provenance requirements. No live RESO feed is enabled. Valuation/pricing advice stays gated where an authorized matcher is unavailable. |
+| **Assistant** | Authenticated Vercel AI Gateway assistant with server quotas and truthful data limitations. No fictional MLS/AVM claims or generative property-image endpoint. |
+| **Outreach** | FAQ answers with copied disclaimer; showing follow-up with explicit property selection and complete email subject/body. Users review and send messages themselves. |
+| **Calendar / knowledge / inventory** | Local calendar without OAuth and static curated knowledge. Supplied or discovered records do not establish independently verified listing representation. |
+| **Billing** | Existing one-time app-access flow is distinct from the new paid social subscription. Beta codes do not grant paid rendering. Live account activation is environment-dependent. |
+| **Voice** | Deferred draft #29, outside the flagship runtime, pending provider, billing, broker/counsel, worker and migration-history gates. |
+| **iOS / Capacitor** | Shared UI and native bridges. A signed production archive still needs the macOS delivery path in [IOS.md](IOS.md). |
 
-## Stack
+## Run and verify
 
-- React 19 + TypeScript + Vite 8  
-- TanStack Start / Router / Query  
-- Tailwind CSS v4 + Radix (shadcn-style)  
-- Zustand (persisted workspace)  
-- Capacitor 8 (iOS wrap)  
-- Stripe (server checkout; demo mode only when `ALLOW_DEMO_CHECKOUT=1`)
-
-## Quick start
+Use Linux/macOS Node 22+ and the checked-in lockfile. Package metadata requests npm 12; this integration's local gate used Node 22.23.2/npm 11.19.0. Vercel currently selects Node 24.
 
 ```bash
-npm install
-npm run dev        # http://0.0.0.0:8080
+npm ci
+# Configure an ignored .env.local from .env.example, including a dedicated DB.
+node --env-file=.env.local scripts/migrate.mjs
+node --env-file=.env.local node_modules/vite/bin/vite.js --host 127.0.0.1 --port 8080
+```
+
+Keep `VITE_AUTH_ENABLED=true`, set `BETTER_AUTH_URL` to the actual origin, and supply a generated `BETTER_AUTH_SECRET` plus durable `DATABASE_URL`. Provider keys are server-only and must never use the `VITE_` prefix. Development/tests without a database may use ephemeral PGLite; production refuses that fallback. `npm run build` also runs migrations when DATABASE_URL is in its environment. A green build without a database is not a completed deployment.
+
+```bash
 npm run typecheck
+npm run test:unit -- --maxWorkers=1
 npm run build
-```
-
-### Environment (optional)
-
-| Variable | Purpose |
-| --- | --- |
-| `STRIPE_SECRET_KEY` | Live Stripe Checkout for the one-time $9.99 payment |
-| `ALLOW_DEMO_CHECKOUT` | Set to `1` to allow unlocking without payment. Never set in production. |
-| `GITHUB_TOKEN` | Server-only Suggest → GitHub Issue delivery |
-| `RESEND_API_KEY` + `BETA_FEEDBACK_EMAIL` | Optional server-only feedback email copy |
-| `CAP_SERVER_URL` | Capacitor live-reload/preview only; do not ship in production |
-
-### Free beta codes (pre-launch)
-
-```
-RSF-BETA-01
-RSF-BETA-02
-COVENANT-AI
-LISTINGPRO
-AGENTOS-X
-```
-
-Redeem on the paywall to unlock full access **and** the feedback board.
-
-## iOS (Capacitor)
-
-See [IOS.md](./IOS.md).
-
-```bash
-# Windows/Linux preparation and validation:
-npm run ci
-npm run cap:prepare
-npm run cap:sync
-# Compile, sign, and upload on a cloud macOS builder.
-```
-
-The current remote-origin shell is suitable only for preview. A production
-App Store build needs bundled mobile web assets, cloud Xcode signing, and
-StoreKit or a purchase-free companion-app model. The no-Mac execution plan is
-in [IOS.md](./IOS.md).
-
-## Project layout
-
-```
-src/
-  components/   # shell, billing paywall, onboarding, UI
-  data/         # RSF knowledge + seed inventory
-  lib/          # store, AI, billing, calendar, social agent, stripe
-  routes/       # file-based TanStack routes
-public/         # PWA manifest + icons
-scripts/        # migrate, capacitor prepare, browser smoke
-```
-
-## License
-
-Private / proprietary unless otherwise stated by Gnoscenti.
-
-## Testing
-
-```bash
-# Unit + integration (Vitest) — scrape parser, CSV import, billing codes
-npm run test:unit
-
-# E2E (Playwright) — onboarding, website scrape, empty book, paywall
-# Starts dev server if needed (or reuses :8080)
-npx playwright install chromium   # first time only
+npx playwright install chromium
 npm run test:e2e
-
-# Full CI gate
-npm run ci
+npm audit
 ```
 
-Specs live under `tests/unit/` and `tests/e2e/`. Mock realtor site: `tests/fixtures/mock-realtor-site.mjs`.
+The flagship acceptance gate passed 273 unit tests, all 15 browser tests, typecheck and build. Separate authenticated PostgreSQL acceptance verified private image upload/export, tenant isolation and identical retained bytes/session after database/app restart. Stripe test objects are synthetic; external provider acceptance is not implied. See the operations document for the verification matrix and reproduction details.
+
+## Configuration and layout
+
+`.env.example` documents auth, Gateway, the three Recognition providers, Orshot template/host mapping, optional Blob delivery and the separate social Stripe lifecycle. No template example is a live audited template. Missing external configuration must keep the corresponding capability unavailable.
+
+```text
+src/components/   Product UI and truthful loading/empty/success/error states
+src/lib/aieo/     CiteReadiness, provider capture, evidence and persistence
+src/lib/social-media/ Uploads, renderer, durable jobs, quotas and billing
+src/routes/       TanStack pages and authenticated/webhook HTTP endpoints
+migrations/       Filename-tracked PostgreSQL schema; do not rename applied files
+tests/            Unit/integration and Playwright browser verification
+docs/             Operations, activation decisions and architecture
+```
+
+Private/proprietary unless otherwise stated by Gnoscenti.
