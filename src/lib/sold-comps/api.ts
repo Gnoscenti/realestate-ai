@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { MAX_SOLD_CSV_BYTES } from "./types";
+import { soldCsvTextSchema, SoldCsvValidationError } from "./types";
 
 function logServerFailure(scope: string, error: unknown): void {
   const code =
@@ -26,7 +26,7 @@ const filenameSchema = z
 
 const csvInputSchema = z.object({
   filename: filenameSchema,
-  csv: z.string().min(1).max(MAX_SOLD_CSV_BYTES),
+  csv: soldCsvTextSchema,
   sourceAsOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   provider: z.string().trim().max(160).optional(),
   dataset: z.string().trim().min(1).max(160),
@@ -77,6 +77,7 @@ export const importMySoldCsv = createServerFn({ method: "POST" })
       const workspace = await ensurePersonalWorkspace(context.userId);
       return await importSoldCsv(context.userId, workspace.id, data);
     } catch (error) {
+      if (error instanceof SoldCsvValidationError) throw new Error(error.message);
       logServerFailure("[sold-data:import]", error);
       throw new Error(
         "Closed/Sold import failed. Review the preview and try again.",

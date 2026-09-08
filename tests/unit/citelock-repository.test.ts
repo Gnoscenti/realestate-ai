@@ -139,6 +139,13 @@ describe("CiteLock scan repository", () => {
       observedAt,
     };
 
+    const duplicateId = randomUUID();
+    await expect(saveRecognitionCaptures(owner, workspace.id, [
+      { ...capture, id: duplicateId, queryId: "atomic-one" },
+      { ...capture, id: duplicateId, queryId: "atomic-two" },
+    ])).rejects.toThrow();
+    await expect(listRecentRecognitionCaptures(owner, workspace.id, scan.subjectFingerprint))
+      .resolves.toEqual([]);
     await expect(
       saveRecognitionCaptures(owner, workspace.id, [capture]),
     ).resolves.toEqual([capture]);
