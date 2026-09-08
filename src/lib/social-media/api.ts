@@ -9,9 +9,7 @@ import {
   type SocialMediaSetupResult,
 } from "./types";
 
-function existingJobResult(
-  job: SocialMediaJobView,
-): SocialMediaGenerateResult {
+function existingJobResult(job: SocialMediaJobView): SocialMediaGenerateResult {
   if (job.status === "completed" && job.asset) return { ok: true, job };
   const allowedCodes: SocialMediaErrorCode[] = [
     "not_entitled",
@@ -58,11 +56,7 @@ export const getSocialMediaSetup = createServerFn({ method: "GET" })
     const [listings, entitlement, recentJob] = await Promise.all([
       repository.listSocialMediaListings(sql, workspace.id),
       repository.getSocialMediaEntitlement(sql, workspace.id),
-      repository.reconcileRecentSocialMediaImageJob(
-        sql,
-        workspace.id,
-        context.userId,
-      ),
+      repository.reconcileRecentSocialMediaImageJob(sql, workspace.id, context.userId),
     ]);
     return {
       listings,
@@ -79,25 +73,17 @@ export const generateSocialImage = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(generateSocialMediaSchema)
   .handler(async ({ context, data }): Promise<SocialMediaGenerateResult> => {
-    const [
-      { getSql },
-      { ensurePersonalWorkspace },
-      repository,
-      templates,
-      orshot,
-    ] = await Promise.all([
-      import("@/lib/db"),
-      import("@/lib/workspaces/repository.server"),
-      import("./repository.server"),
-      import("./templates.server"),
-      import("./orshot.server"),
-    ]);
+    const [{ getSql }, { ensurePersonalWorkspace }, repository, templates, orshot] =
+      await Promise.all([
+        import("@/lib/db"),
+        import("@/lib/workspaces/repository.server"),
+        import("./repository.server"),
+        import("./templates.server"),
+        import("./orshot.server"),
+      ]);
     const sql = await getSql();
     const workspace = await ensurePersonalWorkspace(context.userId, sql);
-    const entitlement = await repository.getSocialMediaEntitlement(
-      sql,
-      workspace.id,
-    );
+    const entitlement = await repository.getSocialMediaEntitlement(sql, workspace.id);
     if (entitlement.status === "unavailable") {
       return {
         ok: false,
@@ -122,9 +108,7 @@ export const generateSocialImage = createServerFn({ method: "POST" })
           "Social image rendering is not configured. An administrator must add an Orshot key, approved template mapping, and approved photo/output hosts.",
       };
     }
-    const template = config.templates.find(
-      (candidate) => candidate.key === data.templateKey,
-    );
+    const template = config.templates.find((candidate) => candidate.key === data.templateKey);
     if (!template || data.mediaIds.length > template.photoKeys.length) {
       return {
         ok: false,
@@ -172,24 +156,13 @@ export const generateSocialImage = createServerFn({ method: "POST" })
     }
     if (!claimed) {
       const [matches, existing] = await Promise.all([
-        repository.mediaJobMatchesInput(
-          sql,
-          workspace.id,
-          context.userId,
-          data.requestId,
-          {
-            listingId: data.listingId,
-            kind: "image",
-            templateKey: data.templateKey,
-            mediaIds: data.mediaIds,
-          },
-        ),
-        repository.getSocialMediaJob(
-          sql,
-          workspace.id,
-          context.userId,
-          data.requestId,
-        ),
+        repository.mediaJobMatchesInput(sql, workspace.id, context.userId, data.requestId, {
+          listingId: data.listingId,
+          kind: "image",
+          templateKey: data.templateKey,
+          mediaIds: data.mediaIds,
+        }),
+        repository.getSocialMediaJob(sql, workspace.id, context.userId, data.requestId),
       ]);
       if (matches && existing) return existingJobResult(existing);
       const activeIntentJob = await repository.getActiveSocialMediaJobForIntent(
@@ -234,8 +207,7 @@ export const generateSocialImage = createServerFn({ method: "POST" })
       return {
         ok: false,
         code: "quota_exhausted",
-        error:
-          "This workspace reached its social media render limit for the billing period.",
+        error: "This workspace reached its social media render limit for the billing period.",
         ...(job ? { job } : {}),
       };
     }
@@ -250,10 +222,17 @@ export const generateSocialImage = createServerFn({ method: "POST" })
         template,
         modifications,
       });
+      const { retainOrshotOutput } = await import("./output-retention.server");
+      const retainedUrl = await retainOrshotOutput(sql, {
+        userId: context.userId,
+        workspaceId: workspace.id,
+        listingId: data.listingId,
+        url: contentUrl,
+      });
       const completed = await repository.completeSocialMediaImageJob(sql, {
         workspaceId: workspace.id,
         jobId: data.requestId,
-        contentUrl,
+        contentUrl: retainedUrl,
       });
       if (!completed) {
         throw new orshot.OrshotRenderError({
@@ -274,16 +253,13 @@ export const generateSocialImage = createServerFn({ method: "POST" })
       }
       return { ok: true, job };
     } catch (error) {
-      const providerError =
-        error instanceof orshot.OrshotRenderError ? error : null;
+      const providerError = error instanceof orshot.OrshotRenderError ? error : null;
       const code = providerError?.code ?? "provider_unavailable";
       const message =
         providerError?.message ??
         "The render outcome is uncertain. Support must check the job before retrying.";
       await repository.markSocialMediaJob(sql, workspace.id, data.requestId, {
-        status: providerError?.ambiguousProviderOutcome === false
-          ? "failed"
-          : "attention_required",
+        status: providerError?.ambiguousProviderOutcome === false ? "failed" : "attention_required",
         errorCode: code,
         errorMessage: message,
         unitCount: 1,
@@ -313,9 +289,7 @@ export const generateSocialVideo = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(generateSocialMediaSchema)
   .handler(async (): Promise<SocialMediaGenerateResult> => {
-    const { VIDEO_SETUP_REQUIRED_MESSAGE } = await import(
-      "./video-provider.server"
-    );
+    const { VIDEO_SETUP_REQUIRED_MESSAGE } = await import("./video-provider.server");
     // This authenticated endpoint deliberately performs no database or provider
     // mutation while video is unavailable. In particular, repeated requests do
     // not create placeholder jobs or consume quota.
@@ -330,18 +304,12 @@ export const getSocialMediaJobStatus = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator(socialMediaJobLookupSchema)
   .handler(async ({ context, data }): Promise<SocialMediaJobView | null> => {
-    const [{ getSql }, { ensurePersonalWorkspace }, repository] =
-      await Promise.all([
-        import("@/lib/db"),
-        import("@/lib/workspaces/repository.server"),
-        import("./repository.server"),
-      ]);
+    const [{ getSql }, { ensurePersonalWorkspace }, repository] = await Promise.all([
+      import("@/lib/db"),
+      import("@/lib/workspaces/repository.server"),
+      import("./repository.server"),
+    ]);
     const sql = await getSql();
     const workspace = await ensurePersonalWorkspace(context.userId, sql);
-    return repository.getSocialMediaJob(
-      sql,
-      workspace.id,
-      context.userId,
-      data.jobId,
-    );
+    return repository.getSocialMediaJob(sql, workspace.id, context.userId, data.jobId);
   });

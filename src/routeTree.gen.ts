@@ -8,415 +8,454 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AieoRouteImport } from './routes/aieo'
-import { Route as AlertsRouteImport } from './routes/alerts'
-import { Route as BillingRouteImport } from './routes/billing'
-import { Route as CalendarRouteImport } from './routes/calendar'
-import { Route as CmaRouteImport } from './routes/cma'
-import { Route as EdgeRouteImport } from './routes/edge'
-import { Route as FeedbackRouteImport } from './routes/feedback'
-import { Route as KnowledgeRouteImport } from './routes/knowledge'
-import { Route as LeadsRouteImport } from './routes/leads'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as MarketRouteImport } from './routes/market'
-import { Route as MarketingRouteImport } from './routes/marketing'
-import { Route as MlsRouteImport } from './routes/mls'
-import { Route as OutreachRouteImport } from './routes/outreach'
-import { Route as PropertiesRouteImport } from './routes/properties'
-import { Route as SearchRouteImport } from './routes/search'
-import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as AieoRouteImport } from "./routes/aieo";
+import { Route as AlertsRouteImport } from "./routes/alerts";
+import { Route as BillingRouteImport } from "./routes/billing";
+import { Route as CalendarRouteImport } from "./routes/calendar";
+import { Route as CmaRouteImport } from "./routes/cma";
+import { Route as EdgeRouteImport } from "./routes/edge";
+import { Route as FeedbackRouteImport } from "./routes/feedback";
+import { Route as KnowledgeRouteImport } from "./routes/knowledge";
+import { Route as LeadsRouteImport } from "./routes/leads";
+import { Route as LoginRouteImport } from "./routes/login";
+import { Route as MarketRouteImport } from "./routes/market";
+import { Route as MarketingRouteImport } from "./routes/marketing";
+import { Route as MlsRouteImport } from "./routes/mls";
+import { Route as OutreachRouteImport } from "./routes/outreach";
+import { Route as PropertiesRouteImport } from "./routes/properties";
+import { Route as SearchRouteImport } from "./routes/search";
+import { Route as TransactionsRouteImport } from "./routes/transactions";
+import { Route as ApiAuthSplatRouteImport } from "./routes/api/auth/$";
+import { Route as ApiListingMediaIdRouteImport } from "./routes/api/listing-media/$id";
+import { Route as ApiWebhooksSocialStripeRouteImport } from "./routes/api/webhooks/social-stripe";
 
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AieoRoute = AieoRouteImport.update({
-  id: '/aieo',
-  path: '/aieo',
+  id: "/aieo",
+  path: "/aieo",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AlertsRoute = AlertsRouteImport.update({
-  id: '/alerts',
-  path: '/alerts',
+  id: "/alerts",
+  path: "/alerts",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const BillingRoute = BillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
+  id: "/billing",
+  path: "/billing",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CalendarRoute = CalendarRouteImport.update({
-  id: '/calendar',
-  path: '/calendar',
+  id: "/calendar",
+  path: "/calendar",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const CmaRoute = CmaRouteImport.update({
-  id: '/cma',
-  path: '/cma',
+  id: "/cma",
+  path: "/cma",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const EdgeRoute = EdgeRouteImport.update({
-  id: '/edge',
-  path: '/edge',
+  id: "/edge",
+  path: "/edge",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const FeedbackRoute = FeedbackRouteImport.update({
-  id: '/feedback',
-  path: '/feedback',
+  id: "/feedback",
+  path: "/feedback",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const KnowledgeRoute = KnowledgeRouteImport.update({
-  id: '/knowledge',
-  path: '/knowledge',
+  id: "/knowledge",
+  path: "/knowledge",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LeadsRoute = LeadsRouteImport.update({
-  id: '/leads',
-  path: '/leads',
+  id: "/leads",
+  path: "/leads",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+  id: "/login",
+  path: "/login",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const MarketRoute = MarketRouteImport.update({
-  id: '/market',
-  path: '/market',
+  id: "/market",
+  path: "/market",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const MarketingRoute = MarketingRouteImport.update({
-  id: '/marketing',
-  path: '/marketing',
+  id: "/marketing",
+  path: "/marketing",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const MlsRoute = MlsRouteImport.update({
-  id: '/mls',
-  path: '/mls',
+  id: "/mls",
+  path: "/mls",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const OutreachRoute = OutreachRouteImport.update({
-  id: '/outreach',
-  path: '/outreach',
+  id: "/outreach",
+  path: "/outreach",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const PropertiesRoute = PropertiesRouteImport.update({
-  id: '/properties',
-  path: '/properties',
+  id: "/properties",
+  path: "/properties",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SearchRoute = SearchRouteImport.update({
-  id: '/search',
-  path: '/search',
+  id: "/search",
+  path: "/search",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const TransactionsRoute = TransactionsRouteImport.update({
-  id: '/transactions',
-  path: '/transactions',
+  id: "/transactions",
+  path: "/transactions",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: "/api/auth/$",
+  path: "/api/auth/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ApiListingMediaIdRoute = ApiListingMediaIdRouteImport.update({
+  id: "/api/listing-media/$id",
+  path: "/api/listing-media/$id",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ApiWebhooksSocialStripeRoute = ApiWebhooksSocialStripeRouteImport.update({
+  id: "/api/webhooks/social-stripe",
+  path: "/api/webhooks/social-stripe",
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/': typeof IndexRoute
-  '/aieo': typeof AieoRoute
-  '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
-  '/calendar': typeof CalendarRoute
-  '/cma': typeof CmaRoute
-  '/edge': typeof EdgeRoute
-  '/feedback': typeof FeedbackRoute
-  '/knowledge': typeof KnowledgeRoute
-  '/leads': typeof LeadsRoute
-  '/login': typeof LoginRoute
-  '/market': typeof MarketRoute
-  '/marketing': typeof MarketingRoute
-  '/mls': typeof MlsRoute
-  '/outreach': typeof OutreachRoute
-  '/properties': typeof PropertiesRoute
-  '/search': typeof SearchRoute
-  '/transactions': typeof TransactionsRoute
+  "/": typeof IndexRoute;
+  "/aieo": typeof AieoRoute;
+  "/alerts": typeof AlertsRoute;
+  "/billing": typeof BillingRoute;
+  "/calendar": typeof CalendarRoute;
+  "/cma": typeof CmaRoute;
+  "/edge": typeof EdgeRoute;
+  "/feedback": typeof FeedbackRoute;
+  "/knowledge": typeof KnowledgeRoute;
+  "/leads": typeof LeadsRoute;
+  "/login": typeof LoginRoute;
+  "/market": typeof MarketRoute;
+  "/marketing": typeof MarketingRoute;
+  "/mls": typeof MlsRoute;
+  "/outreach": typeof OutreachRoute;
+  "/properties": typeof PropertiesRoute;
+  "/search": typeof SearchRoute;
+  "/transactions": typeof TransactionsRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
+  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
 }
 export interface FileRoutesByTo {
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/': typeof IndexRoute
-  '/aieo': typeof AieoRoute
-  '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
-  '/calendar': typeof CalendarRoute
-  '/cma': typeof CmaRoute
-  '/edge': typeof EdgeRoute
-  '/feedback': typeof FeedbackRoute
-  '/knowledge': typeof KnowledgeRoute
-  '/leads': typeof LeadsRoute
-  '/login': typeof LoginRoute
-  '/market': typeof MarketRoute
-  '/marketing': typeof MarketingRoute
-  '/mls': typeof MlsRoute
-  '/outreach': typeof OutreachRoute
-  '/properties': typeof PropertiesRoute
-  '/search': typeof SearchRoute
-  '/transactions': typeof TransactionsRoute
+  "/": typeof IndexRoute;
+  "/aieo": typeof AieoRoute;
+  "/alerts": typeof AlertsRoute;
+  "/billing": typeof BillingRoute;
+  "/calendar": typeof CalendarRoute;
+  "/cma": typeof CmaRoute;
+  "/edge": typeof EdgeRoute;
+  "/feedback": typeof FeedbackRoute;
+  "/knowledge": typeof KnowledgeRoute;
+  "/leads": typeof LeadsRoute;
+  "/login": typeof LoginRoute;
+  "/market": typeof MarketRoute;
+  "/marketing": typeof MarketingRoute;
+  "/mls": typeof MlsRoute;
+  "/outreach": typeof OutreachRoute;
+  "/properties": typeof PropertiesRoute;
+  "/search": typeof SearchRoute;
+  "/transactions": typeof TransactionsRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
+  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/api/auth/$': typeof ApiAuthSplatRoute
-  '/': typeof IndexRoute
-  '/aieo': typeof AieoRoute
-  '/alerts': typeof AlertsRoute
-  '/billing': typeof BillingRoute
-  '/calendar': typeof CalendarRoute
-  '/cma': typeof CmaRoute
-  '/edge': typeof EdgeRoute
-  '/feedback': typeof FeedbackRoute
-  '/knowledge': typeof KnowledgeRoute
-  '/leads': typeof LeadsRoute
-  '/login': typeof LoginRoute
-  '/market': typeof MarketRoute
-  '/marketing': typeof MarketingRoute
-  '/mls': typeof MlsRoute
-  '/outreach': typeof OutreachRoute
-  '/properties': typeof PropertiesRoute
-  '/search': typeof SearchRoute
-  '/transactions': typeof TransactionsRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/aieo": typeof AieoRoute;
+  "/alerts": typeof AlertsRoute;
+  "/billing": typeof BillingRoute;
+  "/calendar": typeof CalendarRoute;
+  "/cma": typeof CmaRoute;
+  "/edge": typeof EdgeRoute;
+  "/feedback": typeof FeedbackRoute;
+  "/knowledge": typeof KnowledgeRoute;
+  "/leads": typeof LeadsRoute;
+  "/login": typeof LoginRoute;
+  "/market": typeof MarketRoute;
+  "/marketing": typeof MarketingRoute;
+  "/mls": typeof MlsRoute;
+  "/outreach": typeof OutreachRoute;
+  "/properties": typeof PropertiesRoute;
+  "/search": typeof SearchRoute;
+  "/transactions": typeof TransactionsRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
+  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/api/auth/$'
-    | '/'
-    | '/aieo'
-    | '/alerts'
-    | '/billing'
-    | '/calendar'
-    | '/cma'
-    | '/edge'
-    | '/feedback'
-    | '/knowledge'
-    | '/leads'
-    | '/login'
-    | '/market'
-    | '/marketing'
-    | '/mls'
-    | '/outreach'
-    | '/properties'
-    | '/search'
-    | '/transactions'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/aieo"
+    | "/alerts"
+    | "/billing"
+    | "/calendar"
+    | "/cma"
+    | "/edge"
+    | "/feedback"
+    | "/knowledge"
+    | "/leads"
+    | "/login"
+    | "/market"
+    | "/marketing"
+    | "/mls"
+    | "/outreach"
+    | "/properties"
+    | "/search"
+    | "/transactions"
+    | "/api/auth/$"
+    | "/api/listing-media/$id"
+    | "/api/webhooks/social-stripe";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/api/auth/$'
-    | '/'
-    | '/aieo'
-    | '/alerts'
-    | '/billing'
-    | '/calendar'
-    | '/cma'
-    | '/edge'
-    | '/feedback'
-    | '/knowledge'
-    | '/leads'
-    | '/login'
-    | '/market'
-    | '/marketing'
-    | '/mls'
-    | '/outreach'
-    | '/properties'
-    | '/search'
-    | '/transactions'
+    | "/"
+    | "/aieo"
+    | "/alerts"
+    | "/billing"
+    | "/calendar"
+    | "/cma"
+    | "/edge"
+    | "/feedback"
+    | "/knowledge"
+    | "/leads"
+    | "/login"
+    | "/market"
+    | "/marketing"
+    | "/mls"
+    | "/outreach"
+    | "/properties"
+    | "/search"
+    | "/transactions"
+    | "/api/auth/$"
+    | "/api/listing-media/$id"
+    | "/api/webhooks/social-stripe";
   id:
-    | '__root__'
-    | '/api/auth/$'
-    | '/'
-    | '/aieo'
-    | '/alerts'
-    | '/billing'
-    | '/calendar'
-    | '/cma'
-    | '/edge'
-    | '/feedback'
-    | '/knowledge'
-    | '/leads'
-    | '/login'
-    | '/market'
-    | '/marketing'
-    | '/mls'
-    | '/outreach'
-    | '/properties'
-    | '/search'
-    | '/transactions'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/aieo"
+    | "/alerts"
+    | "/billing"
+    | "/calendar"
+    | "/cma"
+    | "/edge"
+    | "/feedback"
+    | "/knowledge"
+    | "/leads"
+    | "/login"
+    | "/market"
+    | "/marketing"
+    | "/mls"
+    | "/outreach"
+    | "/properties"
+    | "/search"
+    | "/transactions"
+    | "/api/auth/$"
+    | "/api/listing-media/$id"
+    | "/api/webhooks/social-stripe";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
-  IndexRoute: typeof IndexRoute
-  AieoRoute: typeof AieoRoute
-  AlertsRoute: typeof AlertsRoute
-  BillingRoute: typeof BillingRoute
-  CalendarRoute: typeof CalendarRoute
-  CmaRoute: typeof CmaRoute
-  EdgeRoute: typeof EdgeRoute
-  FeedbackRoute: typeof FeedbackRoute
-  KnowledgeRoute: typeof KnowledgeRoute
-  LeadsRoute: typeof LeadsRoute
-  LoginRoute: typeof LoginRoute
-  MarketRoute: typeof MarketRoute
-  MarketingRoute: typeof MarketingRoute
-  MlsRoute: typeof MlsRoute
-  OutreachRoute: typeof OutreachRoute
-  PropertiesRoute: typeof PropertiesRoute
-  SearchRoute: typeof SearchRoute
-  TransactionsRoute: typeof TransactionsRoute
+  IndexRoute: typeof IndexRoute;
+  AieoRoute: typeof AieoRoute;
+  AlertsRoute: typeof AlertsRoute;
+  BillingRoute: typeof BillingRoute;
+  CalendarRoute: typeof CalendarRoute;
+  CmaRoute: typeof CmaRoute;
+  EdgeRoute: typeof EdgeRoute;
+  FeedbackRoute: typeof FeedbackRoute;
+  KnowledgeRoute: typeof KnowledgeRoute;
+  LeadsRoute: typeof LeadsRoute;
+  LoginRoute: typeof LoginRoute;
+  MarketRoute: typeof MarketRoute;
+  MarketingRoute: typeof MarketingRoute;
+  MlsRoute: typeof MlsRoute;
+  OutreachRoute: typeof OutreachRoute;
+  PropertiesRoute: typeof PropertiesRoute;
+  SearchRoute: typeof SearchRoute;
+  TransactionsRoute: typeof TransactionsRoute;
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
+  ApiListingMediaIdRoute: typeof ApiListingMediaIdRoute;
+  ApiWebhooksSocialStripeRoute: typeof ApiWebhooksSocialStripeRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/aieo': {
-      id: '/aieo'
-      path: '/aieo'
-      fullPath: '/aieo'
-      preLoaderRoute: typeof AieoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/alerts': {
-      id: '/alerts'
-      path: '/alerts'
-      fullPath: '/alerts'
-      preLoaderRoute: typeof AlertsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/billing': {
-      id: '/billing'
-      path: '/billing'
-      fullPath: '/billing'
-      preLoaderRoute: typeof BillingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/calendar': {
-      id: '/calendar'
-      path: '/calendar'
-      fullPath: '/calendar'
-      preLoaderRoute: typeof CalendarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cma': {
-      id: '/cma'
-      path: '/cma'
-      fullPath: '/cma'
-      preLoaderRoute: typeof CmaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/edge': {
-      id: '/edge'
-      path: '/edge'
-      fullPath: '/edge'
-      preLoaderRoute: typeof EdgeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/feedback': {
-      id: '/feedback'
-      path: '/feedback'
-      fullPath: '/feedback'
-      preLoaderRoute: typeof FeedbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/knowledge': {
-      id: '/knowledge'
-      path: '/knowledge'
-      fullPath: '/knowledge'
-      preLoaderRoute: typeof KnowledgeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/leads': {
-      id: '/leads'
-      path: '/leads'
-      fullPath: '/leads'
-      preLoaderRoute: typeof LeadsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/market': {
-      id: '/market'
-      path: '/market'
-      fullPath: '/market'
-      preLoaderRoute: typeof MarketRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/marketing': {
-      id: '/marketing'
-      path: '/marketing'
-      fullPath: '/marketing'
-      preLoaderRoute: typeof MarketingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mls': {
-      id: '/mls'
-      path: '/mls'
-      fullPath: '/mls'
-      preLoaderRoute: typeof MlsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/outreach': {
-      id: '/outreach'
-      path: '/outreach'
-      fullPath: '/outreach'
-      preLoaderRoute: typeof OutreachRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/properties': {
-      id: '/properties'
-      path: '/properties'
-      fullPath: '/properties'
-      preLoaderRoute: typeof PropertiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/search': {
-      id: '/search'
-      path: '/search'
-      fullPath: '/search'
-      preLoaderRoute: typeof SearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/transactions': {
-      id: '/transactions'
-      path: '/transactions'
-      fullPath: '/transactions'
-      preLoaderRoute: typeof TransactionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/aieo": {
+      id: "/aieo";
+      path: "/aieo";
+      fullPath: "/aieo";
+      preLoaderRoute: typeof AieoRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/alerts": {
+      id: "/alerts";
+      path: "/alerts";
+      fullPath: "/alerts";
+      preLoaderRoute: typeof AlertsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/billing": {
+      id: "/billing";
+      path: "/billing";
+      fullPath: "/billing";
+      preLoaderRoute: typeof BillingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/calendar": {
+      id: "/calendar";
+      path: "/calendar";
+      fullPath: "/calendar";
+      preLoaderRoute: typeof CalendarRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/cma": {
+      id: "/cma";
+      path: "/cma";
+      fullPath: "/cma";
+      preLoaderRoute: typeof CmaRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/edge": {
+      id: "/edge";
+      path: "/edge";
+      fullPath: "/edge";
+      preLoaderRoute: typeof EdgeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/feedback": {
+      id: "/feedback";
+      path: "/feedback";
+      fullPath: "/feedback";
+      preLoaderRoute: typeof FeedbackRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/knowledge": {
+      id: "/knowledge";
+      path: "/knowledge";
+      fullPath: "/knowledge";
+      preLoaderRoute: typeof KnowledgeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/leads": {
+      id: "/leads";
+      path: "/leads";
+      fullPath: "/leads";
+      preLoaderRoute: typeof LeadsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/login": {
+      id: "/login";
+      path: "/login";
+      fullPath: "/login";
+      preLoaderRoute: typeof LoginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/market": {
+      id: "/market";
+      path: "/market";
+      fullPath: "/market";
+      preLoaderRoute: typeof MarketRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/marketing": {
+      id: "/marketing";
+      path: "/marketing";
+      fullPath: "/marketing";
+      preLoaderRoute: typeof MarketingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/mls": {
+      id: "/mls";
+      path: "/mls";
+      fullPath: "/mls";
+      preLoaderRoute: typeof MlsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/outreach": {
+      id: "/outreach";
+      path: "/outreach";
+      fullPath: "/outreach";
+      preLoaderRoute: typeof OutreachRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/properties": {
+      id: "/properties";
+      path: "/properties";
+      fullPath: "/properties";
+      preLoaderRoute: typeof PropertiesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/search": {
+      id: "/search";
+      path: "/search";
+      fullPath: "/search";
+      preLoaderRoute: typeof SearchRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/transactions": {
+      id: "/transactions";
+      path: "/transactions";
+      fullPath: "/transactions";
+      preLoaderRoute: typeof TransactionsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/auth/$": {
+      id: "/api/auth/$";
+      path: "/api/auth/$";
+      fullPath: "/api/auth/$";
+      preLoaderRoute: typeof ApiAuthSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/listing-media/$id": {
+      id: "/api/listing-media/$id";
+      path: "/api/listing-media/$id";
+      fullPath: "/api/listing-media/$id";
+      preLoaderRoute: typeof ApiListingMediaIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/webhooks/social-stripe": {
+      id: "/api/webhooks/social-stripe";
+      path: "/api/webhooks/social-stripe";
+      fullPath: "/api/webhooks/social-stripe";
+      preLoaderRoute: typeof ApiWebhooksSocialStripeRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
   IndexRoute: IndexRoute,
   AieoRoute: AieoRoute,
   AlertsRoute: AlertsRoute,
@@ -435,16 +474,19 @@ const rootRouteChildren: RootRouteChildren = {
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
-}
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiListingMediaIdRoute: ApiListingMediaIdRoute,
+  ApiWebhooksSocialStripeRoute: ApiWebhooksSocialStripeRoute,
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();
 
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
+import type { getRouter } from "./router.tsx";
+import type { createStart } from "@tanstack/react-start";
+declare module "@tanstack/react-start" {
   interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
+    ssr: true;
+    router: Awaited<ReturnType<typeof getRouter>>;
   }
 }

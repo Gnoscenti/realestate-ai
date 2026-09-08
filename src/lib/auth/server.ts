@@ -71,8 +71,7 @@ const env = (key: string): string | undefined => {
 // Explicit off-switch for local development and E2E only. A stale Vercel
 // environment value must never turn a production deployment into one shared
 // dev-user workspace.
-const authDisabled =
-  env("NODE_ENV") !== "production" && env("VITE_AUTH_ENABLED") === "false";
+const authDisabled = env("NODE_ENV") !== "production" && env("VITE_AUTH_ENABLED") === "false";
 
 // Broker federation creds: the deployer injects a per-app client when deployed;
 // otherwise fall back to the shared live-preview client, which the broker accepts
@@ -81,12 +80,10 @@ const grokIssuer = env("GROK_AUTH_ISSUER") ?? GROK_ISSUER_DEFAULT;
 const grokClientId = env("GROK_AUTH_CLIENT_ID") ?? PREVIEW_CLIENT_ID;
 const grokClientSecret = env("GROK_AUTH_CLIENT_SECRET") ?? PREVIEW_CLIENT_SECRET;
 
-const grokOAuthConfigured =
-  !authDisabled && Boolean(grokClientId && grokClientSecret);
+const grokOAuthConfigured = !authDisabled && Boolean(grokClientId && grokClientSecret);
 
 /** True when at least one real sign-in method is active. */
-export const authConfigured =
-  !authDisabled && (emailAndPasswordEnabled || grokOAuthConfigured);
+export const authConfigured = !authDisabled && (emailAndPasswordEnabled || grokOAuthConfigured);
 
 // This app's own Better Auth origin. When deployed the deployer injects the
 // public URL. In the sandbox live preview there's no fixed URL (each preview gets
@@ -129,6 +126,9 @@ const trustedOrigins: string[] = explicitBaseURL
     ];
 
 const databaseUrl = env("DATABASE_URL");
+if (env("NODE_ENV") === "production" && !env("BETTER_AUTH_SECRET")) {
+  throw new Error("BETTER_AUTH_SECRET is required in production.");
+}
 
 // Static broker OAuth endpoints (skip OIDC discovery on every sign-in / callback).
 // Discovery would cost an extra network hop to the broker before the popup can
