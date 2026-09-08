@@ -1,3 +1,4 @@
+import { RecognitionEvidence } from "@/components/citelock/recognition-evidence";
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -690,33 +691,7 @@ function AieoPage() {
                   response hash, raw response, and citations are retained.
                 </p>
               </div>
-              {recognitionRuns.length > 0 && (
-                <div className="grid gap-2 md:grid-cols-2">
-                  {recognitionRuns.slice(0, 12).map((capture) => (
-                    <div
-                      key={capture.id}
-                      className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={capture.status === "succeeded" ? "success" : "danger"}>
-                          {capture.provider}
-                        </Badge>
-                        <span className="text-xs">{capture.model}</span>
-                        <span className="ml-auto text-[11px] text-[var(--color-fg-subtle)]">
-                          {capture.runDate}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs font-medium">{capture.queryId}</p>
-                      <p className="mt-1 line-clamp-3 text-xs text-[var(--color-fg-muted)]">
-                        {capture.responseText || capture.errorCode || "No response text"}
-                      </p>
-                      <p className="mt-2 break-all text-[10px] text-[var(--color-fg-subtle)]">
-                        SHA-256 {capture.responseHash}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <RecognitionEvidence captures={recognitionRuns} actions={report.actions} />
               <div className="space-y-2">
                 {report.queryPlan.map((query) => (
                   <div

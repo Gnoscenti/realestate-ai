@@ -1,4 +1,11 @@
+import { z } from "zod";
+
 export const MAX_SOLD_CSV_BYTES = 2 * 1024 * 1024;
+export const soldCsvTextSchema = z.string().min(1).max(MAX_SOLD_CSV_BYTES).refine(
+  (value) => new TextEncoder().encode(value).byteLength <= MAX_SOLD_CSV_BYTES,
+  "CSV exceeds the 2 MB limit",
+);
+export class SoldCsvValidationError extends Error {}
 export const MAX_SOLD_CSV_ROWS = 5_000;
 export const SOLD_CSV_PREVIEW_ROWS = 25;
 

@@ -111,56 +111,33 @@ export async function saveRecognitionCaptures(
   if (!scan || scan.subject_fingerprint !== captures[0]!.subjectFingerprint)
     throw new Error("CiteLock scan not found");
 
-  const saved: CiteRecognitionCapture[] = [];
-  for (const capture of captures) {
-    if (
-      capture.scanId !== scan.id ||
-      capture.subjectFingerprint !== scan.subject_fingerprint
-    )
-      throw new Error("Recognition capture subject mismatch");
-    const rows = await sql.query<RecognitionRow>(
-      `insert into citelock_recognition_runs (
-         id, workspace_id, scan_id, subject_fingerprint, panel_version,
-         query_id, prompt, prompt_hash, provider, model, location, run_date,
-         status, response_text, raw_response, response_hash, citations,
-         mentioned, cited, correct_identity, correct_brokerage, error_code,
-         observed_at, created_by_user_id
-       ) values (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::date,$13,$14,$15::jsonb,
-         $16,$17::jsonb,$18,$19,$20,$21,$22,$23,$24
-       )
-       returning ${FIELDS}`,
-      [
-        capture.id,
-        workspace.id,
-        capture.scanId,
-        capture.subjectFingerprint,
-        capture.panelVersion,
-        capture.queryId,
-        capture.prompt,
-        capture.promptHash,
-        capture.provider,
-        capture.model,
-        capture.location,
-        capture.runDate,
-        capture.status,
-        capture.responseText,
-        JSON.stringify(capture.rawResponse),
-        capture.responseHash,
-        JSON.stringify(capture.citations),
-        capture.mentioned,
-        capture.cited,
-        capture.correctIdentity,
-        capture.correctBrokerage,
-        capture.errorCode || null,
-        capture.observedAt,
-        userId,
-      ],
-    );
-    if (!rows[0]) throw new Error("Recognition capture save failed");
-    saved.push(toCapture(rows[0]));
-  }
-  return saved;
+  const first = captures[0]!;
+  if (captures.length > 48) throw new Error("Recognition panel is too large");
+  const payload = captures.map((capture) => {
+    if (capture.scanId !== scan.id ||
+        capture.subjectFingerprint !== scan.subject_fingerprint ||
+        capture.panelVersion !== first.panelVersion || capture.runDate !== first.runDate)
+      throw new Error("Recognition capture subject or panel mismatch");
+    return {
+      id: capture.id, scan_id: capture.scanId, subject_fingerprint: capture.subjectFingerprint,
+      panel_version: capture.panelVersion, query_id: capture.queryId,
+      prompt: capture.prompt, prompt_hash: capture.promptHash, provider: capture.provider,
+      model: capture.model, location: capture.location, run_date: capture.runDate,
+      status: capture.status, response_text: capture.responseText, raw_response: capture.rawResponse,
+      response_hash: capture.responseHash, citations: capture.citations,
+      mentioned: capture.mentioned, cited: capture.cited, correct_identity: capture.correctIdentity,
+      correct_brokerage: capture.correctBrokerage, error_code: capture.errorCode || null,
+      observed_at: capture.observedAt,
+    };
+  });
+  // A single SQL statement rolls back the entire panel if any row is rejected.
+  const rows = await sql.query<RecognitionRow>(
+    "insert into citelock_recognition_runs (" + FIELDS + ", workspace_id, created_by_user_id)" +
+    " select " + FIELDS + ", $1, $2 from " +
+    "jsonb_populate_recordset(null::citelock_recognition_runs,$3::jsonb) returning " + FIELDS,
+    [workspace.id, userId, JSON.stringify(payload)],
+  );
+  return rows.map(toCapture);
 }
 
 export async function listRecentRecognitionCaptures(
@@ -180,4 +157,62 @@ export async function listRecentRecognitionCaptures(
     [workspace.id, subjectFingerprint],
   );
   return rows.map(toCapture);
+}
+
+
+/** Atomic claim plus bounded daily spend reservation. Duplicate POSTs consume no quota. */
+export async function reserveRecognitionPanel(
+  userId: string, workspaceId: string, subjectFingerprint: string,
+  panelVersion: string, runDate: string, sqlOverride?: Sql,
+): Promise<void> {
+  const sql = sqlOverride || (await getSql());
+  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  const rows = await sql.query<{ claimed: boolean; allowed: boolean }>(
+    `with claimed as (
+       insert into citelock_panel_reservations
+         (workspace_id, subject_fingerprint, panel_version, run_date, created_by_user_id)
+       select $1,$2,$3,$4::date,$5
+       where not exists (
+         select 1 from citelock_recognition_runs
+         where workspace_id=$1 and subject_fingerprint=$2
+           and panel_version=$3 and run_date=$4::date
+       )
+       on conflict do nothing returning workspace_id, run_date
+     ), quota as (
+       insert into citelock_panel_daily_quota (workspace_id, run_date, used_panels)
+       select workspace_id, run_date, 1 from claimed
+       on conflict (workspace_id, run_date) do update
+         set used_panels=citelock_panel_daily_quota.used_panels+1
+         where citelock_panel_daily_quota.used_panels < 3
+       returning used_panels
+     )
+     select exists(select 1 from claimed) as claimed,
+            exists(select 1 from quota) as allowed`,
+    [workspaceId, subjectFingerprint, panelVersion, runDate, userId],
+  );
+  if (!rows[0]?.claimed)
+    throw new Error("This controlled Recognition panel has already been reserved or captured today. Check its saved evidence before trying another day.");
+  if (!rows[0]?.allowed) {
+    await sql.query(
+      `update citelock_panel_reservations set status='blocked', updated_at=now()
+       where workspace_id=$1 and subject_fingerprint=$2 and panel_version=$3 and run_date=$4::date`,
+      [workspaceId, subjectFingerprint, panelVersion, runDate],
+    );
+    throw new Error("Recognition daily limit reached: three controlled panels per workspace.");
+  }
+}
+
+export async function finishRecognitionPanel(
+  userId: string, workspaceId: string, subjectFingerprint: string,
+  panelVersion: string, runDate: string,
+  status: "completed" | "attention_required", sqlOverride?: Sql,
+): Promise<void> {
+  const sql = sqlOverride || (await getSql());
+  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  await sql.query(
+    `update citelock_panel_reservations set status=$6, updated_at=now()
+     where workspace_id=$1 and subject_fingerprint=$2 and panel_version=$3
+       and run_date=$4::date and created_by_user_id=$5 and status='processing'`,
+    [workspaceId, subjectFingerprint, panelVersion, runDate, userId, status],
+  );
 }

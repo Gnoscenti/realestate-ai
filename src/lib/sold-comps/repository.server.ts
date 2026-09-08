@@ -1,3 +1,4 @@
+import { SoldCsvValidationError } from "./types";
 import { createHash } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
@@ -274,7 +275,10 @@ export async function importSoldCsv(
   const sourceAsOf = isoSourceAsOf(input.sourceAsOf);
   const parsed = parseSoldCsv(input.csv);
   if (parsed.acceptedCount === 0) {
-    throw new Error("No valid Closed/Sold rows to import");
+    throw new SoldCsvValidationError(
+      parsed.errors.find((error) => error.row === 1)?.message ??
+      "No valid Closed/Sold rows to import",
+    );
   }
 
   const sourceId = `sold-source:${digest(

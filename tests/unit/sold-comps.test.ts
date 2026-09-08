@@ -4,6 +4,8 @@ import { getSql } from "../../src/lib/db";
 import { parseSoldCsv } from "../../src/lib/sold-comps/parser";
 import {
   SOLD_DATA_EMPTY_ASSISTANT_MESSAGE,
+  soldCsvTextSchema,
+  MAX_SOLD_CSV_BYTES,
   isCurrentSoldCsvPreview,
 } from "../../src/lib/sold-comps/types";
 import {
@@ -32,6 +34,17 @@ function importInput(contents: string, suffix = "one") {
 }
 
 describe("Closed/Sold CSV validation", () => {
+  it("enforces UTF-8 bytes and preserves file-level rejection reasons", async () => {
+    expect(soldCsvTextSchema.safeParse("é".repeat(MAX_SOLD_CSV_BYTES / 2)).success).toBe(true);
+    expect(soldCsvTextSchema.safeParse("é".repeat(MAX_SOLD_CSV_BYTES / 2 + 1)).success).toBe(false);
+    const user = "csv-errors-" + randomUUID();
+    const workspace = await ensurePersonalWorkspace(user);
+    await expect(importSoldCsv(user, workspace.id, importInput("header")))
+      .rejects.toThrow("CSV needs a header and at least one data row");
+    await expect(importSoldCsv(user, workspace.id, importInput("é".repeat(MAX_SOLD_CSV_BYTES))))
+      .rejects.toThrow(/2 MB/);
+  });
+
   it("invalidates a preview when the selected file revision changes", () => {
     expect(isCurrentSoldCsvPreview(4, 4)).toBe(true);
     expect(isCurrentSoldCsvPreview(4, 5)).toBe(false);
