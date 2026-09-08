@@ -55,6 +55,7 @@ export function ShowingFollowUpPanel(props: {
         {seq.touches.map((step) => (
           <div
             key={step.id}
+            data-testid={`showing-touch-${step.id}`}
             className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 sm:flex-row sm:items-start sm:justify-between"
           >
             <div className="min-w-0">
@@ -70,7 +71,7 @@ export function ShowingFollowUpPanel(props: {
                 {step.body}
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => void copyText(step.body)}>
+            <Button size="sm" variant="outline" onClick={() => void copyText(step.subject ? `Subject: ${step.subject}\n\n${step.body}` : step.body)}>
               <Copy className="h-4 w-4" />
               Copy
             </Button>
@@ -151,7 +152,7 @@ export function BuyerSellerFaqPanel(props: { profile?: AgentProfile | null }) {
           </p>
           <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg)]">{faq.answer}</p>
           <p className="mt-3 text-[11px] text-[var(--color-fg-subtle)]">{faq.disclaimer}</p>
-          <Button className="mt-3" size="sm" variant="outline" onClick={() => void copyText(faq.answer)}>
+          <Button className="mt-3" size="sm" variant="outline" onClick={() => void copyText(`${faq.answer}\n\n${faq.disclaimer}`)}>
             <Copy className="h-4 w-4" />
             Copy answer
           </Button>

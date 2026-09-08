@@ -135,7 +135,8 @@ export function listFaqs(side?: FaqSide): FaqItem[] {
 }
 
 function scoreFaq(item: FaqItem, q: string): number {
-  const qLower = q.toLowerCase();
+  const qLower = q.trim().toLowerCase();
+  if (!/[a-z0-9]{3}/.test(qLower)) return 0;
   const words = qLower.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
   const qText = item.question.toLowerCase();
   const tagText = item.tags.join(" ").toLowerCase();
