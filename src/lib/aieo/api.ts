@@ -75,25 +75,36 @@ export const runMyCiteLockRecognition = createServerFn({ method: "POST" })
     );
     if (!scan) throw new Error("CiteLock scan not found");
     const {
-      assertRecognitionPanelAvailable,
+      reserveRecognitionPanel,
+      finishRecognitionPanel,
       listRecentRecognitionCaptures,
       saveRecognitionCaptures,
     } = await import("./recognition-repository.server");
-    const runDate = recognitionRunDate(new Date().toISOString());
-    await assertRecognitionPanelAvailable(
-      context.userId,
-      workspace.id,
-      scan.subjectFingerprint,
-      RECOGNITION_PANEL_VERSION,
-      runDate,
+    const { runRecognitionPanel, configuredRecognitionProviders } = await import("./recognition.server");
+    const providers = configuredRecognitionProviders();
+    if (providers.length !== 3)
+      throw new Error("CiteLock Recognition requires three configured providers: OpenAI, xAI, and Perplexity.");
+    const observedAt = new Date().toISOString();
+    const runDate = recognitionRunDate(observedAt);
+    await reserveRecognitionPanel(
+      context.userId, workspace.id, scan.subjectFingerprint,
+      RECOGNITION_PANEL_VERSION, runDate,
     );
-    const { runRecognitionPanel } = await import("./recognition.server");
-    const result = await runRecognitionPanel(scan);
-    await saveRecognitionCaptures(
-      context.userId,
-      workspace.id,
-      result.captures,
-    );
+    let result;
+    try {
+      result = await runRecognitionPanel(scan, providers, () => observedAt);
+      await saveRecognitionCaptures(context.userId, workspace.id, result.captures);
+      await finishRecognitionPanel(
+        context.userId, workspace.id, scan.subjectFingerprint,
+        RECOGNITION_PANEL_VERSION, runDate, "completed",
+      );
+    } catch (error) {
+      await finishRecognitionPanel(
+        context.userId, workspace.id, scan.subjectFingerprint,
+        RECOGNITION_PANEL_VERSION, runDate, "attention_required",
+      ).catch(() => undefined);
+      throw error;
+    }
     const captures = await listRecentRecognitionCaptures(
         context.userId,
         workspace.id,

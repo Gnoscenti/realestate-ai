@@ -39,10 +39,11 @@ function normalizedWords(value: string): string[] {
     .filter((word) => word.length > 1);
 }
 
-function containsName(text: string, name: string): boolean {
-  const haystack = new Set(normalizedWords(text));
+function containsName(text: string, name: string, minimumWords = 2): boolean {
+  const haystack = " " + normalizedWords(text).join(" ") + " ";
   const words = normalizedWords(name);
-  return words.length >= 2 && words.every((word) => haystack.has(word));
+  return words.length >= minimumWords &&
+    haystack.includes(" " + words.join(" ") + " ");
 }
 
 function bestEvidence(scan: CiteLockScanRecord, field: string): string | undefined {
@@ -97,22 +98,27 @@ function extractText(json: Record<string, any>): string {
   return chunks.join("\n").trim();
 }
 
-function collectCitationUrls(value: unknown, urls = new Set<string>()): string[] {
-  if (typeof value === "string") {
-    if (/^https?:\/\//i.test(value)) {
-      const safe = sanitizeCiteLockPublicUrl(value);
-      if (safe) urls.add(safe);
+function collectCitationUrls(value: Record<string, unknown>, provider: RecognitionProviderId): string[] {
+  // Request echoes, prose URLs, tool arguments, and error-help links are not citations.
+  const urls = new Set<string>();
+  const add = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const safe = sanitizeCiteLockPublicUrl(candidate);
+    if (safe) urls.add(safe);
+  };
+  if (provider === "perplexity") {
+    if (Array.isArray(value.citations)) value.citations.forEach(add);
+  } else {
+    const output = value.output;
+    if (Array.isArray(output)) for (const item of output) {
+      if (!item || !Array.isArray(item.content)) continue;
+      for (const content of item.content) {
+        if (!content || !Array.isArray(content.annotations)) continue;
+        for (const annotation of content.annotations) {
+          if (annotation?.type === "url_citation") add(annotation.url);
+        }
+      }
     }
-    return [...urls];
-  }
-  if (!value || typeof value !== "object") return [...urls];
-  if (Array.isArray(value)) {
-    for (const item of value) collectCitationUrls(item, urls);
-    return [...urls];
-  }
-  for (const [key, item] of Object.entries(value)) {
-    if (/url|citation/i.test(key)) collectCitationUrls(item, urls);
-    else if (item && typeof item === "object") collectCitationUrls(item, urls);
   }
   return [...urls];
 }
@@ -292,15 +298,15 @@ export async function runRecognitionPanel(
   const tasks = providers.slice(0, 3).flatMap((provider) =>
     prompts.map(async ({ queryId, prompt }): Promise<CiteRecognitionCapture> => {
       const response = await provider.run(prompt);
-      const citations = collectCitationUrls(response.raw);
-      const mentioned = containsName(response.text, scan.agentName);
+      const citations = response.status === "succeeded" ? collectCitationUrls(response.raw, provider.id) : [];
+      const mentioned = response.status === "succeeded" && containsName(response.text, scan.agentName);
       const correctIdentity =
         mentioned &&
         (license
           ? response.text.replace(/\D/g, "").includes(license.replace(/\D/g, "")) ||
             citations.some((url) => new URL(url).hostname === new URL(scan.website).hostname)
           : true);
-      const correctBrokerage = broker ? containsName(response.text, broker) : false;
+      const correctBrokerage = broker ? response.status === "succeeded" && containsName(response.text, broker, 1) : false;
       const rawResponse = safeRawResponse(response.raw);
       return {
         id: randomUUID(),

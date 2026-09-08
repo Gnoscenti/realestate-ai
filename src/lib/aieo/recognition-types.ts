@@ -1,6 +1,6 @@
 import type { CiteRecognitionRun } from "./types";
 
-export const RECOGNITION_PANEL_VERSION = "san-diego-v1-2026-09-04";
+export const RECOGNITION_PANEL_VERSION = "san-diego-v2-2026-09-08";
 export const RECOGNITION_LOCATION = "San Diego, California, United States";
 
 export function recognitionRunDate(observedAt: string): string {

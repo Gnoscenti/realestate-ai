@@ -181,3 +181,61 @@ export async function listRecentRecognitionCaptures(
   );
   return rows.map(toCapture);
 }
+
+
+/** Atomic claim plus bounded daily spend reservation. Duplicate POSTs consume no quota. */
+export async function reserveRecognitionPanel(
+  userId: string, workspaceId: string, subjectFingerprint: string,
+  panelVersion: string, runDate: string, sqlOverride?: Sql,
+): Promise<void> {
+  const sql = sqlOverride || (await getSql());
+  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  const rows = await sql.query<{ claimed: boolean; allowed: boolean }>(
+    `with claimed as (
+       insert into citelock_panel_reservations
+         (workspace_id, subject_fingerprint, panel_version, run_date, created_by_user_id)
+       select $1,$2,$3,$4::date,$5
+       where not exists (
+         select 1 from citelock_recognition_runs
+         where workspace_id=$1 and subject_fingerprint=$2
+           and panel_version=$3 and run_date=$4::date
+       )
+       on conflict do nothing returning workspace_id, run_date
+     ), quota as (
+       insert into citelock_panel_daily_quota (workspace_id, run_date, used_panels)
+       select workspace_id, run_date, 1 from claimed
+       on conflict (workspace_id, run_date) do update
+         set used_panels=citelock_panel_daily_quota.used_panels+1
+         where citelock_panel_daily_quota.used_panels < 3
+       returning used_panels
+     )
+     select exists(select 1 from claimed) as claimed,
+            exists(select 1 from quota) as allowed`,
+    [workspaceId, subjectFingerprint, panelVersion, runDate, userId],
+  );
+  if (!rows[0]?.claimed)
+    throw new Error("This controlled Recognition panel has already been reserved or captured today. Check its saved evidence before trying another day.");
+  if (!rows[0]?.allowed) {
+    await sql.query(
+      `update citelock_panel_reservations set status='blocked', updated_at=now()
+       where workspace_id=$1 and subject_fingerprint=$2 and panel_version=$3 and run_date=$4::date`,
+      [workspaceId, subjectFingerprint, panelVersion, runDate],
+    );
+    throw new Error("Recognition daily limit reached: three controlled panels per workspace.");
+  }
+}
+
+export async function finishRecognitionPanel(
+  userId: string, workspaceId: string, subjectFingerprint: string,
+  panelVersion: string, runDate: string,
+  status: "completed" | "attention_required", sqlOverride?: Sql,
+): Promise<void> {
+  const sql = sqlOverride || (await getSql());
+  await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
+  await sql.query(
+    `update citelock_panel_reservations set status=$6, updated_at=now()
+     where workspace_id=$1 and subject_fingerprint=$2 and panel_version=$3
+       and run_date=$4::date and created_by_user_id=$5 and status='processing'`,
+    [workspaceId, subjectFingerprint, panelVersion, runDate, userId, status],
+  );
+}
