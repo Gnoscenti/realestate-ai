@@ -1,25 +1,28 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 export function SocialBillingControls() {
   const [state, setState] = useState<{ configured: boolean; hasCustomer: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const request = useRef<string | null>(null);
   useEffect(() => {
     void import("@/lib/social-media/billing-api")
       .then((m) => m.getSocialBillingStatus())
       .then(setState)
       .catch(() => setError("Paid rendering status could not be loaded."));
   }, []);
+  useEffect(() => {
+    const reset = () => setBusy(false);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
   async function open(portal: boolean) {
     setBusy(true);
     setError(null);
     try {
       const api = await import("@/lib/social-media/billing-api");
-      request.current ??= crypto.randomUUID();
       const result = portal
         ? await api.manageSocialSubscription()
-        : await api.startSocialSubscription({ data: { requestId: request.current } });
+        : await api.startSocialSubscription({ data: { requestId: crypto.randomUUID() } });
       window.location.assign(result.url);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Billing could not be opened.");

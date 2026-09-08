@@ -677,6 +677,16 @@ export async function completeSocialMediaImageJob(
   return rows[0]?.completed === true;
 }
 
+export async function recoverInterruptedBuiltinJobs(sql: Sql, workspaceId: string, userId: string) {
+  await sql.query(
+    "update social_media_jobs set status='failed',error_code='provider_timeout'," +
+      "error_message='This built-in export was interrupted. Start a new export.',completed_at=now(),updated_at=now() " +
+      "where workspace_id=$1 and user_id=$2 and provider='builtin' and status in ('processing','attention_required') " +
+      "and updated_at<now()-interval '2 minutes'",
+    [workspaceId, userId],
+  );
+}
+
 export async function getSocialMediaJob(
   sql: Sql,
   workspaceId: string,
@@ -688,12 +698,14 @@ export async function getSocialMediaJob(
   // the bounded 50-second Orshot timeout) quarantine it for operator review.
   await sql.query(
     `update social_media_jobs
-        set status = 'attention_required',
+        set status = case when provider='builtin' then 'failed' else 'attention_required' end,
             error_code = 'provider_timeout',
-            error_message = 'This render was interrupted. Support must check the provider outcome before any retry.',
+            error_message = case when provider='builtin'
+              then 'This built-in export was interrupted. Start a new export.'
+              else 'This render was interrupted. Support must check the provider outcome before any retry.' end,
             updated_at = now(), completed_at = now()
       where id = $1 and workspace_id = $2 and user_id = $3
-        and status = 'processing'
+        and (status = 'processing' or (provider='builtin' and status='attention_required'))
         and updated_at < now() - interval '2 minutes'`,
     [jobId, workspaceId, userId],
   );
@@ -757,12 +769,14 @@ export async function reconcileRecentSocialMediaImageJob(
 ): Promise<SocialMediaJobView | null> {
   await sql.query(
     `update social_media_jobs
-        set status = 'attention_required',
+        set status = case when provider='builtin' then 'failed' else 'attention_required' end,
             error_code = 'provider_timeout',
-            error_message = 'This render was interrupted. Support must check the provider outcome before any retry.',
+            error_message = case when provider='builtin'
+              then 'This built-in export was interrupted. Start a new export.'
+              else 'This render was interrupted. Support must check the provider outcome before any retry.' end,
             updated_at = now(), completed_at = now()
       where workspace_id = $1 and user_id = $2 and kind = 'image'
-        and status = 'processing'
+        and (status = 'processing' or (provider='builtin' and status='attention_required'))
         and updated_at < now() - interval '2 minutes'`,
     [workspaceId, userId],
   );

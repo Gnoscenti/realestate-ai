@@ -296,10 +296,10 @@ export function parseListingsCsv(
             : "active";
     const sideRaw = cell(row, map, "listing_side").toLowerCase();
     const representationRole =
-      sideRaw === "mine" || sideRaw.includes("listing agent")
-        ? "listing"
-        : sideRaw.includes("co-list") || sideRaw.includes("co_list")
-          ? "co_listing"
+      /co[-_ ]list/.test(sideRaw)
+        ? "co_listing"
+        : sideRaw === "mine" || sideRaw.includes("listing agent")
+          ? "listing"
           : sideRaw.includes("office")
             ? "office"
             : sideRaw.includes("market") || sideRaw.includes("comp")

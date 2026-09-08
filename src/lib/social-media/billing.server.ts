@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
 import { z } from "zod";
 import { getSql, type Sql } from "@/lib/db";
@@ -5,6 +6,11 @@ import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { loadOrshotTemplateConfig } from "./templates.server";
 
 export function socialBillingConfigured(workspaceId: string) {
+  try {
+    socialReturnOrigin();
+  } catch {
+    return false;
+  }
   return Boolean(
     process.env.STRIPE_SECRET_KEY?.trim() &&
     process.env.STRIPE_SOCIAL_WEBHOOK_SECRET?.trim() &&
@@ -18,8 +24,13 @@ export function socialStripeClient() {
   if (!key) throw new Error("Paid rendering setup is incomplete");
   return new Stripe(key);
 }
-function socialReturnOrigin() {
-  const origin = new URL(process.env.SOCIAL_BILLING_RETURN_ORIGIN ?? "");
+export function socialReturnOrigin() {
+  let origin: URL;
+  try {
+    origin = new URL(process.env.SOCIAL_BILLING_RETURN_ORIGIN ?? "");
+  } catch {
+    throw new Error("Paid rendering return origin is not configured");
+  }
   if (
     origin.username ||
     origin.password ||
@@ -27,10 +38,50 @@ function socialReturnOrigin() {
     origin.search ||
     origin.hash ||
     (origin.protocol !== "https:" &&
-      !(process.env.NODE_ENV !== "production" && origin.hostname === "localhost"))
+      !(
+        process.env.NODE_ENV !== "production" &&
+        origin.hostname === "localhost" &&
+        origin.protocol === "http:"
+      ))
   )
     throw new Error("Paid rendering return origin is not configured");
   return origin.origin;
+}
+export function assertSocialCheckoutAvailable(history: {
+  data: Array<{ status: string; metadata: Record<string, string> }>;
+  has_more: boolean;
+}) {
+  if (history.has_more)
+    throw new Error("Billing history requires review before another subscription can be created.");
+  if (
+    history.data.some(
+      (subscription) =>
+        subscription.metadata.product === "social_media" &&
+        !["canceled", "incomplete_expired"].includes(subscription.status),
+    )
+  ) {
+    throw new Error(
+      "Stripe already has a social subscription for this customer. Use Manage billing.",
+    );
+  }
+}
+
+export async function reserveSocialCheckoutAttempt(
+  sql: Sql,
+  workspaceId: string,
+): Promise<string | null> {
+  // A new durable reservation gets a fresh server token even if a client
+  // reuses an old UUID after expiry. Concurrent retries still share the row.
+  const attemptId = randomUUID();
+  const claims = await sql.query<{ request_id: string }>(
+    "insert into social_checkout_reservations(workspace_id,request_id,reserved_until) " +
+      "values($1,$2,now()+interval '35 minutes') on conflict(workspace_id) do update " +
+      "set request_id=excluded.request_id,checkout_url=null,stripe_session_id=null," +
+      "reserved_until=excluded.reserved_until,created_at=now() " +
+      "where social_checkout_reservations.reserved_until<now() returning request_id",
+    [workspaceId, attemptId],
+  );
+  return claims[0]?.request_id ?? null;
 }
 export async function startSocialCheckout(userId: string, workspaceId: string, requestId: string) {
   z.uuid().parse(requestId);
@@ -64,22 +115,35 @@ export async function startSocialCheckout(userId: string, workspaceId: string, r
     );
     customer = binding[0].stripe_customer_id;
   }
-  const claims = await sql.query<{ request_id: string }>(
-    "insert into social_checkout_reservations(workspace_id,request_id,reserved_until) " +
-      "values($1,$2,now()+interval '35 minutes') on conflict(workspace_id) do update " +
-      "set request_id=excluded.request_id,checkout_url=null,stripe_session_id=null," +
-      "reserved_until=excluded.reserved_until,created_at=now() " +
-      "where social_checkout_reservations.reserved_until<now() returning request_id",
-    [workspaceId, requestId],
+  // A lost/delayed webhook must not allow a second subscription once the
+  // local checkout reservation expires. Inspect current Stripe state first.
+  assertSocialCheckoutAvailable(
+    await stripe.subscriptions.list({ customer, status: "all", limit: 100 }),
   );
-  if (!claims.length) {
+  const attemptId = await reserveSocialCheckoutAttempt(sql, workspaceId);
+  if (!attemptId) {
     const existing = (
-      await sql.query<{ checkout_url: string | null }>(
-        "select checkout_url from social_checkout_reservations where workspace_id=$1",
+      await sql.query<{ checkout_url: string | null; stripe_session_id: string | null }>(
+        "select checkout_url,stripe_session_id from social_checkout_reservations where workspace_id=$1",
         [workspaceId],
       )
     )[0];
-    if (existing?.checkout_url) return { url: existing.checkout_url };
+    if (existing?.checkout_url && existing.stripe_session_id) {
+      const session = await stripe.checkout.sessions.retrieve(existing.stripe_session_id);
+      if (session.status === "open" && session.expires_at > Math.floor(Date.now() / 1000)) {
+        return { url: existing.checkout_url };
+      }
+      if (session.status === "expired") {
+        await sql.query(
+          "delete from social_checkout_reservations where workspace_id=$1 and stripe_session_id=$2",
+          [workspaceId, existing.stripe_session_id],
+        );
+        return startSocialCheckout(userId, workspaceId, randomUUID());
+      }
+      throw new Error(
+        "Checkout is complete. Await the verified billing update or use Manage billing.",
+      );
+    }
     throw new Error(
       "A checkout is already being prepared. Retry shortly; an uncertain checkout is held for 35 minutes.",
     );
@@ -98,13 +162,13 @@ export async function startSocialCheckout(userId: string, workspaceId: string, r
       billing_address_collection: "required",
       customer_update: { address: "auto" },
     },
-    { idempotencyKey: "social-checkout:" + workspaceId + ":" + requestId },
+    { idempotencyKey: "social-checkout:" + workspaceId + ":" + attemptId },
   );
   if (!session.url) throw new Error("Checkout could not be opened");
   await sql.query(
     "update social_checkout_reservations set checkout_url=$1,stripe_session_id=$2 " +
       "where workspace_id=$3 and request_id=$4",
-    [session.url, session.id, workspaceId, requestId],
+    [session.url, session.id, workspaceId, attemptId],
   );
   return { url: session.url };
 }

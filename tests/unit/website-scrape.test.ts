@@ -41,6 +41,18 @@ describe("normalizeSiteUrl", () => {
 });
 
 describe("parseRealtorWebsiteHtml", () => {
+  it("separates explicitly named credentials from unrelated and ambiguous page credentials", () => {
+    const parse = (body: string) => parseRealtorWebsiteHtml(
+      "<html><head><title>Jamie Cole | Realtor</title></head><body>" + body + "</body></html>",
+      "https://jamieworks.com", "Jamie Cole",
+    ).personBoundCredentials;
+    expect(parse("<p>Jamie Cole — DRE #01234567</p><p>Jamie Cole | MLS Agent ID: JC12345</p>"))
+      .toMatchObject({ license: "01234567", licenseJurisdiction: "CA", mlsNumber: "JC12345" });
+    expect(parse("<h1>Jamie Cole</h1><p>Responsible broker Alex Smith — DRE #07654321</p><p>MLS Agent ID: AS54321</p>").license).toBeUndefined();
+    expect(parse("<p>Jamie Cole — DRE #01234567</p><p>Jamie Cole — DRE #07654321</p>").license).toBeUndefined();
+    expect(parse("<p>Jamie Cole | Brokerage: Example Realty — DRE #07654321</p>").license).toBeUndefined();
+  });
+
   it("keeps the regulatory license separate from the MLS agent ID", () => {
     const result = parseRealtorWebsiteHtml(SAMPLE_HTML, "https://jamieworks.com");
     expect(result.profile.name).toBe("Jamie Cole");

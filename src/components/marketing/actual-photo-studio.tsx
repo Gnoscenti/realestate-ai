@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
+import type { ManagedPhotoView, ManagedMediaCursor } from "@/lib/social-media/managed-types";
 import type { SocialMediaJobView } from "@/lib/social-media/types";
 
 type Workspace = {
   pendingPublicDeletions: number;
+  nextCursor: ManagedMediaCursor | null;
   listings: Array<{ id: string; title: string; address: string }>;
   images: ManagedPhotoView[];
 };
@@ -296,6 +297,8 @@ export function ActualPhotoStudio() {
                     data: { requestId: request.current!.id, listingId, mediaId: photoId },
                   });
                   setJob(result);
+                  if (result.status === "failed" || result.status === "blocked")
+                    request.current = null;
                   await reload();
                   if (result.status === "completed")
                     setNotice("Image exported and retained. Review it before posting.");
@@ -322,6 +325,42 @@ export function ActualPhotoStudio() {
                   </a>
                 </Button>
               </div>
+            )}
+            {workspace.nextCursor && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  void action(async () => {
+                    const { getOlderManagedMedia } = await import("@/lib/social-media/managed-api");
+                    const older = await getOlderManagedMedia({
+                      data: { cursor: workspace.nextCursor! },
+                    });
+                    setWorkspace((current) =>
+                      current
+                        ? {
+                            ...current,
+                            images: [
+                              ...new Map(
+                                [...current.images, ...older.images].map((item) => [item.id, item]),
+                              ).values(),
+                            ],
+                            listings: [
+                              ...new Map(
+                                [...current.listings, ...older.listings].map((item) => [
+                                  item.id,
+                                  item,
+                                ]),
+                              ).values(),
+                            ],
+                            nextCursor: older.nextCursor,
+                          }
+                        : current,
+                    );
+                  })
+                }
+              >
+                Load older photos and exports
+              </Button>
             )}
             {workspace.images.some((i) => i.kind === "render") && (
               <details>

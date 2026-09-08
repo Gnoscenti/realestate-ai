@@ -7,7 +7,13 @@ import {
   uploadManagedPhoto,
   readManagedImage,
   listManagedImages,
+  listManagedImagePage,
 } from "@/lib/social-media/managed-media.server";
+import { createSocialMediaJob, getSocialMediaJob } from "@/lib/social-media/repository.server";
+import {
+  beginPublicPhotoDelivery,
+  attachPublicPhotoDelivery,
+} from "@/lib/social-media/public-upload-repository.server";
 import { generateBuiltinImage } from "@/lib/social-media/builtin.server";
 import {
   imageHash,
@@ -182,11 +188,182 @@ describe("authenticated managed photos and actual-photo rendering", () => {
         ),
       ),
     );
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const finished = results.map((result) => {
+      if (result.status !== "fulfilled") throw result.reason;
+      return result.value;
+    });
+    expect(finished.filter((job) => job.status === "completed")).toHaveLength(1);
+    expect(
+      finished.filter((job) => job.status === "blocked" && job.errorCode === "quota_exhausted"),
+    ).toHaveLength(1);
     const quota = await g.sql.query<{ used_units: number }>(
       "select used_units from social_builtin_daily_quota where workspace_id=$1",
       [g.workspace.id],
     );
     expect(quota[0].used_units).toBe(10);
+  });
+  it.each(["processing", "attention_required"] as const)(
+    "recovers interrupted built-in %s jobs without provider quarantine",
+    async (status) => {
+      const f = await fixture();
+      const photo = await uploadManagedPhoto(
+        f.user,
+        f.workspace.id,
+        f.listingId,
+        f.bytes,
+        true,
+        false,
+        f.sql,
+      );
+      const oldId = randomUUID();
+      await createSocialMediaJob(f.sql, {
+        id: oldId,
+        workspaceId: f.workspace.id,
+        userId: f.user,
+        listingId: f.listingId,
+        kind: "image",
+        templateKey: "builtin-square-v1",
+        mediaIds: [photo.id],
+        provider: "builtin",
+        status,
+      });
+      await f.sql.query(
+        "update social_media_jobs set updated_at=now()-interval '3 minutes' where id=$1",
+        [oldId],
+      );
+      const fresh = await generateBuiltinImage(
+        f.user,
+        f.workspace.id,
+        { requestId: randomUUID(), listingId: f.listingId, mediaId: photo.id },
+        f.sql,
+      );
+      expect(fresh.status).toBe("completed");
+      expect((await getSocialMediaJob(f.sql, f.workspace.id, f.user, oldId))?.status).toBe(
+        "failed",
+      );
+      expect(fresh.id).not.toBe(oldId);
+    },
+  );
+  it("paginates all retained media without dropping microsecond timestamps or the original photo", async () => {
+    const f = await fixture();
+    const photo = await uploadManagedPhoto(
+      f.user,
+      f.workspace.id,
+      f.listingId,
+      f.bytes,
+      true,
+      false,
+      f.sql,
+    );
+    await f.sql.query(
+      "update managed_listing_media set created_at='2026-09-01T00:00:00.123456Z' where id=$1",
+      [photo.id],
+    );
+    const png = await sharp(f.bytes).png().toBuffer();
+    await f.sql.query(
+      "insert into managed_listing_media(id,workspace_id,listing_id,kind,content_type,byte_size,sha256,original_sha256,width,height,bytes,created_by_user_id,created_at) " +
+        "select $1||'-'||n,$2,$3,'render','image/png',$4,$5,$5,800,600,decode($6,'hex'),$7," +
+        "'2026-09-02T00:00:00.123456Z'::timestamptz+n*interval '1 microsecond' from generate_series(1,103) n",
+      [
+        randomUUID(),
+        f.workspace.id,
+        f.listingId,
+        png.length,
+        imageHash(png),
+        png.toString("hex"),
+        f.user,
+      ],
+    );
+    const first = await listManagedImagePage(f.user, f.workspace.id, f.sql);
+    expect(first.images).toHaveLength(100);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await listManagedImagePage(f.user, f.workspace.id, f.sql, first.nextCursor!);
+    expect(second.images).toHaveLength(4);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.images, ...second.images].map((image) => image.id)).size).toBe(104);
+    expect(second.images.some((image) => image.id === photo.id && image.kind === "photo")).toBe(
+      true,
+    );
+    expect((await readManagedImage(f.user, photo.id, f.sql)).bytes.length).toBeGreaterThan(0);
+    const stranger = await fixture();
+    await expect(
+      listManagedImagePage(stranger.user, f.workspace.id, f.sql, first.nextCursor!),
+    ).rejects.toThrow("Workspace not found");
+  });
+  it("records public object identity and cleanup before upload, including deletion races and workspace deletion", async () => {
+    const f = await fixture();
+    const photo = await uploadManagedPhoto(
+      f.user,
+      f.workspace.id,
+      f.listingId,
+      f.bytes,
+      true,
+      false,
+      f.sql,
+    );
+    const path = await beginPublicPhotoDelivery(f.sql, {
+      mediaId: photo.id,
+      workspaceId: f.workspace.id,
+      userId: f.user,
+    });
+    const queue = await f.sql.query<{ blob_url: string; delayed: boolean }>(
+      "select blob_url,not_before>now() as delayed from managed_media_delete_queue where workspace_id=$1",
+      [f.workspace.id],
+    );
+    expect(queue).toEqual([{ blob_url: path, delayed: true }]);
+    // No provider request occurs here: this simulates process loss after the durable reservation.
+    await f.sql.query("delete from managed_listing_media where id=$1", [photo.id]);
+    expect(
+      await attachPublicPhotoDelivery(
+        f.sql,
+        photo.id,
+        f.workspace.id,
+        "https://example.public.blob.vercel-storage.com/" + path,
+      ),
+    ).toBe(false);
+    await f.sql.query("delete from workspaces where id=$1", [f.workspace.id]);
+    const journal = await f.sql.query<{
+      status: string;
+      delete_requested: boolean;
+      pathname: string;
+    }>("select status,delete_requested,pathname from managed_public_uploads where media_id=$1", [
+      photo.id,
+    ]);
+    expect(journal).toEqual([
+      { status: "cleanup_pending", delete_requested: true, pathname: path },
+    ]);
+    expect(
+      await f.sql.query("select 1 from managed_media_delete_queue where blob_url=$1", [path]),
+    ).toHaveLength(1);
+
+    const g = await fixture();
+    const other = await uploadManagedPhoto(
+      g.user,
+      g.workspace.id,
+      g.listingId,
+      g.bytes,
+      true,
+      false,
+      g.sql,
+    );
+    const otherPath = await beginPublicPhotoDelivery(g.sql, {
+      mediaId: other.id,
+      workspaceId: g.workspace.id,
+      userId: g.user,
+    });
+    const url = "https://example.public.blob.vercel-storage.com/" + otherPath;
+    expect(await attachPublicPhotoDelivery(g.sql, other.id, g.workspace.id, url)).toBe(true);
+    expect(
+      await g.sql.query("select 1 from managed_media_delete_queue where blob_url=$1", [otherPath]),
+    ).toHaveLength(0);
+    const linked = await g.sql.query<{ blob_url: string; source_url: string }>(
+      "select m.blob_url,l.source_url from managed_listing_media m join listing_media l on l.id=m.id where m.id=$1",
+      [other.id],
+    );
+    expect(linked).toEqual([{ blob_url: url, source_url: url }]);
+    await g.sql.query("delete from workspaces where id=$1", [g.workspace.id]);
+    expect(
+      await g.sql.query("select 1 from managed_media_delete_queue where blob_url=$1", [otherPath]),
+    ).toHaveLength(1);
   });
 });

@@ -23,7 +23,7 @@ An authenticated workspace for real estate professionals, focused on CiteLock vi
 
 ## Run and verify
 
-Use Linux/macOS Node 22+ and the checked-in lockfile. Package metadata requests npm 12; this integration's local gate used Node 22.23.2/npm 11.19.0. Vercel currently selects Node 24.
+Use Linux/macOS Node 22+ and the checked-in lockfile. Use npm 10.9.8 as declared in packageManager; the lockfile is also verified with npm 11.19.0. This integration uses Node 22.23.2 locally. Vercel currently selects Node 24.
 
 ```bash
 npm ci
@@ -43,7 +43,7 @@ npm run test:e2e
 npm audit
 ```
 
-The flagship acceptance gate passed 273 unit tests, all 15 browser tests, typecheck and build. Separate authenticated PostgreSQL acceptance verified private image upload/export, tenant isolation and identical retained bytes/session after database/app restart. Stripe test objects are synthetic; external provider acceptance is not implied. See the operations document for the verification matrix and reproduction details.
+The flagship acceptance gate passed 285 unit tests, all 15 browser tests, typecheck and build. Separate authenticated PostgreSQL acceptance verified private image upload/export, tenant isolation and identical retained bytes/session after database/app restart. Stripe test objects are synthetic; external provider acceptance is not implied. See the operations document for the verification matrix and reproduction details.
 
 ## Configuration and layout
 

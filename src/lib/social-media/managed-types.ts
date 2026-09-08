@@ -20,3 +20,9 @@ export interface ManagedPhotoView {
   width: number;
   height: number;
 }
+
+export const managedMediaCursorSchema = z.object({
+  createdAt: z.iso.datetime(),
+  id: z.string().min(1).max(240),
+});
+export type ManagedMediaCursor = z.infer<typeof managedMediaCursorSchema>;

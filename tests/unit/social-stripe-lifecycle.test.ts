@@ -8,6 +8,10 @@ import {
   socialSubscriptionSnapshot,
   persistSocialSubscriptionEvent,
   handleSocialStripeWebhook,
+  socialReturnOrigin,
+  socialBillingConfigured,
+  reserveSocialCheckoutAttempt,
+  assertSocialCheckoutAvailable,
 } from "@/lib/social-media/billing.server";
 afterEach(() => vi.unstubAllEnvs());
 function subscription(workspaceId: string, customerId: string) {
@@ -146,5 +150,76 @@ describe("paid social entitlement lifecycle", () => {
     await expect(handleSocialStripeWebhook(live, liveSignature)).rejects.toThrow(
       "Webhook mode mismatch",
     );
+  });
+  it("reports invalid return origins as incomplete setup without leaking native URL errors", () => {
+    for (const origin of [
+      "",
+      "not a url",
+      "https://user:secret@example.com",
+      "https://example.com/path",
+      "file:///tmp",
+      "ftp://localhost",
+    ]) {
+      vi.stubEnv("SOCIAL_BILLING_RETURN_ORIGIN", origin);
+      expect(() => socialReturnOrigin()).toThrow("Paid rendering return origin is not configured");
+      expect(socialBillingConfigured("workspace")).toBe(false);
+    }
+    vi.stubEnv("SOCIAL_BILLING_RETURN_ORIGIN", "https://example.com");
+    expect(socialReturnOrigin()).toBe("https://example.com");
+  });
+  it("reserves one checkout concurrently and rotates its server token after expiry", async () => {
+    const sql = await getSql();
+    const workspace = await ensurePersonalWorkspace("checkout-race-" + randomUUID(), sql);
+    const attempts = await Promise.all(
+      [1, 2, 3].map(() => reserveSocialCheckoutAttempt(sql, workspace.id)),
+    );
+    const accepted = attempts.filter((id): id is string => Boolean(id));
+    expect(accepted).toHaveLength(1);
+    await sql.query(
+      "update social_checkout_reservations set reserved_until=now()-interval '1 minute',checkout_url='https://checkout.stripe.com/expired',stripe_session_id='cs_expired' where workspace_id=$1",
+      [workspace.id],
+    );
+    const next = await reserveSocialCheckoutAttempt(sql, workspace.id);
+    expect(next).toBeTruthy();
+    expect(next).not.toBe(accepted[0]);
+    const row = await sql.query<{
+      request_id: string;
+      checkout_url: string | null;
+      stripe_session_id: string | null;
+    }>(
+      "select request_id,checkout_url,stripe_session_id from social_checkout_reservations where workspace_id=$1",
+      [workspace.id],
+    );
+    expect(row).toEqual([{ request_id: next, checkout_url: null, stripe_session_id: null }]);
+  });
+  it("blocks a duplicate subscription from authoritative Stripe state even after local reservation expiry", () => {
+    for (const status of [
+      "active",
+      "trialing",
+      "past_due",
+      "paused",
+      "unpaid",
+      "incomplete",
+      "unknown",
+    ]) {
+      expect(() =>
+        assertSocialCheckoutAvailable({
+          data: [{ status, metadata: { product: "social_media" } }],
+          has_more: false,
+        }),
+      ).toThrow("Use Manage billing");
+    }
+    for (const status of ["canceled", "incomplete_expired"]) {
+      expect(() =>
+        assertSocialCheckoutAvailable({
+          data: [{ status, metadata: { product: "social_media" } }],
+          has_more: false,
+        }),
+      ).not.toThrow();
+    }
+    expect(() => assertSocialCheckoutAvailable({ data: [], has_more: true })).toThrow(
+      "requires review",
+    );
+    expect(() => assertSocialCheckoutAvailable({ data: [], has_more: false })).not.toThrow();
   });
 });

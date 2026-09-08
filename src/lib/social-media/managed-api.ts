@@ -1,26 +1,36 @@
 import { z } from "zod";
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { manualSocialListingSchema, builtinImageSchema } from "./managed-types";
+import {
+  manualSocialListingSchema,
+  builtinImageSchema,
+  managedMediaCursorSchema,
+} from "./managed-types";
 
 export const getManagedMediaWorkspace = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { getSql } = await import("@/lib/db");
     const { ensurePersonalWorkspace } = await import("@/lib/workspaces/repository.server");
-    const { listManagedImages } = await import("./managed-media.server");
+    const { listManagedImagePage } = await import("./managed-media.server");
     const sql = await getSql();
     const workspace = await ensurePersonalWorkspace(context.userId, sql);
+    const page = await listManagedImagePage(context.userId, workspace.id, sql);
     const listings = await sql.query<{ id: string; title: string; address: string }>(
-      "select id,title,coalesce(address_line1,'') as address from listings where workspace_id=$1 order by created_at desc limit 100",
-      [workspace.id],
+      "select id,title,coalesce(address_line1,'') as address from listings where workspace_id=$1 " +
+        "and (id in(select id from listings where workspace_id=$1 order by created_at desc limit 100) or id=any($2::text[])) order by created_at desc",
+      [workspace.id, page.images.map((image) => image.listingId)],
     );
-    const images = await listManagedImages(context.userId, workspace.id, sql);
     const pending = await sql.query<{ count: number }>(
       "select count(*)::int as count from managed_media_delete_queue where workspace_id=$1",
       [workspace.id],
     );
-    return { listings, images, pendingPublicDeletions: pending[0]?.count ?? 0 };
+    return {
+      listings,
+      images: page.images,
+      nextCursor: page.nextCursor,
+      pendingPublicDeletions: pending[0]?.count ?? 0,
+    };
   });
 export const createManualSocialListing = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -97,4 +107,21 @@ export const retryPublicMediaDeletion = createServerFn({ method: "POST" })
     const { cleanupPublicMedia } = await import("./managed-media.server");
     const workspace = await ensurePersonalWorkspace(context.userId);
     return { pendingPublicDeletions: await cleanupPublicMedia(context.userId, workspace.id) };
+  });
+
+export const getOlderManagedMedia = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator(z.object({ cursor: managedMediaCursorSchema }))
+  .handler(async ({ context, data }) => {
+    const { ensurePersonalWorkspace } = await import("@/lib/workspaces/repository.server");
+    const { getSql } = await import("@/lib/db");
+    const { listManagedImagePage } = await import("./managed-media.server");
+    const sql = await getSql();
+    const workspace = await ensurePersonalWorkspace(context.userId, sql);
+    const page = await listManagedImagePage(context.userId, workspace.id, sql, data.cursor);
+    const listings = await sql.query<{ id: string; title: string; address: string }>(
+      "select id,title,coalesce(address_line1,'') as address from listings where workspace_id=$1 and id=any($2::text[])",
+      [workspace.id, page.images.map((image) => image.listingId)],
+    );
+    return { ...page, listings };
   });

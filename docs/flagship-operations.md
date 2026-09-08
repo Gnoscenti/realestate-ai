@@ -12,11 +12,13 @@ Atomic panel reservation occurs before paid calls, with a three-panel/workspace/
 
 Social's built-in studio accepts an agent-supplied marketing property and explicit photo-use permission. It validates JPEG/PNG/WebP bytes, byte/pixel/frame limits, decodes and re-encodes the image to strip metadata, and derives checksums/dimensions on the server. It exports a real 1080×1080 PNG with the complete photo and supplied title/address. It does not generate rooms or verify listing status, ownership, brokerage or pricing claims. The free beta allows ten exports/day and 100 MiB retained media/workspace. Images are stored privately in PostgreSQL; authenticated membership is required to read them. Anonymous reads return 401; another tenant sees 404.
 
+Public uploads reserve a deterministic object path and cleanup intent before the external call. The journal survives deletion; a five-minute settlement window prevents cleanup racing an in-flight upload. Retained photos/exports use cursor pagination, and interrupted built-in jobs fail safely so a fresh export can run.
+
 The optional paid renderer uses explicit public Blob delivery consent, approved source/output hosts, real audited Orshot template mappings, durable jobs, entitlement/quota checks and retained output. The app only reports a paid render complete after validating and retaining the actual PNG. Stripe has a separate social subscription flow and signed lifecycle webhook; a Checkout return never grants entitlement. Video remains Setup required. Direct publishing remains Planned. Download and manual posting is the working path.
 
 ## Running locally with durable storage
 
-Use Linux Node 22+ and the repository lockfile. The integration was tested with Node 22.23.2/npm 11.19.0; package metadata requests npm 12 and Vercel is configured for Node 24, which was not independently exercised locally. Avoid accidentally invoking Windows npm from WSL.
+Use Linux Node 22+ and the repository lockfile. The integration was tested with Node 22.23.2/npm 11.19.0; the existing CI uses npm 10.9.8 and the lockfile supports both npm 10.9.8 and 11.19.0 and Vercel is configured for Node 24, which was not independently exercised locally. Avoid accidentally invoking Windows npm from WSL.
 
 For a new environment, provision a dedicated PostgreSQL database, copy `.env.example` into an ignored local env file, replace configuration examples, and keep all server credentials unprefixed by `VITE_`. At minimum use a real `DATABASE_URL`, a generated `BETTER_AUTH_SECRET`, `VITE_AUTH_ENABLED=true`, and a `BETTER_AUTH_URL` matching the local origin. Run:
 
@@ -65,7 +67,7 @@ npm run test:e2e
 npm audit
 ```
 
-The integration's strongest completed flagship gate: 273 unit tests in 34 files, all 15 Playwright tests, typecheck and production build passed. Tests include actual image decoding/rendering, quota concurrency, atomic evidence persistence, tenant isolation and signed Stripe payload validation. Full browser tests use the repository's isolated auth-disabled test mode; separate manual browser acceptance used real Better Auth and PostgreSQL. Stripe objects/signing keys in tests are explicitly synthetic; no live payment/webhook is inferred. Unit tests against actual PostgreSQL separately passed 21 CiteLock/CSV and six social/billing cases.
+The integration's strongest completed flagship gate: 285 unit tests in 35 files, all 15 Playwright tests, typecheck and production build passed. Tests include actual image decoding/rendering, quota concurrency, atomic evidence persistence, tenant isolation and signed Stripe payload validation. Full browser tests use the repository's isolated auth-disabled test mode; separate manual browser acceptance used real Better Auth and PostgreSQL. Stripe objects/signing keys in tests are explicitly synthetic; no live payment/webhook is inferred. Unit tests against actual PostgreSQL separately passed 21 CiteLock/CSV and six social/billing cases.
 
 Dependency audit reported zero known vulnerabilities after compatible updates and a narrow `xcode`→`uuid@11.1.1` override. Xcode's actual UUID generation API produced 1,000 valid unique values. This is not an iOS archive/signing/App Store check; that requires the existing macOS delivery path.
 
@@ -80,8 +82,9 @@ Dependency audit reported zero known vulnerabilities after compatible updates an
 | 0013_citelock_panel_reservations.sql | Atomic panel budget and evidence integrity | Added and locally applied |
 | 0014_managed_listing_media.sql | Private bytes, quotas and optional public deletion queue | Added and locally applied |
 | 0015_social_stripe_lifecycle.sql | Customer/event/checkout binding | Added and locally applied; no live Stripe acceptance |
+| 0016_public_media_operations.sql | Durable pre-upload object identity and deletion intent | New forward migration; local acceptance only |
 
-Gaps in numeric prefixes are intentional; migration identity is the full filename. Preserved local alternate 0007–0010 migrations are not silently imported. #29's six voice files must remain unrenumbered until production nonapplication is proved. When that proof exists, the next free range after current main is 0016–0021, subject to a fresh main check. Never edit an applied migration to change semantics; add a forward migration. Do not deploy the deferred voice branch or run its migration directory against production while this gate remains open.
+Gaps in numeric prefixes are intentional; migration identity is the full filename. Preserved local alternate 0007–0010 migrations are not silently imported. #29's six voice files must remain unrenumbered until production nonapplication is proved. When that proof exists, the next free range after current main is 0017–0022, subject to a fresh main check. Never edit an applied migration to change semantics; add a forward migration. Do not deploy the deferred voice branch or run its migration directory against production while this gate remains open.
 
 ## Reconciliation of preserved local work
 

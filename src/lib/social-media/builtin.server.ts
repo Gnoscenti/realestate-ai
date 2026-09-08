@@ -30,6 +30,7 @@ export async function generateBuiltinImage(
     templateKey: "builtin-square-v1",
     mediaIds: [input.mediaId],
   };
+  await repository.recoverInterruptedBuiltinJobs(sql, workspaceId, userId);
   const claimed = await repository.createSocialMediaJob(sql, {
     ...intent,
     id: input.requestId,
@@ -70,7 +71,9 @@ export async function generateBuiltinImage(
       errorMessage: "Ten free image exports are available per workspace per UTC day.",
       unitCount: 0,
     });
-    throw new Error("Daily limit reached: ten free image exports per workspace");
+    const blocked = await repository.getSocialMediaJob(sql, workspaceId, userId, input.requestId);
+    if (!blocked) throw new Error("Export status could not be confirmed");
+    return blocked;
   }
   try {
     const source = await readManagedImage(userId, input.mediaId, sql);
@@ -105,6 +108,8 @@ export async function generateBuiltinImage(
       errorCode: "provider_unavailable",
       errorMessage: "Image export failed. Your original photo is retained; start a new export.",
     });
-    throw error;
+    const failed = await repository.getSocialMediaJob(sql, workspaceId, userId, input.requestId);
+    if (!failed) throw error;
+    return failed;
   }
 }

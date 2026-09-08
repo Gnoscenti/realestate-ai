@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { imageHash, normalizeListingPhoto } from "./image.server";
-import type { ManagedPhotoView } from "./managed-types";
+import type { ManagedPhotoView, ManagedMediaCursor } from "./managed-types";
 
 export const managedMediaUrl = (id: string) => "/api/listing-media/" + encodeURIComponent(id);
 export async function storeManagedImage(
@@ -90,31 +90,34 @@ export async function uploadManagedPhoto(
   );
   let deliveryWarning: string | null = null;
   if (publicForRenderer) {
-    const { put, del } = await import("@vercel/blob");
+    const { put } = await import("@vercel/blob");
     const { publicHttpsUrlFromAllowlist } = await import("./url-safety.server");
-    let blobUrl: string | undefined;
+    const { beginPublicPhotoDelivery, attachPublicPhotoDelivery, failPublicPhotoDelivery } =
+      await import("./public-upload-repository.server");
+    // Deterministic pathname and cleanup intent are durable BEFORE the paid
+    // external operation. Never remove its journal, even after deletion.
+    const pathname = await beginPublicPhotoDelivery(sql, { mediaId: id, workspaceId, userId });
     try {
-      const blob = await put("listing-photos/" + id + ".jpg", normalized.bytes, {
+      const blob = await put(pathname, normalized.bytes, {
         access: "public",
-        addRandomSuffix: true,
+        addRandomSuffix: false,
+        allowOverwrite: false,
         contentType: "image/jpeg",
+        abortSignal: AbortSignal.timeout(60_000),
       });
-      blobUrl = blob.url;
-      if (!publicHttpsUrlFromAllowlist(blob.url, process.env.SOCIAL_MEDIA_PHOTO_HOST_ALLOWLIST))
-        throw new Error("Blob host is not approved");
-      await sql.query(
-        "update managed_listing_media set blob_url=$1 where id=$2 and workspace_id=$3",
-        [blob.url, id, workspaceId],
-      );
-      await sql.query("update listing_media set source_url=$1 where id=$2 and workspace_id=$3", [
-        blob.url,
-        id,
-        workspaceId,
-      ]);
+      if (
+        blob.pathname !== pathname ||
+        !publicHttpsUrlFromAllowlist(blob.url, process.env.SOCIAL_MEDIA_PHOTO_HOST_ALLOWLIST)
+      ) {
+        throw new Error("Blob delivery did not match the approved object");
+      }
+      if (!(await attachPublicPhotoDelivery(sql, id, workspaceId, blob.url))) {
+        throw new Error("Public delivery could not be attached");
+      }
     } catch {
-      if (blobUrl) await del(blobUrl).catch(() => undefined);
+      await failPublicPhotoDelivery(sql, id, workspaceId);
       deliveryWarning =
-        "Photo saved privately. Public renderer delivery failed; built-in export remains available.";
+        "Photo saved privately. Public delivery was not confirmed; cleanup is queued. Retry public deletion after five minutes.";
     }
   }
   return { id, url: managedMediaUrl(id), deliveryWarning };
@@ -135,11 +138,12 @@ export async function readManagedImage(userId: string, id: string, sqlOverride?:
   await requireWorkspaceAccess(userId, row.workspace_id, undefined, sql);
   return { bytes: Buffer.from(row.hex, "hex"), contentType: row.content_type, sha256: row.sha256 };
 }
-export async function listManagedImages(
+export async function listManagedImagePage(
   userId: string,
   workspaceId: string,
   sqlOverride?: Sql,
-): Promise<ManagedPhotoView[]> {
+  cursor?: ManagedMediaCursor,
+): Promise<{ images: ManagedPhotoView[]; nextCursor: ManagedMediaCursor | null }> {
   const sql = sqlOverride ?? (await getSql());
   await requireWorkspaceAccess(userId, workspaceId, undefined, sql);
   const rows = await sql.query<{
@@ -151,13 +155,16 @@ export async function listManagedImages(
     byte_size: number;
     width: number;
     height: number;
+    cursor_time: string;
   }>(
-    "select m.id,m.listing_id,l.title,m.kind,m.sha256,m.byte_size,m.width,m.height " +
+    "select m.id,m.listing_id,l.title,m.kind,m.sha256,m.byte_size,m.width,m.height,(m.created_at at time zone 'UTC')::text as cursor_time " +
       "from managed_listing_media m join listings l on l.id=m.listing_id and l.workspace_id=m.workspace_id " +
-      "where m.workspace_id=$1 order by m.created_at desc limit 100",
-    [workspaceId],
+      "where m.workspace_id=$1 and ($2::timestamptz is null or (m.created_at,m.id)<($2::timestamptz,$3::text)) " +
+      "order by m.created_at desc,m.id desc limit 101",
+    [workspaceId, cursor?.createdAt ?? null, cursor?.id ?? null],
   );
-  return rows.map((r) => ({
+  const page = rows.slice(0, 100);
+  const images: ManagedPhotoView[] = page.map((r) => ({
     id: r.id,
     listingId: r.listing_id,
     title: r.title,
@@ -168,20 +175,37 @@ export async function listManagedImages(
     width: r.width,
     height: r.height,
   }));
+  const last = page.at(-1);
+  return {
+    images,
+    nextCursor:
+      rows.length > 100 && last
+        ? { createdAt: last.cursor_time.replace(" ", "T") + "Z", id: last.id }
+        : null,
+  };
+}
+
+export async function listManagedImages(userId: string, workspaceId: string, sqlOverride?: Sql) {
+  return (await listManagedImagePage(userId, workspaceId, sqlOverride)).images;
 }
 
 export async function cleanupPublicMedia(userId: string, workspaceId: string, sqlOverride?: Sql) {
   const sql = sqlOverride ?? (await getSql());
   await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
   const pending = await sql.query<{ blob_url: string }>(
-    "select blob_url from managed_media_delete_queue where workspace_id=$1 limit 100",
+    "select blob_url from managed_media_delete_queue where workspace_id=$1 and not_before<=now() order by requested_at limit 100",
     [workspaceId],
   );
   if (pending.length && process.env.BLOB_READ_WRITE_TOKEN) {
     const { del } = await import("@vercel/blob");
     for (const row of pending) {
       try {
-        await del(row.blob_url);
+        await del(row.blob_url, { abortSignal: AbortSignal.timeout(20_000) });
+        await sql.query(
+          "update managed_public_uploads set status='deleted',updated_at=now() " +
+            "where pathname=$1 and workspace_id=$2 and status<>'attached'",
+          [row.blob_url, workspaceId],
+        );
         await sql.query(
           "delete from managed_media_delete_queue where blob_url=$1 and workspace_id=$2",
           [row.blob_url, workspaceId],
@@ -207,13 +231,10 @@ export async function deleteManualSocialListing(
   await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
   const rows = await sql.query<{ deleted: boolean }>(
     "with candidate as materialized(select id from listings where id=$1 and workspace_id=$2 " +
-      "and provenance='agent_supplied:marketing_permission_confirmed' for update), queued as (" +
-      "insert into managed_media_delete_queue(blob_url,workspace_id,requested_by_user_id) " +
-      "select m.blob_url,$2,$3 from managed_listing_media m join candidate c on c.id=m.listing_id " +
-      "where m.workspace_id=$2 and m.blob_url is not null on conflict do nothing returning 1), removed as (" +
+      "and provenance='agent_supplied:marketing_permission_confirmed' for update), removed as (" +
       "delete from listings where id in(select id from candidate) and workspace_id=$2 returning id) " +
       "select exists(select 1 from removed) as deleted",
-    [listingId, workspaceId, userId],
+    [listingId, workspaceId],
   );
   if (!rows[0]?.deleted)
     throw new Error("Only properties created in this image studio can be deleted here");
