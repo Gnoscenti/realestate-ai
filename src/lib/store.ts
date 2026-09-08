@@ -1630,13 +1630,7 @@ export function ensureHydrationHook() {
         comments: f.comments.map((c) => ({ ...c })),
       }));
     if (Object.keys(patch).length) useAppStore.setState(patch);
-    const after = useAppStore.getState();
-    if (
-      after.leads.some(looksLikeSeedLead) ||
-      after.properties.some(looksLikeSeedProperty)
-    ) {
-      after.purgeSeedData();
-    }
+    // Hydration must preserve saved records. Sample cleanup is an explicit user action.
     useAppStore.getState().setHydrated(true);
   });
 }
