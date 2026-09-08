@@ -1,11 +1,8 @@
-/**
- * Provider contracts only. Live implementations arrive after durable
- * entitlement, idempotency, and webhook tests are merged. No permissive mock is
- * provided: an unconfigured deployment must never claim provisioning worked.
- */
+/** Server-only provider contracts. Live implementations use native `fetch`. */
 
 export interface VoiceRuntimeAgentInput {
   workspaceId: string;
+  provisioningIdentity: string;
   displayName: string;
   systemPrompt: string;
   greeting: string;
@@ -13,9 +10,14 @@ export interface VoiceRuntimeAgentInput {
   webhookUrl: string;
 }
 
+export interface VoiceRuntimeLlmResult {
+  providerLlmId: string;
+  providerLlmVersion: number;
+}
+
 export interface VoiceRuntimeAgentResult {
-  provider: "retell";
   providerAgentId: string;
+  providerAgentVersion: number;
 }
 
 export interface NormalizedVoiceWebhook {
@@ -27,21 +29,58 @@ export interface NormalizedVoiceWebhook {
 }
 
 export interface VoiceRuntimeProvider {
-  createAgent(input: VoiceRuntimeAgentInput): Promise<VoiceRuntimeAgentResult>;
-  updateAgent(
-    providerAgentId: string,
-    input: VoiceRuntimeAgentInput,
-  ): Promise<void>;
-  attachInboundNumber(providerAgentId: string, e164: string): Promise<void>;
+  createLlm(input: VoiceRuntimeAgentInput): Promise<VoiceRuntimeLlmResult>;
+  updateLlm(input: VoiceRuntimeAgentInput & {
+    providerLlmId: string;
+  }): Promise<VoiceRuntimeLlmResult>;
+  createOrRecoverAgent(input: VoiceRuntimeAgentInput & {
+    providerLlmId: string;
+    providerLlmVersion: number;
+    agentMarker: string;
+  }): Promise<VoiceRuntimeAgentResult>;
+  createDraftAgentVersion(input: {
+    providerAgentId: string;
+    baseVersion: number;
+  }): Promise<VoiceRuntimeAgentResult>;
+  configureAgentVersion(input: VoiceRuntimeAgentInput & {
+    providerAgentId: string;
+    providerAgentVersion: number;
+    providerLlmId: string;
+    providerLlmVersion: number;
+  }): Promise<void>;
+  publishAgentVersion(input: {
+    providerAgentId: string;
+    providerAgentVersion: number;
+    versionDescription: string;
+  }): Promise<void>;
+  importAndBindInboundNumber(input: {
+    e164: string;
+    terminationUri: string;
+    providerAgentId: string;
+    nickname: string;
+  }): Promise<void>;
+  bindInboundNumber(input: {
+    e164: string;
+    providerAgentId: string;
+  }): Promise<void>;
+  unbindInboundNumber(input: { e164: string }): Promise<void>;
+  deleteCall(providerCallId: string): Promise<void>;
   verifyAndNormalizeWebhook(
     rawBody: string,
     signature: string | null,
+    nowMs?: number,
   ): NormalizedVoiceWebhook;
 }
 
 export interface ReservedPhoneNumber {
   e164: string;
   phoneNumberSid: string;
+}
+
+export interface SipRoutingResult {
+  trunkSid: string;
+  terminationUri: string;
+  originationUrlSid: string;
 }
 
 export interface TelephonyProvider {
@@ -53,6 +92,6 @@ export interface TelephonyProvider {
   configureRetellSipRouting(input: {
     phoneNumberSid: string;
     retellSipUri: string;
-  }): Promise<{ trunkSid: string }>;
+  }): Promise<SipRoutingResult>;
   releaseNumber(phoneNumberSid: string): Promise<void>;
 }
