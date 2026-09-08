@@ -33,7 +33,6 @@ function EdgePlaybookPage() {
   const leads = useAppStore((s) => s.leads);
   const properties = useAppStore((s) => s.properties);
   const deals = useAppStore((s) => s.deals);
-  const mlsConnections = useAppStore((s) => s.mlsConnections);
 
   const brief = buildDailyEdgeBrief({
     agentName: profile?.name,
@@ -43,9 +42,7 @@ function EdgePlaybookPage() {
       ["active", "coming_soon", "pending"].includes(p.status),
     ).length,
     openDealCount: deals.filter((d) => d.stage !== "closed").length,
-    hasMlsConnection: mlsConnections.some(
-      (c) => c.status === "connected" || c.hasCredentials,
-    ),
+    hasMlsConnection: false,
     hasWebsite: Boolean(profile?.website),
   });
 

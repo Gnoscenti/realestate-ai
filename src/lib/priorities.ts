@@ -4,7 +4,7 @@ import {
   appointmentsNeedingAttention,
   formatApptWhen,
 } from "@/lib/calendar";
-import { suggestContentGap } from "@/lib/social-agent";
+import { suggestContentGap } from "@/lib/social-desk/suggest";
 import { formatCurrency } from "@/lib/utils";
 
 export type PriorityKind =

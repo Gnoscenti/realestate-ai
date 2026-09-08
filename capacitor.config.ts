@@ -23,13 +23,9 @@ const config: CapacitorConfig = {
         server: {
           url: serverUrl,
           cleartext: false,
-          allowNavigation: [
-            "localhost",
-            "127.0.0.1",
-            "*.vercel.app",
-            "*.x.ai",
-            serverUrl.replace(/^https?:\/\//, "").split("/")[0],
-          ],
+          // Only the configured app host. A wildcard over a shared hosting
+          // platform would let any third-party site load inside the shell.
+          allowNavigation: [new URL(serverUrl).host],
         },
       }
     : {

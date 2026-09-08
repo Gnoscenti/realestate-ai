@@ -62,7 +62,7 @@ function CalendarPage() {
   const setAppointmentStatus = useAppStore((s) => s.setAppointmentStatus);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
   const addContractor = useAppStore((s) => s.addContractor);
-  const useContractor = useAppStore((s) => s.useContractor);
+  const logContractorUse = useAppStore((s) => s.useContractor);
   const toggleContractorCommon = useAppStore((s) => s.toggleContractorCommon);
   const archiveContractor = useAppStore((s) => s.archiveContractor);
   const updateContractor = useAppStore((s) => s.updateContractor);
@@ -142,7 +142,7 @@ function CalendarPage() {
   };
 
   const markUsed = (id: string, company: string) => {
-    useContractor(id);
+    logContractorUse(id);
     toast.success(`Logged use · ${company} stays on Common list`);
   };
 

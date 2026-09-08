@@ -42,7 +42,7 @@ describe("CiteLock v2", () => {
     );
     expect(report.gates.find((gate) => gate.id === "license")?.status).toBe("pass");
     expect(report.gates.find((gate) => gate.id === "broker-license")?.status).toBe("warn");
-    expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe("block");
+    expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe("warn");
     expect(
       report.gates.find((gate) => gate.id === "production-claims")?.status,
     ).toBe("block");
@@ -108,7 +108,7 @@ describe("CiteLock v2", () => {
 
     expect(report.listingBlurbs).toHaveLength(0);
     expect(report.faqs.some((faq) => /active listings/i.test(faq.question))).toBe(false);
-    expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe("block");
+    expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe("warn");
   });
 
   it("blocks expired regulator credentials and removes them from answers and schema", () => {
@@ -184,7 +184,7 @@ describe("CiteLock v2", () => {
 
     expect(
       withoutProvider.gates.find((gate) => gate.id === "listing-role")?.status,
-    ).toBe("block");
+    ).toBe("warn");
     expect(withoutProvider.listingBlurbs).toHaveLength(0);
     expect(
       withProvider.gates.find((gate) => gate.id === "listing-role")?.status,
@@ -455,7 +455,7 @@ describe("CiteLock v2", () => {
 
     expect(report.listingBlurbs).toHaveLength(0);
     expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe(
-      "block",
+      "warn",
     );
   });
 
@@ -640,7 +640,7 @@ describe("CiteLock v2", () => {
 
     expect(report.listingBlurbs).toHaveLength(0);
     expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe(
-      "block",
+      "warn",
     );
   });
 

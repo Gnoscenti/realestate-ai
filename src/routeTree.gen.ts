@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AieoRouteImport } from './routes/aieo'
 import { Route as AlertsRouteImport } from './routes/alerts'
@@ -28,12 +27,8 @@ import { Route as OutreachRouteImport } from './routes/outreach'
 import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -124,9 +119,13 @@ const TransactionsRoute = TransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
@@ -145,9 +144,9 @@ export interface FileRoutesByFullPath {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
@@ -166,10 +165,10 @@ export interface FileRoutesByTo {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/': typeof IndexRoute
   '/aieo': typeof AieoRoute
   '/alerts': typeof AlertsRoute
@@ -188,11 +187,11 @@ export interface FileRoutesById {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/api/auth/$'
     | '/'
     | '/aieo'
     | '/alerts'
@@ -211,9 +210,9 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/api/auth/$'
     | '/'
     | '/aieo'
     | '/alerts'
@@ -232,9 +231,9 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/api/auth/$'
   id:
     | '__root__'
-    | '/api/auth/$'
     | '/'
     | '/aieo'
     | '/alerts'
@@ -253,10 +252,10 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   IndexRoute: typeof IndexRoute
   AieoRoute: typeof AieoRoute
   AlertsRoute: typeof AlertsRoute
@@ -275,17 +274,11 @@ export interface RootRouteChildren {
   PropertiesRoute: typeof PropertiesRoute
   SearchRoute: typeof SearchRoute
   TransactionsRoute: typeof TransactionsRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -412,11 +405,17 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TransactionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
   IndexRoute: IndexRoute,
   AieoRoute: AieoRoute,
   AlertsRoute: AlertsRoute,
@@ -435,6 +434,7 @@ const rootRouteChildren: RootRouteChildren = {
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

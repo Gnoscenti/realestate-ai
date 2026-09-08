@@ -34,8 +34,8 @@ Open the new icon. It runs full-screen like an app.
 
 ### First open tips
 
-- Complete onboarding, then unlock with **$9.99 intro** (demo works without Stripe keys) or a beta code:  
-  `RSF-BETA-01` · `RSF-BETA-02` · `COVENANT-AI` · `LISTINGPRO` · `AGENTOS-X`
+- Sign in, then unlock with the beta code your team sent you (validated by the server) or the $9.99 checkout.
+  Codes are never published in docs or shipped in the app bundle.
 - If the icon looks plain, that’s OK — branding polish can wait; the app still works.
 
 ---

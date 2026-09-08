@@ -203,11 +203,13 @@ function SearchPage() {
                 }}
                 onView={() => setDetail(property)}
                 onTour={() => {
-                  toast.success(`Tour request sent for ${property.title}`);
+                  toast.message(
+                    `No showing request is sent from here. Add the tour under Calendar so the workspace can prepare it.`,
+                  );
                   pushActivity({
                     type: "deal",
-                    title: "Tour scheduled",
-                    description: `Showing requested · ${property.address}`,
+                    title: "Tour interest noted",
+                    description: `You flagged ${property.address} for a tour (no request sent)`,
                     badge: "Tour",
                   });
                 }}

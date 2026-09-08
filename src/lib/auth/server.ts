@@ -130,6 +130,12 @@ const trustedOrigins: string[] = explicitBaseURL
 
 const databaseUrl = env("DATABASE_URL");
 
+// A process-local random secret would invalidate every session on each cold
+// start and differ between serverless instances (ledger D-009).
+if (env("NODE_ENV") === "production" && !env("BETTER_AUTH_SECRET")) {
+  throw new Error("BETTER_AUTH_SECRET is required in production.");
+}
+
 // Static broker OAuth endpoints (skip OIDC discovery on every sign-in / callback).
 // Discovery would cost an extra network hop to the broker before the popup can
 // even redirect to Google/X — the live-preview popup felt stuck on the app for

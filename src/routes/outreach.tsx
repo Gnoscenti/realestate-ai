@@ -69,7 +69,6 @@ function OutreachPage() {
   const deals = useAppStore((s) => s.deals);
   const touchLead = useAppStore((s) => s.touchLead);
   const pushActivity = useAppStore((s) => s.pushActivity);
-  const profile = useAppStore((s) => s.agentProfile);
   const [slaClock, setSlaClock] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setSlaClock((n) => n + 1), 15000);
@@ -120,6 +119,8 @@ function OutreachPage() {
   const agreement = useMemo(() => generateBuyerAgreementOutline(), []);
   const protocol = useMemo(
     () => (lead ? buildFiveMinuteProtocol(lead) : null),
+    // slaClock forces the elapsed-time protocol to re-evaluate every 15s.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [lead, slaClock],
   );
 

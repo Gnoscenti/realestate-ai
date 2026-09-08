@@ -249,8 +249,8 @@ function LoginPage() {
               </Button>
 
               <p className="text-center text-xs leading-relaxed text-[var(--color-fg-muted)]">
-                First time here? Choose Create account above. No profile or MLS
-                setup is required to enter the workspace.
+                First time here? Choose Create account above. No profile setup
+                is required to enter the workspace.
               </p>
             </form>
           ) : (
@@ -266,8 +266,8 @@ function LoginPage() {
               same-origin capability confirming that federation is configured. */}
 
           <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-            Open the workspace first. Add your profile, MLS, or website later
-            from inside the app.
+            Open the workspace first. Add your profile and website later from
+            inside the app.
           </p>
         </div>
       </div>

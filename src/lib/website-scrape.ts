@@ -438,11 +438,6 @@ function walkJsonLd(
   walk(nodes);
 }
 
-function typeOf(o: Record<string, unknown>): string {
-  const t = o["@type"];
-  if (Array.isArray(t)) return t.map(String).join(",");
-  return String(t ?? "");
-}
 
 function schemaTypeTokens(o: Record<string, unknown>): string[] {
   const values = Array.isArray(o["@type"]) ? o["@type"] : [o["@type"]];
@@ -450,7 +445,7 @@ function schemaTypeTokens(o: Record<string, unknown>): string[] {
     .filter((value) => typeof value === "string")
     .map((value) =>
       String(value)
-        .split(/[\/#]/)
+        .split(/[/#]/)
         .filter(Boolean)
         .at(-1)!
         .toLowerCase(),
@@ -995,30 +990,6 @@ function extractPhoto(html: string, baseUrl: string): string | undefined {
   return candidates[0]?.url;
 }
 
-function extractLinks(html: string, baseUrl: string): string[] {
-  const hrefs = new Set<string>();
-  const re = /href=["']([^"'#]+)["']/gi;
-  let m: RegExpExecArray | null;
-  let origin: string;
-  try {
-    origin = new URL(baseUrl).origin;
-  } catch {
-    return [];
-  }
-  while ((m = re.exec(html))) {
-    const abs = absolutize(baseUrl, m[1]);
-    if (!abs) continue;
-    try {
-      const u = new URL(abs);
-      if (u.origin !== origin) continue;
-      if (/\.(pdf|jpg|png|gif|css|js|zip|mp4)(\?|$)/i.test(u.pathname)) continue;
-      hrefs.add(u.toString().replace(/\/$/, ""));
-    } catch {
-      /* skip */
-    }
-  }
-  return [...hrefs];
-}
 
 function parseListingText(text: string, baseUrl: string): ScrapedListing[] {
   const listings: ScrapedListing[] = [];
@@ -1148,23 +1119,6 @@ function parseListingCards(html: string, baseUrl: string): ScrapedListing[] {
   return dedupeListings([...exactCards, ...fallback]);
 }
 
-function mergeProfile(
-  a: ScrapedAgentIdentity,
-  b: ScrapedAgentIdentity,
-): ScrapedAgentIdentity {
-  return {
-    name: a.name || b.name,
-    phone: a.phone || b.phone,
-    email: a.email || b.email,
-    photoUrl: a.photoUrl || b.photoUrl,
-    mlsNumber: a.mlsNumber || b.mlsNumber,
-    license: a.license || b.license,
-    brokerage: a.brokerage || b.brokerage,
-    bio: a.bio || b.bio,
-    title: a.title || b.title,
-    address: a.address || b.address,
-  };
-}
 
 function dedupeListings(items: ScrapedListing[]): ScrapedListing[] {
   const byObservation = new Map<string, ScrapedListing>();
@@ -1236,7 +1190,7 @@ export function parseRealtorWebsiteHtml(
       ? undefined
       : htmlFallback();
   };
-  let profile: ScrapedAgentIdentity = {
+  const profile: ScrapedAgentIdentity = {
     ...fromLd.profile,
     name: fromLd.profile.name || titleName,
     phone: resolveContactField(

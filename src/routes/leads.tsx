@@ -171,23 +171,18 @@ function LeadsPage() {
     );
     pushActivity({
       type: "lead",
-      title: "Follow-ups scheduled",
-      description: `AI scheduled outreach for ${targets.length} priority leads`,
-      badge: "Nurture",
+      title: "Follow-up dates set",
+      description: `Next follow-up set to tomorrow for ${targets.length} priority leads (rule: highest score first)`,
+      badge: "Follow-up",
     });
-    toast.success(`Scheduled follow-ups for ${targets.length} leads`);
+    toast.message(`Set a follow-up date for ${targets.length} leads. This is a rule, not an AI analysis; nothing was sent.`);
   };
 
   const sendNurture = () => {
     if (!selected) return;
-    touchLead(selected.id);
-    pushActivity({
-      type: "chat",
-      title: "AI nurture sent",
-      description: `Personalized sequence started for ${selected.name}`,
-      badge: "Nurture",
-    });
-    toast.success(`Nurture sequence sent to ${selected.name}`);
+    toast.message(
+      `Nothing is sent automatically. Open Instant Response to copy the nurture drafts for ${selected.name} into your own email or SMS.`,
+    );
   };
 
   return (
@@ -204,7 +199,7 @@ function LeadsPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={scheduleFollowups}>
             <TrendingUp className="h-4 w-4" />
-            AI analysis
+            Set follow-up dates
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -390,16 +385,19 @@ function LeadsPage() {
                   active={selected?.id === lead.id}
                   onSelect={() => setSelectedId(lead.id)}
                   onCall={() => {
+                    if (typeof window !== "undefined" && lead.phone) window.location.href = `tel:${lead.phone.replace(/[^\d+]/g, "")}`;
                     touchLead(lead.id);
-                    toast.success(`Call logged · ${lead.phone}`);
+                    toast.message(`Logged a contact touch for ${lead.name}. Calls happen on your phone; nothing was dialed by the app.`);
                   }}
                   onMail={() => {
+                    if (typeof window !== "undefined" && lead.email) window.location.href = `mailto:${lead.email}`;
                     touchLead(lead.id);
-                    toast.success(`Email drafted to ${lead.email}`);
+                    toast.message(`Opened your mail app for ${lead.email}. Logged a contact touch.`);
                   }}
                   onMsg={() => {
+                    if (typeof window !== "undefined" && lead.phone) window.location.href = `sms:${lead.phone.replace(/[^\d+]/g, "")}`;
                     touchLead(lead.id);
-                    toast.success(`SMS queued for ${lead.name}`);
+                    toast.message(`Opened your messaging app for ${lead.name}. Logged a contact touch.`);
                   }}
                 />
               ))}

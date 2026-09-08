@@ -35,7 +35,7 @@ function requireIdentifier(value: string, label: string): string {
     value !== trimmed ||
     !value ||
     value.length > 240 ||
-    /[\u0000-\u001f]/.test(value)
+    [...value].some((ch) => ch.charCodeAt(0) < 32)
   ) {
     throw new Error(`Invalid ${label}`);
   }

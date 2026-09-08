@@ -16,6 +16,19 @@ const databaseUrl =
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
 
+// Production must never run on the in-memory fallback: every deploy would start
+// with an empty database and lose accounts, scans, and drafts (ledger D-009).
+if (
+  typeof process !== "undefined" &&
+  process.env.NODE_ENV === "production" &&
+  dbSource === "pglite" &&
+  process.env.ALLOW_EPHEMERAL_DB_IN_PRODUCTION !== "1"
+) {
+  throw new Error(
+    "DATABASE_URL is required in production. Refusing to start on the ephemeral PGLite fallback.",
+  );
+}
+
 /**
  * Minimal shared SQL surface, satisfied by both Neon and PGLite. Both the
  * tagged-template and `.query()` forms resolve to an array of row objects:

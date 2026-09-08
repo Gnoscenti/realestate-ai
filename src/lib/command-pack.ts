@@ -8,11 +8,7 @@ import {
   generateReactivation,
 } from "@/lib/ai";
 import type { PriorityItem } from "@/lib/priorities";
-import {
-  composeFullCaption,
-  runSocialContentAgent,
-  type CampaignGoal,
-} from "@/lib/social-agent";
+import { GOAL_OPTIONS, listingFacts, type ContentGoal } from "@/lib/social-desk/suggest";
 import { formatCurrency } from "@/lib/utils";
 
 export type CommandArtifact = {
@@ -129,28 +125,22 @@ export function buildCommandPack(
       hrefLabel: "Full brief",
     });
   } else if (item.kind === "content_gap" || item.kind === "social_campaign") {
-    const goal = (item.meta?.goal as CampaignGoal) || "just_listed";
+    const goal = (item.meta?.goal as ContentGoal) || "just_listed";
     const prop = item.meta?.propertyId
       ? ctx.properties.find((p) => p.id === item.meta!.propertyId)
       : subjectProperty;
-    const plan = runSocialContentAgent({
-      goal,
-      platforms: ["instagram", "facebook", "linkedin", "stories"],
-      voice: "Professional & warm",
-      property: prop,
-    });
-    const top = plan.posts[0];
+    const goalLabel = GOAL_OPTIONS.find((option) => option.value === goal)?.label || "Post";
+    const facts = prop ? listingFacts(prop) : [];
     artifacts.push({
       id: "social",
       kind: "social",
-      title: "Social pack (preview)",
-      summary: `${plan.posts.length} posts · ${plan.durationDays}d · ${plan.title}`,
-      body: top
-        ? composeFullCaption(top) +
-          `\n\n—\nVisual: ${top.visualBrief}\n\nFull campaign: ${plan.posts.length} assets across ${plan.platforms.join(", ")}.`
-        : plan.objective,
-      href: `/marketing?goal=${goal}${prop ? `&property=${prop.id}` : ""}`,
-      hrefLabel: "Open Content Agent",
+      title: `${goalLabel} · facts on record`,
+      summary: prop ? `${facts.length} facts from ${prop.title}` : "Open the Social Desk to draft from your facts",
+      body: facts.length
+        ? `Facts the Social Desk will draft from (nothing else is invented):\n${facts.map((fact) => `• ${fact}`).join("\n")}`
+        : "Add a listing or your own facts, then draft in the Social Desk. Every caption is reviewed for fair housing before approval.",
+      href: `/marketing${prop ? `?property=${prop.id}` : ""}`,
+      hrefLabel: "Open Social Desk",
     });
   } else if (item.kind === "deal_risk" || item.kind === "deal_milestone") {
     artifacts.push({

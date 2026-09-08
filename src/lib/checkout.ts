@@ -40,5 +40,11 @@ export const confirmCheckout = createServerFn({ method: "POST" })
   .validator(confirmSchema)
   .handler(async ({ data, context }) => {
     const { verifyCheckoutSession } = await import("@/lib/stripe-checkout");
-    return verifyCheckoutSession(data.sessionId, context.userId);
+    const verified = await verifyCheckoutSession(data.sessionId, context.userId);
+    // The server records the grant. The browser mirror can never widen access.
+    const { ensurePersonalWorkspace } = await import("@/lib/workspaces/repository.server");
+    const { grantVerifiedCheckout } = await import("@/lib/billing/entitlement.server");
+    const workspace = await ensurePersonalWorkspace(context.userId);
+    const entitlement = await grantVerifiedCheckout(context.userId, workspace.id, verified);
+    return { ...verified, entitlement };
   });

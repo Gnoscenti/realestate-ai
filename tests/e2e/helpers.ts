@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 
+/** Beta code accepted by the server outside production (see billing/entitlement.server.ts). */
+export const TEST_ACCESS_CODE = "RSF-BETA-01";
+
 /** Clear persisted workspace so each test starts fresh */
 export async function resetApp(page: Page) {
   await page.goto("/");
@@ -47,56 +50,25 @@ export async function completeOnboarding(
   }
 }
 
+/**
+ * Unlock the workspace the way a tester does: redeem a beta code through the
+ * paywall, which the SERVER validates and records. Auth is disabled in
+ * Playwright, so the workspace is the documented dev-user fixture; a code
+ * already redeemed by that workspace simply shows the app on the next load.
+ */
 export async function grantTestAccess(page: Page) {
-  // Integration tests exercise the access boundary without publishing or
-  // consuming a real beta credential. Auth is disabled in Playwright, so the
-  // workspace is deterministically scoped to the documented dev-user fixture.
-  await page.waitForTimeout(600);
-  const body = await page.locator("body").innerText();
-  if (!/Unlock|trial|beta|\$9\.99|Access/i.test(body)) return;
-
-  await page.evaluate((workspaceStorageBaseKey) => {
-    const key = `${workspaceStorageBaseKey}:dev-user`;
-    const raw = window.localStorage.getItem(key);
-    let persisted: { state?: Record<string, unknown>; version?: number } = {};
-    try {
-      persisted = raw ? JSON.parse(raw) : {};
-    } catch {
-      persisted = {};
-    }
-
-    const now = new Date();
-    const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const currentState =
-      persisted.state && typeof persisted.state === "object"
-        ? persisted.state
-        : {};
-    window.localStorage.setItem(
-      key,
-      JSON.stringify({
-        ...persisted,
-        state: {
-          ...currentState,
-          billing: {
-            status: "trialing",
-            source: "demo_checkout",
-            introEndsAt: end.toISOString(),
-            currentPeriodEnd: end.toISOString(),
-            stripeCustomerId: null,
-            stripeSubscriptionId: null,
-            lastCheckoutSessionId: "playwright-fixture",
-            redeemedCode: null,
-            activatedAt: now.toISOString(),
-            isDemo: true,
-          },
-        },
-        version: persisted.version ?? 0,
-      }),
-    );
-  }, WORKSPACE_STORAGE_BASE_KEY);
-
-  await page.reload({ waitUntil: "networkidle" });
-  await page.waitForTimeout(500);
+  const appVisible = page.getByText(/Command Center|Action Desk/i).first();
+  const codeInput = page.locator("#access-code");
+  // The shell asks the server for the entitlement on load; wait for either outcome.
+  await Promise.race([
+    appVisible.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined),
+    codeInput.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined),
+  ]);
+  if (await appVisible.isVisible().catch(() => false)) return;
+  if (!(await codeInput.isVisible().catch(() => false))) return;
+  await codeInput.fill(TEST_ACCESS_CODE);
+  await page.getByRole("button", { name: "Redeem" }).click();
+  await appVisible.waitFor({ state: "visible", timeout: 20_000 });
 }
 
 /**
