@@ -281,6 +281,7 @@ export async function resolveOwnedListingMedia(
   mediaIds: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ResolvedListingMedia | null> {
+  if (!mediaIds.length) return null;
   const listingRows = await sql.query<ListingMediaRow>(
     `select id, title, address_line1, address_line2, city, state,
             postal_code, status, list_price, beds, baths, living_area,
@@ -577,12 +578,12 @@ export async function getActiveSocialMediaJobForIntent(
 ): Promise<SocialMediaJobView | null> {
   const rows = await sql.query<{ id: string }>(
     `select id from social_media_jobs
-      where workspace_id = $1 and user_id = $2 and kind = 'image'
+      where workspace_id = $1 and user_id = $2 and kind = $4
         and intent_key = $3
         and status in ('processing', 'attention_required')
       order by created_at desc
       limit 1`,
-    [workspaceId, userId, serverSocialMediaIntentKey(input)],
+    [workspaceId, userId, serverSocialMediaIntentKey(input), input.kind],
   );
   return rows[0]
     ? getSocialMediaJob(sql, workspaceId, userId, rows[0].id)

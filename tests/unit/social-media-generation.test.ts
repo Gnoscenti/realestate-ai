@@ -14,6 +14,7 @@ import {
   completeSocialMediaImageJob,
   createSocialMediaJob,
   getSocialMediaJob,
+  getActiveSocialMediaJobForIntent,
   getSocialMediaEntitlement,
   listingPhotoEligibility,
   markSocialMediaJob,
@@ -421,6 +422,20 @@ describe("Orshot adapter", () => {
 });
 
 describe("tenant ownership, idempotency, quota, and cascades", () => {
+  it("rejects empty photo selections and looks up the requested job kind", async () => {
+    const seeded=await seedListing("social-kind-"+randomUUID());
+    await expect(resolveOwnedListingMedia(seeded.sql,seeded.workspace.id,seeded.listingId,[],configuredEnv))
+      .resolves.toBeNull();
+    const id=randomUUID();
+    const intent={listingId:seeded.listingId,kind:"video" as const,templateKey:"setup-test",mediaIds:[seeded.mediaId]};
+    await createSocialMediaJob(seeded.sql,{...intent,id,workspaceId:seeded.workspace.id,
+      userId:seeded.userId,provider:"video_setup",status:"processing"});
+    await expect(getActiveSocialMediaJobForIntent(seeded.sql,seeded.workspace.id,seeded.userId,intent))
+      .resolves.toMatchObject({id,kind:"video"});
+    await expect(getActiveSocialMediaJobForIntent(seeded.sql,seeded.workspace.id,seeded.userId,{...intent,kind:"image"}))
+      .resolves.toBeNull();
+  });
+
   it("resolves only same-workspace listing media IDs", async () => {
     const owner = await seedListing(`social-owner-${randomUUID()}`);
     const stranger = await seedListing(`social-stranger-${randomUUID()}`);
