@@ -124,6 +124,7 @@ function MarketingPage() {
     "stories",
   ]);
   const [running, setRunning] = useState(false);
+  const [openHouseWhen, setOpenHouseWhen] = useState("");
   const [steps, setSteps] = useState<AgentStep[]>(() => getAgentPipeline(initialGoal));
   const [activePlan, setActivePlan] = useState<CampaignPlan | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
@@ -183,73 +184,70 @@ function MarketingPage() {
       toast.error("Select at least one platform");
       return;
     }
-    setRunning(true);
-    setTab("agent");
-    const pipeline = getAgentPipeline(goal);
-    setSteps(pipeline.map((s) => ({ ...s, status: "pending" })));
-
-    const advance = async (idx: number) => {
-      setSteps((prev) =>
-        prev.map((s, i) =>
-          i === idx ? { ...s, status: "running" } : i < idx ? { ...s, status: "done" } : s,
-        ),
-      );
-      await new Promise((r) => setTimeout(r, 320 + idx * 80));
-      setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, status: "done" } : s)));
-    };
-
-    for (let i = 0; i < pipeline.length; i++) {
-      await advance(i);
+    if (goal === "open_house" && !openHouseWhen.trim()) {
+      toast.error("Enter the confirmed open-house date, time and time zone.");
+      return;
     }
+    setRunning(true);
+    try {
+      const agentName = profile?.name || "your local agent";
+      const site = profile?.website ? profile.website.replace(/^https?:\/\//, "") : undefined;
+      const area = profile?.areaOfOperations || property?.city || "your market";
 
-    const agentName = profile?.name || "your local agent";
-    const site = profile?.website ? profile.website.replace(/^https?:\/\//, "") : undefined;
-    const area = profile?.areaOfOperations || property?.city || "your market";
+      let plan = runSocialContentAgent({
+        goal,
+        platforms,
+        voice,
+        property,
+        agentName,
+        marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
+        openHouseWhen: openHouseWhen.trim(),
+      });
 
-    let plan = runSocialContentAgent({
-      goal,
-      platforms,
-      voice,
-      property,
-      agentName,
-      marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
-      openHouseWhen: "Sat 1–4 PM",
-    });
+      // Attach actual listing / website photos only (no generated property media).
+      plan = {
+        ...plan,
+        posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
+      };
 
-    // Attach actual listing / website photos only (no generated property media).
-    plan = {
-      ...plan,
-      posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
-    };
-
-    // Inject website into CTAs where useful — never "000 view listing" junk
-    if (site) {
+      // Inject website into CTAs where useful — never "000 view listing" junk
+      if (site) {
+        plan.posts = plan.posts.map((p) => ({
+          ...p,
+          cta: /view listing|000 view/i.test(p.cta)
+            ? `Message for details · ${site}`
+            : p.cta.includes("link in bio")
+              ? p.cta
+              : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
+        }));
+      }
       plan.posts = plan.posts.map((p) => ({
         ...p,
-        cta: /view listing|000 view/i.test(p.cta)
-          ? `Message for details · ${site}`
-          : p.cta.includes("link in bio")
-            ? p.cta
-            : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
+        hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+        body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
+        cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
+        visualBrief: p.visualBrief
+          .replace(/JUST LISTED/gi, "New to market")
+          .replace(/view count|000 views|fake engagement/gi, "")
+          .trim(),
       }));
-    }
-    plan.posts = plan.posts.map((p) => ({
-      ...p,
-      hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-      body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-      cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
-      visualBrief: p.visualBrief
-        .replace(/JUST LISTED/gi, "New to market")
-        .replace(/view count|000 views|fake engagement/gi, "")
-        .trim(),
-    }));
 
-    saveCampaign(plan);
-    setActivePlan(plan);
-    setSelectedPostId(plan.posts[0]?.id ?? null);
-    setRunning(false);
-    setTab("pack");
-    toast.success(`Campaign ready — ${plan.posts.length} assets for ${agentName}`);
+      saveCampaign(plan);
+      setActivePlan(plan);
+      setSelectedPostId(plan.posts[0]?.id ?? null);
+      setSteps(
+        getAgentPipeline(goal).map((step) => ({
+          ...step,
+          status: step.id === "qa" ? "pending" : "done",
+        })),
+      );
+      setTab("pack");
+      toast.success("Campaign draft saved. Review every claim and proposed posting time.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Campaign could not be saved. Retry.");
+    } finally {
+      setRunning(false);
+    }
   };
 
   const downloadPack = () => {
@@ -293,7 +291,7 @@ function MarketingPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="accent">
                 <Bot className="h-3 w-3" />
-                Content Agent
+                Campaign drafts
               </Badge>
               {profile && (
                 <Badge variant="secondary">
@@ -305,8 +303,8 @@ function MarketingPage() {
               Social media marketing engine
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Pulls from active listings saved in this workspace. Campaigns sign as{" "}
-              {profile?.name ?? "you"}
+              Prepares editable drafts from saved property details. No live MLS connection or
+              automatic publishing. Drafts sign as {profile?.name ?? "you"}
               {profile?.website ? ` · ${profile.website.replace(/^https?:\/\//, "")}` : ""}.
             </p>
           </div>
@@ -317,7 +315,7 @@ function MarketingPage() {
               ) : (
                 <Wand2 className="h-4 w-4" />
               )}
-              {running ? "Agent running…" : "Run Content Agent"}
+              {running ? "Preparing draft…" : "Prepare campaign draft"}
             </Button>
             {activePlan && (
               <Button variant="secondary" onClick={downloadPack}>
@@ -342,7 +340,7 @@ function MarketingPage() {
                 Campaign brief
               </CardTitle>
               <CardDescription>
-                MLS listings first — content grounded in your active inventory
+                Use saved property details and review all claims before posting
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -371,8 +369,25 @@ function MarketingPage() {
                 </p>
               </div>
 
+              {goal === "open_house" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="campaign-open-house-time">
+                    Confirmed open-house date, time and time zone
+                  </Label>
+                  <Input
+                    id="campaign-open-house-time"
+                    value={openHouseWhen}
+                    maxLength={160}
+                    onChange={(event) => setOpenHouseWhen(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Only use a schedule confirmed by the property representative.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <Label>MLS listing</Label>
+                <Label>Saved property</Label>
                 <Select value={propertyId} onValueChange={setPropertyId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select listing" />
@@ -454,7 +469,7 @@ function MarketingPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Your MLS book</CardTitle>
+              <CardTitle className="text-base">Your saved property book</CardTitle>
               <CardDescription>Quick-start content from your listings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -485,7 +500,7 @@ function MarketingPage() {
             <CardContent className="space-y-2">
               {campaigns.length === 0 ? (
                 <p className="text-sm text-[var(--color-fg-muted)]">
-                  No campaigns yet — run the agent on an MLS listing.
+                  No campaigns yet. Prepare a draft from a saved property.
                 </p>
               ) : (
                 campaigns.map((c) => (
@@ -518,7 +533,7 @@ function MarketingPage() {
         <div className="lg:col-span-8 space-y-4">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="h-auto flex-wrap">
-              <TabsTrigger value="agent">Agent run</TabsTrigger>
+              <TabsTrigger value="agent">Draft checklist</TabsTrigger>
               <TabsTrigger value="pack">Content pack</TabsTrigger>
               <TabsTrigger value="calendar">Calendar</TabsTrigger>
               <TabsTrigger value="queue">Review status</TabsTrigger>
@@ -528,9 +543,9 @@ function MarketingPage() {
             <TabsContent value="agent" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Pipeline</CardTitle>
+                  <CardTitle className="text-base">Draft preparation and review</CardTitle>
                   <CardDescription>
-                    Grounded in your MLS pull for {profile?.areaOfOperations ?? "your market"}
+                    Uses saved details for {profile?.areaOfOperations ?? "your market"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -564,7 +579,7 @@ function MarketingPage() {
               {!activePlan ? (
                 <Card>
                   <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Select an MLS listing and run the Content Agent.
+                    Select a saved property and prepare a campaign draft.
                   </CardContent>
                 </Card>
               ) : (
