@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import { assistantGatewayToken } from "@/lib/assistant/credentials.server";
 import {
   ensurePersonalWorkspace,
   getAgentProfile,
@@ -101,14 +102,6 @@ function reserveInstanceBurst(userId: string, now = Date.now()): boolean {
     }
   }
   return true;
-}
-
-function gatewayToken(): string | null {
-  return (
-    process.env.AI_GATEWAY_API_KEY?.trim() ||
-    process.env.VERCEL_OIDC_TOKEN?.trim() ||
-    null
-  );
 }
 
 function configuredModel(): string {
@@ -244,7 +237,7 @@ export const askLiveAssistant = createServerFn({ method: "POST" })
 
     const valuationRequest = isPropertyValuationRequest(data.question);
     const soldRecordBrowse = isVerifiedSoldRecordBrowseRequest(data.question);
-    const token = gatewayToken();
+    const token = assistantGatewayToken();
 
     // An unconfigured ordinary request stops before any database read/write.
     if (!valuationRequest && !soldRecordBrowse && !token) {
