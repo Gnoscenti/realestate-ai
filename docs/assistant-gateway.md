@@ -58,7 +58,11 @@ cannot consume allowance twice. Quota-rejected claims are retained as bounded
 best-effort per-instance burst guard runs before Postgres; configure Vercel
 Firewall as the deployment-wide outer limit.
 
-The request is capped at 800 output tokens and 25 seconds. Gateway
+The request is capped at 800 completion tokens (including reasoning) and 25
+seconds. When the model override is `openai/gpt-5-nano`, the request uses
+`reasoning_effort: minimal` so its default reasoning does not consume the entire
+budget and leave an empty answer. Other models receive no reasoning override.
+Gateway
 `disallowPromptTraining` is always required. Per-request zero-data-retention is
 enabled only when `AI_GATEWAY_ZERO_DATA_RETENTION=true`, because that routing
 control requires a supported Pro/Enterprise Gateway plan. Confirm the exact
