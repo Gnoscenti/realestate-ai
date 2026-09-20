@@ -48,3 +48,12 @@ The command does not deploy, mutate a database, commit or push. Existing require
 6. Verify hosted signup/session, free guide/save/reload/export, server-verified upgrade, full guide, provider run and social handoff. A successful build is not a successful hosted workflow.
 
 The user's requested order is configuration first, then commit/push. Authentication and provider/build configuration are complete. Commit/push can proceed; hosted migration validation, branch reconciliation and production promotion remain separate gates.
+
+
+## Push and hosted build outcome
+
+Source commit **d825b75** is pushed to **local/2026-09-08-flagship-preservation**. Vercel built deployment **dpl_9UEN6JTSpD2LK2C64vX9G51SRrNU** successfully (READY). The protected Preview was reached using authenticated `vercel curl`; its session endpoint returned500. Runtime logs identify the root cause: Preview has no DATABASE_URL. The production guard correctly prevents temporary PGLite data loss.
+
+Provision an isolated preview database and stable preview auth configuration before treating that preview as usable. No production secret was copied into Preview and no startup guard was weakened. Production remains on main@2cd3cb1. GitHub's OAuth credential lacked workflow scope, so the same authorized repository's existing SSH credential was used for the full push; CI files remain intact.
+
+The CLI link operation created ignored .vercel metadata and appended a temporary VERCEL_OIDC_TOKEN to ignored .env.local. All six original local variable names remain present. Duplicate ignore lines added by the CLI were removed because existing rules already exclude .vercel and local env files while intentionally tracking .env.example.
