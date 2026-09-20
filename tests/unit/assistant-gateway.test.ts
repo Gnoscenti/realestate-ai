@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  AI_GATEWAY_CHAT_URL,
-  requestGatewayAnswer,
-} from "@/lib/assistant/gateway.server";
+import { AI_GATEWAY_CHAT_URL, requestGatewayAnswer } from "@/lib/assistant/gateway.server";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -45,6 +42,7 @@ describe("AI Gateway client", () => {
     expect(body.model).toBe("openai/test-model");
     expect(body.max_completion_tokens).toBe(800);
     expect(body.tools).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
     expect(body.providerOptions).toEqual({
       gateway: {
         disallowPromptTraining: true,
@@ -62,6 +60,72 @@ describe("AI Gateway client", () => {
       },
       { role: "user", content: "Summarize inventory" },
     ]);
+  });
+
+  it("keeps nano reasoning minimal within the existing completion budget", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Prepare the property for photos." } }],
+          usage: { prompt_tokens: 376, completion_tokens: 216 },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await requestGatewayAnswer({
+      token: "gateway-token",
+      model: "openai/gpt-5-nano",
+      policy: "Trusted policy",
+      workspaceData: "{}",
+      question: "How should I prepare for listing photos?",
+      userId: "user-123",
+      fetchImpl: fetchMock,
+    });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(init.body));
+    expect(body).toMatchObject({
+      model: "openai/gpt-5-nano",
+      max_completion_tokens: 800,
+      reasoning_effort: "minimal",
+      providerOptions: { gateway: { disallowPromptTraining: true } },
+    });
+    expect(result.text).toBe("Prepare the property for photos.");
+    expect(result.usage.outputTokens).toBe(216);
+  });
+
+  it("rejects a reasoning-only response without retrying or fabricating an answer", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ finish_reason: "length", message: { content: "" } }],
+          usage: {
+            prompt_tokens: 376,
+            completion_tokens: 768,
+            completion_tokens_details: { reasoning_tokens: 768 },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      requestGatewayAnswer({
+        token: "gateway-token",
+        model: "openai/gpt-5-nano",
+        policy: "Trusted policy",
+        workspaceData: "{}",
+        question: "Prepare for photos",
+        userId: "user-123",
+        fetchImpl: fetchMock,
+      }),
+    ).rejects.toMatchObject({
+      name: "GatewayRequestError",
+      status: 502,
+      message: "AI service returned an empty response",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("adds zero-data-retention only when the project entitlement is enabled", async () => {
@@ -119,12 +183,13 @@ describe("AI Gateway client", () => {
   });
 
   it("does not expose authentication provider details", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ error: { message: "secret upstream account detail" } }),
-        { status: 401 },
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "secret upstream account detail" } }), {
+          status: 401,
+        }),
+      );
 
     await expect(
       requestGatewayAnswer({
