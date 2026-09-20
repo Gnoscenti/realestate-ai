@@ -1,5 +1,11 @@
 # Citelock: client-fit discovery and visibility improvement
 
+> Superseding requirements (2026-09-08): see
+> [the user's complete approved direction](CITELOCK-APPROVED-DIRECTION-2026-09-08.md).
+> It resolves the earlier shared-link retrieval dependency and governs conflicts.
+> A connected discovery-and-improvement workflow is required; assessment alone
+> is not acceptance. See FLAGSHIP-LEDGER.md D-012 for current implementation status.
+
 Status: product/algorithm design, 2026-09-04. NOT a claim that the current app
 implements this loop or has demonstrated visibility lift. D004 supersedes D003's
 assessment-only Citelock release boundary. The social durability work remains useful.
@@ -246,3 +252,8 @@ invented demand datasets, universal ranking scores or MLS-dependent quality gate
   content and technical access matter; no special AI schema or guaranteed inclusion.
 - https://arxiv.org/abs/2311.09735 — GEO benchmark findings vary by domain; not proof
   of lift for this application or today's consumer answer engines.
+
+## September19 implementation refinement
+Subject identities now persist per workspace/entity kind (migration0014), with explicit save, role checks and optimistic revisions. A fresh device can use its saved Citelock identity without browser-local CRM setup. Evidence/history stays with its original fingerprint.
+Observation method expertise-v2.1 retains the exact website URL and restricts shared-site profile credit to exact paths/query identities. Case-sensitive paths and identity-bearing query values are preserved. Root non-directory websites may receive site-wide credit; this remains a declared footprint, not proof of domain ownership. Changed methods cannot be presented as comparable lift.
+Production-runtime verification uses Nitro preview of the actual Vercel artifact, native PostgreSQL and real Better Auth sessions; a compile success alone is insufficient.

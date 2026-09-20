@@ -177,9 +177,9 @@ export function buildCommandPack(
       cma.headline,
       cma.subjectSummary,
       "",
-      `Suggested list: ${formatCurrency(cma.suggestedList)}`,
+      "Saved reference records: " + cma.comps.length,
       "",
-      "Comps:",
+      "Supplied reference records (not verified sale comparables):",
       ...cma.comps.map(
         (c) =>
           `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · ${c.adj}`,
@@ -195,8 +195,8 @@ export function buildCommandPack(
     artifacts.push({
       id: "cma",
       kind: "cma",
-      title: "CMA snapshot",
-      summary: `${subjectProperty.neighborhood} · suggest ${formatCurrency(cma.suggestedList)}`,
+      title: "Listing comparison notes",
+      summary: subjectProperty.neighborhood + " · " + cma.comps.length + " saved reference records",
       body: cmaBody,
       href: "/cma",
       hrefLabel: "Open CMA Studio",

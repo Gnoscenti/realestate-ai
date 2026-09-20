@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useAppStore } from "@/lib/store";
 import { generateCmaReport } from "@/lib/ai";
-import { getMlsLabel, myListings } from "@/lib/mls";
+import { myListings } from "@/lib/mls";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 export const Route = createFileRoute("/cma")({
@@ -62,9 +62,9 @@ function CmaPage() {
       profile ? `Prepared by ${profile.name} · ${profile.areaOfOperations}` : "",
       profile?.website ? profile.website : "",
       "",
-      `Suggested list: ${formatCurrency(report.suggestedList)}`,
+      "Saved reference records: " + report.comps.length,
       "",
-      "Comparables:",
+      "Local reference records (not verified sale comparables):",
       ...report.comps.map(
         (c) =>
           `• ${c.title} | ${c.address} | ${formatCurrency(c.price)} | ${c.sqft} sqft | ${formatCurrency(c.ppsf)}/sf | ${c.adj}`,
@@ -91,18 +91,16 @@ function CmaPage() {
             </Badge>
             {profile && (
               <Badge variant="secondary">
-                {getMlsLabel(profile.mls).split("(")[0].trim()} ·{" "}
                 {profile.areaOfOperations}
               </Badge>
             )}
           </div>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            Comparative market analysis
+            Listing comparison notes
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Built on your MLS-synced inventory
-            {profile ? ` for ${profile.areaOfOperations}` : ""}. Subject
-            properties and comps include MLS numbers from your feed.
+            Compare supplied records in your local book. These are not verified sale
+            comparables, an MLS feed, an appraisal or a pricing recommendation.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -139,6 +137,10 @@ function CmaPage() {
         </div>
       )}
 
+      {!subject && <Card><CardContent className="py-8">
+        <p className="font-medium">No subject property yet</p>
+        <p className="mt-2 text-sm text-[var(--color-fg-muted)]">Add an active, pending or coming-soon property to your listing book, then return to prepare comparison notes.</p>
+      </CardContent></Card>}
       {report && subject && (
         <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -164,13 +166,13 @@ function CmaPage() {
             <Card>
               <CardContent className="flex h-full flex-col justify-center p-6">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                  Suggested list price
+                  Saved reference records
                 </div>
                 <div className="mt-2 font-display text-3xl font-semibold tabular text-[var(--color-success)]">
-                  {formatCurrency(report.suggestedList)}
+                  {report.comps.length}
                 </div>
                 <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
-                  Derived from weighted MLS comps · current ask{" "}
+                  Recorded subject price · confirm source and price basis{" "}
                   {formatCurrency(subject.price)}
                 </p>
               </CardContent>
@@ -180,10 +182,9 @@ function CmaPage() {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle>Comparable sales & actives</CardTitle>
+                <CardTitle>Candidate reference records</CardTitle>
                 <CardDescription>
-                  Ranked by type, neighborhood, and size proximity from your MLS
-                  pull
+                  Same city and property type, ordered by size proximity; at most five records.
                 </CardDescription>
               </div>
               <FileSpreadsheet className="h-5 w-5 text-[var(--color-fg-subtle)]" />
@@ -198,10 +199,11 @@ function CmaPage() {
                     <th className="pb-3 pr-3 font-medium">$/sf</th>
                     <th className="pb-3 pr-3 font-medium">Beds/Baths</th>
                     <th className="pb-3 pr-3 font-medium">DOM</th>
-                    <th className="pb-3 font-medium">Adjustment</th>
+                    <th className="pb-3 font-medium">Verification needed</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {!report.comps.length && <tr><td colSpan={7} className="py-6 text-[var(--color-fg-muted)]">No matching records with a positive price and area. Add verified reference data to your listing book before comparing.</td></tr>}
                   {report.comps.map((c) => (
                     <tr
                       key={c.address + c.title}
@@ -212,7 +214,7 @@ function CmaPage() {
                           {c.title}
                         </div>
                         <div className="text-xs text-[var(--color-fg-subtle)]">
-                          {c.address}
+                          {c.address} · status as supplied: {c.status.replace(/_/g," ")}
                         </div>
                       </td>
                       <td className="py-3 pr-3 tabular">
@@ -241,7 +243,7 @@ function CmaPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Go-to-market strategy</CardTitle>
+                <CardTitle className="text-base">Review before using these records</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2 text-sm text-[var(--color-fg-muted)]">
@@ -257,7 +259,7 @@ function CmaPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Buyer value script</CardTitle>
-                <CardDescription>Post-NAR fee conversation</CardDescription>
+                <CardDescription>Discuss the limits of the available evidence</CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
@@ -279,20 +281,15 @@ function CmaPage() {
                 const text = exportText();
                 try {
                   await navigator.clipboard.writeText(text);
-                  toast.success("CMA copied");
+                  toast.success("Comparison notes copied");
+                  pushActivity({type:"valuation",title:"Comparison notes copied",description:subject.title,badge:"Notes"});
                 } catch {
                   toast.message("Select text to copy");
                 }
-                pushActivity({
-                  type: "valuation",
-                  title: "CMA exported",
-                  description: subject.title,
-                  badge: "CMA",
-                });
               }}
             >
               <Copy className="h-4 w-4" />
-              Copy CMA package
+              Copy comparison notes
             </Button>
             <Button
               variant="secondary"

@@ -1,132 +1,146 @@
-# Flagship MVP — Delivery Report
+# Flagship MVP delivery — September 20, 2026
 
-Date: 2026-09-07 · Source of truth: the local working tree (`~/code/realestate-ai`), not GitHub.
-Audit trail: `docs/FLAGSHIP-LEDGER.md` (findings A-001…A-028, decisions D-001…D-009, verification log) and `docs/FLAGSHIP-BLOCKERS.md` (blocker register with scenarios).
+**Release judgment:** Citelock's evidence-to-improvement loop and Social Desk's approved manual-distribution workflow are implemented and locally verified as a deployment candidate. They are suitable for a scoped beta after the target environment is configured and smoke-tested. This is not a claim of a deployed service, a completed paid general release, consumer-app ranking coverage or demonstrated GEO lift.
 
-Every claim below carries exactly one status:
+Source of truth: the local /home/ttroj/code/realestate-ai working tree. Existing changes were preserved. Production provider keys and build settings have now been configured on the verified Vercel project. Commit/push of this preserved working tree is the next release step; no merge, production promotion, account purchase or client-content publication has been performed.
 
-| Tag | Meaning |
-| --- | --- |
-| **Implemented** | Code exists in the working tree. |
-| **Tested** | Covered by an automated test that passed in this session (`vitest run`). |
-| **Manually verified** | Exercised in a real browser against the dev server (auth on, real provider keys) in this session. |
-| **Inferred** | Believed correct from reading code or documentation; not executed. |
-| **Recommended** | Not done; a proposed next step with reasoning. |
-| **Not completed** | In scope but not delivered; reason given. |
+## Audit trail and governing direction
 
-## 1. What the product is now
+The append-only [FLAGSHIP-LEDGER.md](FLAGSHIP-LEDGER.md) contains repo conventions, architecture, findings A-001 through A-051, product intent, blocker decisions, failures/root causes and verification evidence. Earlier sessions record first-party source reading; Sessions6–7 reopen that evidence and audits changed boundaries and unresolved findings. Generated code, dependencies, binary artifacts and secret values are not represented as line-by-line product source review.
 
-RealEstate AI is a single-login agent workspace with two flagship functions that work for real:
+The latest direction adds a free/basic and paid/thorough manual guide without an MLS dependency, documented below. The earlier [approved direction](CITELOCK-APPROVED-DIRECTION-2026-09-08.md) remains available in the advanced workspace: supported expertise → independent discovery → attributable opportunity → usable content → reviewed publication/handoff → comparable observations. Its supplied text is retained. The shared ChatGPT page was inaccessible in the earlier review; no missing content has been invented.
 
-1. **CiteLock Visibility** (`/aieo`, `src/lib/aieo/visibility/*`): asks grounded answer engines the unbranded questions a client asks ("which agents should I work with in Rancho Santa Fe, CA?"), records who each answer names and which pages it cites, and reports discovery rate, citation rate, identity accuracy, source gaps and ranked fixes, each with numerator and denominator and with the verbatim answers kept for audit. It is a measurable, defensible GEO/AIEO assessment. It never promises that an engine will cite the agent.
-2. **Social Desk** (`/marketing`, `src/lib/social-desk/*`): facts-first AI caption drafting, deterministic fair-housing and claims review, revision-safe approve → publish (Postiz) or manual handoff with a receipt, persisted server-side per workspace.
+The [blocker register](FLAGSHIP-BLOCKERS.md) records ranked alternatives, chosen working paths and remaining gates, including a refreshed MLS developer route and primary-source links.
 
-Everything else in the app is either honest supporting workflow (leads, calendar, CMA notes, instant-response scripts) or explicitly labelled "manual tracking" / "not connected". No MLS feed is connected (decision D-006); all MLS endpoints and dependent code were removed.
+| Audited area | Implemented reality and current boundary |
+|---|---|
+| Architecture/API | TypeScript, React19, TanStack Start/Router server functions, Zod, Vite8/Nitro. Authenticated workspace authorization at durable APIs. Supporting CRM has a separate local browser store. |
+| Data model | PostgreSQL production; persistent local PGLite; versioned migrations, memberships, evidence/observations/interventions/drafts/history/entitlements. No production fallback to ephemeral storage. |
+| Citelock/agents | Evidence-aware discovery/improvement loop below. Readiness/schema are supporting functions. Some supporting assistant modules use deterministic rules; they are not autonomous external operators. |
+| Social/frontend | Server-persisted review, claims/fair-housing checks, handoff/export and reported receipts. Optional Postiz implementation with guarded dispatch; authorized publication remains unverified. |
+| Billing/auth | Server beta grants and verified one-time checkout consumption. Production origin/secret/DB guards and account isolation. Recovery/email delivery and paid operational reconciliation remain gaps. |
+| Listings/market/CMA | RapidAPI observations and authorized/manual records. Explicit-assumption market scenarios. Bounded comparison notes without invented list-price or condition conclusions. |
+| Calendar/email/transactions | Real local appointment entry/export and vendor notes. Session-token Gmail scan; manual transaction tracking. Calendar OAuth, notifications, document review and e-signing remain unconnected. |
+| Native/config/CI | Responsive web, Capacitor hosted shell, Vercel artifact, explicit production migration, unit/browser/nativePG CI. Native archive/signing/store release and hosted operations unverified. |
 
-## 2. Phase 1 — Audit (summary; details in ledger A-001…A-028)
+## New guide: source-backed, free/basic and paid/thorough
 
-The prior Codex audit (A-001…A-016) was re-verified and extended. Findings that changed product decisions:
+**Implemented:** the default Citelock screen accepts agent/team/brokerage identity, any target locale, a personal/business website and optional exact broker/ranking/evidence URLs. Authenticated users can enter from the paywall without buying access. The server safely inspects up to four pages, records source timestamps/hashes, distinguishes matched/unmatched/unavailable evidence, and turns the findings into a manual action plan. No MLS or model API key is required.
 
-- Features presented as complete but simulated: MLS sync, listing attestation/recognition, social publishing "success" toasts, document AI review and e-signature, a Gmail inbox demo containing a fabricated wire-instructions email, product tour, seeded activity with real street addresses. All removed or replaced with truthful states (ledger implementation log).
-- Security and safety: Gmail token in localStorage (removed), Capacitor script injection (escaped), dev fallbacks that would silently run in production without a database or auth secret (now fail closed), client-side-only paywall (now server-side entitlement).
-- Tests covered the simulated paths and not the real ones; rewritten (see §6).
+**Free:** three actionable steps covering defensible claims, consistent identity and one useful local answer. **Full access:** nine steps, adding evidence placement, technical inspection, profile corrections, social distribution, comparable measurement and a four-week plan. Steps have priority, owner, effort, instructions and a completion criterion. Saved history, progress, save-error rollback and Markdown export are implemented. Every read, progress mutation and export checks current server entitlement; paid instruction text is never sent in a basic response.
 
-## 3. Phase 2 — CiteLock intent vs. implementation
+**Live-verified case:** Julie Pierce Casey's personal biography and RealTrends profile were fetched through the same safe-fetch code used in the application. The parser found 2025 city sides rank1,20sides,$33.61M and detected the personal site's $44M statement. Browser rendering showed both the scoped claim and conflict. See [the case study](CITELOCK-JULIE-CASE-STUDY.md) for sources and concrete recommendations. Official brokerage corroboration remains unverified behind a JavaScript/anti-bot page.
 
-**Intent (reconstructed from `docs/CITELOCK-VISIBILITY-DESIGN.md`, README history and route copy):** make an agent or brokerage visible and correctly described inside LLM answers, and prove it with evidence rather than a score.
+**Limitations:** only the inspected public text is assessed. Identity matching is not proof of licensure, ownership or every claim's truth. Automatic ranking parsing is deliberately narrow (official RealTrends individual-agent profiles); other formats receive manual verification instructions. Three inspections per workspace/day, latest ten reports shown. This is a real instructional assessment, not an observed recommendation score or demonstrated causal lift. All publication remains a user decision.
 
-**Implemented now:** the full measurement loop: basket → grounded providers → deterministic evaluation → report → opportunities → drafted interventions → live-page verification → trend across batches. Ledger D-005 records why measurement-first was chosen over "optimization" claims.
+## Citelock: goal, shipped behavior and gap
 
-**Gap that remains (Recommended):** the *boost* is delivered as approved, verifiable interventions (profile-claim checklists, drafted site pages and FAQs built only from the agent's own facts). Whether engines subsequently cite those pages is measured by the next batch, never asserted. Multi-provider coverage beyond Grok is implemented but unverified live (§5).
+**Goal:** help an agent, team or brokerage become discoverable for demonstrable expertise in relevant client questions, while distinguishing evidence, observed answers, editorial hypotheses and outcomes.
 
-## 4. Phase 3 — Blockers and the MLS worked example
+**Implemented and tested:**
 
-See `docs/FLAGSHIP-BLOCKERS.md` (Session 2 tables). Decision: **no MLS pull for the flagship** (D-006).
+- Save separate agent/team/brokerage identities on the server, with revisions and cross-device restoration. Individual evidence does not automatically transfer to an organization.
+- Record exact excerpts, attribution, dates, permission and contrary evidence. Declarations and selected client reports have explicit labels. Deduplication avoids inflated support; withdrawal preserves history and blocks new use.
+- Run a versioned basket of unbranded questions plus separate named identity checks. Supported expertise determines question topics without inserting the subject name or biography into discovery prompts.
+- Persist prompts, requested/returned models, API surface, answer text, provider citations, retrieved sources, usage/cost, timing and failures. Rates expose numerators/denominators; failures are not fabricated zeroes.
+- Distinguish recommendations, mentions, citations, negative mentions, ambiguous identity and missing extraction. API observations are not consumer ChatGPT/Gemini/Perplexity app measurements.
+- Connect supported expertise to a matched public page and relevant competing recommendations. Abstain if prerequisites are absent. Opportunities identify evidence, observed gap, hypothesis and test plan.
+- Assemble usable page/FAQ text from exact permitted passages, with attribution, placement/internal-link instructions and interview questions. Approval requires fact/rights review of the current revision.
+- Verify public subject identity and every substantive approved passage. Partial pages do not pass. Recheck permissions before and after fetching; withdrawal during the fetch cannot mark the package verified.
+- Create a linked Social Desk draft with independent approval and continuing source obligations. Repeat saved baskets and separate incompatible provider/model/method/surface comparisons.
 
-- Scenario 1 (chosen, Implemented): marketing rewritten; `mls-fetch.ts`, `mls-sync.ts`, `mls-platforms.ts`, attestation and recognition modules and their tests deleted; listing-role scoring gate downgraded from block to warn; the "Listings & Data" page explains data sources honestly.
-- Scenario 2 (researched, Inferred): RESO Web API access through an MLS or vendor (for example MLS Grid: Heartland $100 setup + $175/month; NorthstarMLS $1,000 + $500) requires brokerage sponsorship, a data-access agreement, an approved use case and an unpublished approval timeline. RealTrends downloads cost $599 and are non-commercial. Not viable inside the MVP window; the sequence and prerequisites are recorded in the blocker register.
-- Scenarios 3–6 (Recommended): agent-supplied listings (partly implemented via website and CSV import), aggregator APIs (RapidAPI panel exists, labelled as third-party observations), brokerage feed partnership, feature-flagged deferral (the `CITELOCK_MLS_ENABLED` flag was removed rather than left dormant).
+**Newest corrections:** inspected page evidence now uses exact shared-site profiles, consistent with citation attribution. Packages retain exact website paths instead of sending an agent's readers to a brokerage root. Report algorithm is visibility-2.2; observation method remains expertise-v2.1 because measured counts did not change.
 
-## 5. Phase 4 — What was built and how it was checked
+**Gap:** no real customer's complete publication-and-later-observation outcome has been demonstrated here. Conservative identity/topic rules and model-assisted extraction are not ground truth. One page cannot establish whole-site absence. Indexing and causal visibility improvement are not guaranteed.
 
-### CiteLock Visibility
+## Social: implemented workflow and reliability
 
-- Prompt basket v1 (5 unbranded clusters + 2 branded checks); unbranded prompts never contain the subject's name, brokerage or site. **Tested** (`visibility-report.test.ts`, `visibility-engine.test.ts`).
-- Provider adapters. xAI Responses `web_search` with `url_citation` annotations and cost ticks: **Manually verified** live (real citations to fastexpert, usnews, realtor.com, sdbj, sothebysrealty; cost tracked per run). OpenAI Responses `web_search`, Gemini `google_search` grounding, Perplexity `search_results`: **Implemented, Inferred from documentation, labelled "unverified adapter" in the UI**. Gemini fails live with `provider_rate_limited` on this key (quota), and the run table shows that honestly.
-- Resumable leased batch execution in short server slices, daily quotas, entitlement gate: **Tested** (retry-once, lease expiry) and **Manually verified** (a batch interrupted by a reload resumed from the "Resume batch" banner).
-- Report: discovery, citation and identity rates with sample sizes, per-intent rows, competitor entities (model-extracted, labelled as such), source gaps against directory hosts, opportunities with priority = gap × reach × actionability × fit: **Tested**.
-- Interventions: deterministic profile-claim checklist; Grok-drafted site page or FAQ from facts only with `factsUsed` and `unsupportedClaimsAvoided`; approve, edit, dismiss; "I published it — verify" fetches the live page and checks that approved sentences are present. **Implemented**; the failure path (unreachable page → note recorded) is **Manually verified**; the success path is **Inferred** because it needs a real public page.
-- Evidence locker and readiness scan retained from the prior release: **Implemented**; the scan's SSRF guard (reserved hosts refused) is **Manually verified**.
+**Implemented and tested:** authenticated workspace persistence; platform length/media/source validation; facts-first optional xAI drafting; deterministic claims review; explicit fact/rights approval; edit invalidation; history; copy/download/share handoff and platform-validated user-reported receipts.
 
-### Social Desk
+Postiz supports encrypted connections, channel lookup, bounded media transfer, schedule/dispatch and status refresh. Dispatch reserves the approved revision before the provider call. Known rejection returns reviewable content; uncertain outcomes stay frozen and cannot be blindly replayed.
 
-- Drafting: xAI JSON-schema completion, facts-only prompt, platform length truncation, hashtag normalisation, daily quota, entitlement. **Tested** (`social-desk.test.ts` with fetch stubs) and **Manually verified** (§7).
-- Fair-housing and claims review with block-versus-review rules, including a source-of-income rule ("no Section 8", "no vouchers") added after manual testing: **Tested**. Blocked captions cannot be approved; enforced server-side and the UI disables the button: **Tested** and **Manually verified**.
-- AI model latency (A-029, D-010): entity extraction and drafting default to the fast Grok aliases (`grok-4-1-fast-non-reasoning` / `grok-4-1-fast-reasoning`) because grok-4.6 structured output took 27 s in a probe and timed out in production paths. **Manually verified** (batch #2 extraction, page drafts). Raw error codes are now mapped to actionable sentences by `src/lib/ai-errors.ts`: **Implemented**.
-- Draft lifecycle with revision-safe commands and history: **Tested**.
-- Postiz publishing: AES-256-GCM encrypted API key, live channel check on connect, upload → create post → status refresh, failed publication rows kept while the draft stays approved. **Implemented and Tested with stubbed HTTP**; **not verified against a live Postiz workspace** (no key available). The connect flow with an invalid key failing cleanly is **Manually verified**.
-- Manual handoff: copy, share, download, receipt. **Manually verified**.
+**Newest correction:** status refresh makes the remote read before taking a row lock, then commits publication, draft and history atomically. A delayed pending response cannot undo a confirmed terminal status. Invalid provider release URLs cannot become unsafe links.
 
-### Access, security, deploy readiness
+**Not live-verified:** authorized Postiz publication. No external post was made. Unknown outcomes without a remote post ID require inspection in the scheduler. Manual handoff is the approved working MVP alternative.
 
-- Server-side entitlement (`workspace_entitlements`, code redemption once per workspace, verified Stripe checkout grant once per session): **Tested** (`entitlement.test.ts`) and **Manually verified** (wrong code rejected by the server; pilot code grants access; paywall disappears after redemption).
-- Fail-closed production checks (no `DATABASE_URL` or no `BETTER_AUTH_SECRET` → startup throws): **Implemented**, **Inferred** (not executed with `NODE_ENV=production`).
-- Migration `0010_citelock_visibility.sql` applied at startup and at build: **Manually verified** on PGLite; **Inferred** for Postgres (plain SQL, no PGLite-specific syntax).
-- CI: lint runs with `--max-warnings=0`: **Implemented**. Playwright e2e specs rewritten: **Implemented, not executed locally** (Chromium cannot launch in this WSL; CI installs browsers with system deps).
+## Other completed corrections
 
-## 6. Automated verification (final run in this session)
+- **Calendar:** removed demo connections/sync and the dead synthetic-event generator. Added manual entry, date validation, device timezone, persistent local records, completion/deletion, rule-based preparation notes and RFC5545 .ics export. UTF-8 folding, escaping and exclusive all-day ends are tested. No invitation or notification is sent.
+- **Search:** removed fictitious query history, artificial delay, AI/MLS claims and fake packet success. Property summary download uses supplied fields and identifies missing values/verification limits.
+- **CMA:** removed guessed condition, unsupported list-price recommendation and MLS-pull claims. Same-city/type records with positive price/area become reference candidates; missing references stay empty. Page and command-pack exports carry the same limits. These are comparison notes, not verified sold comps or an appraisal.
+- **Auth:** production requires explicit BETTER_AUTH_URL, persistent DB and stable secret. It no longer trusts unrelated loopback origins or defaults to shared preview OAuth credentials. Automatic linking is disabled; popup messages must come from the initiating window.
+- **Earlier release work retained:** bounded provider/media reads, durable paid-call leases/quotas, atomic beta/checkout grants, migration outside build, nativePG CI, working Nitro production preview and secret-free browser output.
 
-| Check | Command | Result |
-| --- | --- | --- |
-| Typecheck | `npx tsc --noEmit` | PASS |
-| Lint | `npx eslint . --max-warnings=0` | PASS, 0 errors and 0 warnings, after adding the gitignored `tmp/**` scratch folder to the ignore list |
-| Unit and integration | `npx vitest run` | PASS · 27 files · 198 tests |
-| Production build | `npx vite build` | PASS after the final edits (Nitro Vercel preset output generated; log in `tmp/checks/final-build.log`) |
-| E2E | `npx playwright test` | NOT RUN locally (missing libnss3 and libnspr4; sudo unavailable). Specs: `paywall-beta.spec.ts`, `citelock.spec.ts`. |
+## Verification results
 
-## 7. Manual verification log (auth-on dev server, port 8123, real xAI key)
+Latest checks ran against this tree. Logs/screenshots remain ignored under tmp/session7 (and earlier tmp/session6*); earlier live-provider evidence retains its original date.
 
-Full table with timestamps and observations: ledger, "manual verification log, second pass". Condensed:
+| Check | Result / evidence |
+|---|---|
+| TypeScript | PASS: npx tsc --noEmit after all source/consumer edits |
+| ESLint | PASS: npx eslint . --max-warnings=0 |
+| Complete Vitest | PASS:34 files /242 tests; final export boundary passed the focused6/6 guide regression again |
+| Native PostgreSQL | PASS:8 critical suites /52 tests, including guide gating, concurrency and tenant isolation |
+| Migrations | PASS:15 migration files through0016, repeat application no-op |
+| Logical restore | PASS:51 public tables /2,065 rows /15 migration records; counts and complete sorted row-content digests match a fresh target |
+| Production build | PASS: declared npm12, Nitro/Vercel output |
+| Desktop/mobile browser | PASS:18/18 on a fresh isolated workspace |
+| Compiled production + PostgreSQL | PASS:3/3 on the final rebuilt artifact; real sessions, free guide, upgrade, persistence, failed-save rollback, server export, tenant isolation and forbidden-origin403 |
+| Client secret scan | PASS:71 emitted text assets; no configured server-secret values found |
+| Dependency audit | npm12 audit:0 known vulnerabilities September20; not a security certification |
+| Whitespace | PASS, existing CRLF conventions recognized |
+| Manual visual inspection | New live Julie guide desktop1440px/mobile390px screenshots inspected; text and controls fit, with no horizontal overflow. Earlier calendar and social checks retain their recorded dates. |
+| Live providers | Earlier verified xAI/RapidAPI September19; Perplexity Agent default September20, HTTP200, answer text,15 sources,0 URL-citation annotations. Not repeated during this hardening pass. |
 
-| Flow | Observed |
-| --- | --- |
-| Sign-up → paywall → server-side code redemption | Paywall shown for a new account; wrong codes rejected by the server; pilot code grants access; Command Center opens. |
-| Profile wizard with a reserved test host | Website scan refused by the SSRF guard; "Continue without website scan" then "Launch workspace" saves the profile. |
-| CiteLock batch #1 (14 runs, 45 s slices) | 7 ok (xAI, real citations), 7 failed (Gemini quota, shown as `provider_rate_limited`), cost $0.98. Report, opportunities and verbatim answers rendered. Found A-029: entity extraction timed out on every run. |
-| A-029 fix, then CiteLock batch #2 | 7 ok / 7 failed, cost $0.92; "Who engines named" and "Who gets recommended instead" populated from model extraction on all five unbranded runs; trend table shows both batches. |
-| Resume after interruption (earlier in the session) | "Resume batch" banner continued a batch from 4/14 to 8/14 without re-running stored answers. |
-| Opportunities → drafts | Profile-claim checklist created deterministically; two site-page drafts from the fast Grok model in under 20 s, each with "Facts used" and "Claims deliberately NOT made". |
-| Approve → "I published it — verify" | State becomes deployed with the note "Could not fetch the page: Local or reserved hostnames are not allowed"; verify stays available. Success path needs a real public page. |
-| Social Desk AI draft | Caption plus facts-used and claims-avoided lists in ~10 s; two alternative hooks. |
-| Fair-housing review | "Perfect for families" and "#1 agent" flagged for review; "No kids" blocks and disables approval; "no Section 8" was missed, so a source-of-income block rule was added with tests. |
-| Approve → handoff → receipt | Approved revision; Copy / Share / Download; "I'll post this myself" then receipt URL → state "Posted (reported)". |
-| Postiz connect with an invalid key | Toast "Postiz rejected the API key"; nothing stored. |
-| Listings & Data page | States plainly that no MLS feed is connected; RapidAPI panel labelled as unverified market context. |
+Failures were fixed, not waived: ambiguous calendar textbox/tab locator; repeated PostgreSQL runs accumulating a global budget fixture; command-pack references to the deleted list-price field. Production quota limits and assertions remain intact. Fixture reset rejects non-test database names.
 
-## 8. How to run
+## Run locally and release
+
+Use WSL Ubuntu, Node22+ and declared npm12; this working tree has Linux dependencies.
 
 ```bash
-cp .env.example .env.local   # set DATABASE_URL, BETTER_AUTH_SECRET, XAI_API_KEY at minimum
-npm install
-npm run dev                  # http://localhost:3000
-npm run typecheck && npm run lint && npm test
-npm run build                # applies migrations, then vite build (Nitro Vercel preset)
+cd /home/ttroj/code/realestate-ai
+npx --yes npm@12.0.0 ci
+export BETTER_AUTH_URL=http://localhost:8131
+node --env-file=.env.local node_modules/vite/bin/vite.js dev --host 127.0.0.1 --port 8131
 ```
 
-Beta codes: set `BETA_ACCESS_CODES` (comma-separated) in production. The built-in pilot codes only work outside production.
+Configure server-only keys in ignored .env.local as needed: XAI_API_KEY for the exercised full discovery/extraction loop and optional drafting, PERPLEXITY_API_KEY for Agent answers, RAPIDAPI_KEY for live data. Never prefix secrets with VITE_. Set stable BETTER_AUTH_SECRET locally for sessions across restarts. Production secrets must be configured separately on the host; the local env file is not a deployment secret store.
 
-## 9. Known limitations and risks
+Open http://localhost:8131 and sign in. The paywall offers the free Citelock guide; full access uses verified checkout or an authorized beta code. Save the Citelock identity; add permitted expertise and inspect a public page; run a batch; review a supported opportunity/package; approve and publish through an authorized editor; confirm the URL; hand off the linked social draft; repeat the basket later. Insufficient evidence produces an honest empty state.
 
-- Only the xAI adapter is live-verified. OpenAI, Gemini and Perplexity adapters are implemented from documentation, and the UI labels them "unverified adapter" until a real run succeeds.
-- Postiz publishing has not been exercised against a live Postiz workspace. The HTTP contract follows the public API docs and is unit-tested with stubs.
-- The intervention "verify" success path needs a real public page; only the failure path was exercised.
-- Playwright e2e could not run on this machine. It runs in CI, but CI has not been observed green in this session.
-- Remaining truthfulness debt outside the flagship paths (Recommended, not completed): the "Live suite" badge and hard-coded market statistics in `market.tsx`, uncited figures in `priorities.ts`, competitor claims in `competitors.ts`, feedback-board copy, and seed data with real-looking addresses. Each is listed in the ledger open items.
-- Local development uses an in-memory PGLite database when `DATABASE_URL` is unset, so data is lost on restart. This happened once in this session when the WSL VM restarted.
+```bash
+npm run typecheck
+npm run lint -- --max-warnings=0
+npm run test:unit
+npx playwright install --with-deps chromium
+npm run test:e2e
+npm run build
+npm run test:postgres
+PLAYWRIGHT_PRODUCTION=1 npm run test:auth
+npm run test:restore
+```
 
-## 10. Not completed, and why
+NativePG/production-auth require isolated TEST_DATABASE_URL ending in _test or _tests. Restore also requires a different empty TEST_RESTORE_DATABASE_URL. See README for migration/preview environment behavior.
 
-- Live multi-provider verification: the Gemini key has no quota; no OpenAI or Perplexity keys are present in `.env.local`. Recorded as a blocker rather than faked.
-- Live Postiz publish: no Postiz API key is available, and buying access was out of bounds by standing constraint.
-- E2E execution: environment limitation, see §6.
-- Features removed rather than finished (document e-sign, AI document review, inbox scanning, product tour, multiplayer): out of flagship scope. Their UI now states "not connected" instead of simulating success.
+Release order: persistent PostgreSQL and stable auth secret/origin → server keys, beta codes and budgets → target backup → npm run db:migrate with target DATABASE_URL → build/deploy through team process → hosted auth/tenant/entitlement/grounded-batch/social-handoff and restore/monitoring checks. Do not enable Stripe charging before money-flow acceptance.
+
+## Remaining gates and recommended sequence
+
+1. **Not completed:** target public HTTPS/proxy-IP configuration, deployed migrations/backup policy/alerts and production smoke. Local Nitro reports no trusted client IP and shares an auth rate-limit bucket. Configure the actual proxy contract; do not trust arbitrary headers.
+2. **Not completed:** real customer publication plus comparable later observations and retention/outcome validation. This is the highest-value pilot work for the 36-month exit objective.
+3. **Unverified/deferred:** live Postiz posting and unknown-ID reconciliation. Manual publication/handoff remains usable.
+4. **Not completed:** verified recovery/email delivery and paid refund/chargeback/revocation/webhook operations. Server beta access is the launch path; unverified accounts must not receive another account's protected data.
+5. **Provider limits:** Perplexity-only competitor extraction is unimplemented; OpenAI/Gemini and alternative Agent models are not live-verified. Retrieved results without annotations earn no citation credit. Use the exercised xAI loop for competitor extraction.
+6. **Deferred with working alternatives:** licensed MLS/bulk RealTrends data, calendar OAuth/sync, native iOS signing, unsupported closed-sale/role/period analytics. RapidAPI observations, permitted imports, calendar export and responsive web remain available.
+7. **Inferred/recommended:** prioritize permissioned evidence-to-publication records and retained-customer value over more integrations or a proprietary-sounding score. No code guarantees ranking lift or an exit.
+
+The blocker register gives current primary-source MLS steps, prerequisites, fee/timeline uncertainty and AI/media considerations. RESO is not a universal data-access authority. RealTrends retail rankings are not MLS listings and their published non-commercial rights are not a SaaS license.
+
+## Vercel and Git handoff
+
+The verified Vercel project is **cloud-realtor**, linked to **Gnoscenti/realestate-ai**, production alias https://cloud-realtor.vercel.app. The five local provider keys (XAI, OpenAI, Perplexity, Gemini, RapidAPI) were uploaded to **Production**, privately compared to the local values, and marked **Sensitive**. VITE_AUTH_ENABLED=true. Node22.x, npm12 clean installation, Vite/Nitro build, and null framework/root/output overrides were read back successfully. Existing sensitive database/auth/Stripe values were preserved and cannot be read through the API; their operational validity and production schema remain unverified.
+
+[VERCEL-PRODUCTION-RELEASE.md](VERCEL-PRODUCTION-RELEASE.md) documents the reproducible configuration command and the separate migration/promotion gates. Latest observed production remains main@2cd3cb1. The preservation branch has two historical commits not in main, while main has47 commits absent from its base; it must not be force-pushed over production.
+
+All intended project source/docs/tests are prepared for a release commit on **local/2026-09-08-flagship-preservation**. The final commit/push evidence is recorded in the ledger after the operation. Only .env.example is intended for Git. The local keys, authentication files, test credentials, database files, backups, screenshots and logs remain excluded. Secret scan:256 intended files, no configured secret values; emitted client-assets scan:71files, no configured server-secret values.

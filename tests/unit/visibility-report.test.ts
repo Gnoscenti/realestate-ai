@@ -1,142 +1,114 @@
 import { describe, expect, it } from "vitest";
-import { BASKET_VERSION, buildVisibilityBasket, VISIBILITY_CLUSTERS } from "@/lib/aieo/visibility/basket";
-import {
-  citationBelongsToSubject,
-  directoryLabel,
-  evaluateSubject,
-  nameAppears,
-  toCitation,
-} from "@/lib/aieo/visibility/evaluate";
-import { buildVisibilityReport, type VisibilityRun } from "@/lib/aieo/visibility/report";
+import { buildVisibilityBasket, BASKET_VERSION } from "@/lib/aieo/visibility/basket";
+import { nameAppears, evaluateSubject, citationBelongsToSubject, toCitation } from "@/lib/aieo/visibility/evaluate";
+import { buildVisibilityReport } from "@/lib/aieo/visibility/report";
+import { summarizeExpertise, expertiseSourceSchema, suggestExpertisePassages } from "@/lib/aieo/visibility/expertise";
+import { source,subject,page,observation } from "../fixtures/visibility-expertise";
 
-const subject = {
-  name: "Jordan Rivera",
-  area: "Rancho Santa Fe, CA",
-  websiteHost: "jordanrivera.com",
-  brokerage: "Pacific Coast Realty",
-  license: "01234567",
-  profileUrls: ["https://www.zillow.com/profile/jordan-rivera-rsf"],
-};
-
-function run(overrides: Partial<VisibilityRun>): VisibilityRun {
-  return {
-    id: overrides.id || Math.random().toString(36).slice(2),
-    batchId: "b1",
-    clusterId: "choose_agent",
-    promptId: "choose_agent.buyer",
-    prompt: "…",
-    branded: false,
-    provider: "xai",
-    requestedModel: "grok-4.6",
-    status: "ok",
-    citations: [],
-    entities: [],
-    costUsdTicks: 1_000_000_000,
-    ...overrides,
-  };
-}
-
-describe("prompt basket", () => {
-  it("never puts the agent's name, brokerage, or site into unbranded prompts", () => {
-    const prompts = buildVisibilityBasket(subject);
-    expect(prompts.length).toBe(7);
-    for (const prompt of prompts.filter((item) => !item.branded)) {
-      expect(prompt.text).not.toContain("Jordan");
-      expect(prompt.text).not.toContain("Pacific Coast");
-      expect(prompt.text).not.toContain("jordanrivera");
-      expect(prompt.text).toContain("Rancho Santa Fe, CA");
+describe("expertise-based discovery measurement",()=>{
+  it("freezes designed questions without names, biography, brokerage or prestige bias in discovery",()=>{
+    const prompts=buildVisibilityBasket(subject);
+    expect(BASKET_VERSION).toBe("v2-expertise");
+    expect(prompts).toHaveLength(8);
+    for(const p of prompts.filter(p=>!p.branded)) {
+      expect(p.text).not.toMatch(/Jordan Rivera|Pacific Coast Realty|jordanrivera|luxury|high.end/);
+      expect(p.text).toContain(subject.area);
     }
-    expect(prompts.filter((item) => item.branded).every((item) => item.text.includes("Jordan Rivera"))).toBe(true);
+    expect(buildVisibilityBasket(subject)).toEqual(prompts);
   });
-
-  it("is deterministic and versioned", () => {
-    expect(buildVisibilityBasket(subject)).toEqual(buildVisibilityBasket({ ...subject }));
-    expect(BASKET_VERSION).toBe("v1");
-    expect(new Set(VISIBILITY_CLUSTERS.map((cluster) => cluster.id)).size).toBe(VISIBILITY_CLUSTERS.length);
+  it("rejects dispersed names and namesakes as positive identity",()=>{
+    expect(nameAppears("Jordan Smith and Maria Rivera-Lopez","Jordan Rivera")).toBe(false);
+    expect(nameAppears("Jordan's brother Sam Rivera is a plumber.","Jordan Rivera")).toBe(false);
+    expect(evaluateSubject("Consider Jordan Rivera.",[],subject)).toMatchObject({mentioned:true,ambiguousIdentity:true,recommended:false});
+  });
+  it("separates a negative mention from a recommendation even with a valid subject citation",()=>{
+    const result=evaluateSubject("I do not recommend Jordan Rivera at Pacific Coast Realty.",[toCitation("https://jordanrivera.example/about")!],subject);
+    expect(result).toMatchObject({mentioned:true,cited:true,negativeMention:true,recommended:false});
+  });
+  it("does not treat a prose URL or another agent's page on a directory as a subject citation",()=>{
+    expect(evaluateSubject("Jordan Rivera https://jordanrivera.example",[],subject).cited).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://zillow.com/profile/other")!,subject)).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://jordanrivera.example.evil.test")!,subject)).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://compass.com/agents/someone-else")!,{...subject,websiteHost:"compass.com"})).toBe(false);
+  });
+  it("separates mention/recommendation/citation denominators and failed observations",()=>{
+    const runs=[
+      observation({id:"positive",promptId:"one",answerText:"Consider Jordan Rivera at Pacific Coast Realty.",mentioned:true,recommended:true}),
+      observation({id:"negative",promptId:"two",answerText:"Avoid Jordan Rivera at Pacific Coast Realty.",mentioned:true,recommended:true}),
+      observation({id:"ambiguous",promptId:"three",answerText:"Jordan Rivera is an agent.",mentioned:true,recommended:true}),
+      observation({id:"failed",promptId:"four",status:"failed",errorCode:"provider_timeout"}),
+    ];
+    const report=buildVisibilityReport(runs,subject,[page]);
+    expect(report.discovery).toEqual({numerator:1,denominator:3,percent:33});
+    expect(report.mentions.numerator).toBe(3);expect(report.negative).toBe(1);expect(report.ambiguous).toBe(1);expect(report.failed).toBe(1);
+  });
+  it("deduplicates execution keys and preserves team versus person competitors",()=>{
+    const run=observation({entities:[{name:subject.brokerage!,kind:"brokerage",recommended:true}]});
+    const report=buildVisibilityReport([run,{...run,id:"duplicate"}],subject,[page]);
+    expect(report.completed).toBe(1);expect(report.competitors[0]?.name).toBe(subject.brokerage);
+  });
+  it("produces an actionable evidence-linked gap and an explicit test hypothesis",()=>{
+    const opportunity=buildVisibilityReport([observation()],subject,[page]).opportunities[0]!;
+    expect(opportunity.status).toBe("ready");
+    expect(opportunity.supportingEvidence?.[0]?.id).toBe(source.id);
+    expect(opportunity.evidenceRunIds).toEqual(["run-test"]);
+    expect(opportunity.pageEvidence?.[0]?.id).toBe(page.id);
+    expect(opportunity.priority).toBe(60);
+    expect(opportunity.contentGap).toMatch(/bounded check/);
+    expect(opportunity.testPlan).toMatch(/matching provider/);
+  });
+  it("does not use another agent's biography as the subject's page evidence",()=>{
+    const brokerSubject={...subject,websiteHost:"smallbroker.example",websiteUrl:"https://smallbroker.example/agents/jordan"};
+    const otherPage={...page,url:"https://smallbroker.example/agents/alex",text:page.text+" Rural specialists in our team."};
+    expect(buildVisibilityReport([observation()],brokerSubject,[otherPage]).opportunities).toEqual([]);
+    const ownPage={...otherPage,url:brokerSubject.websiteUrl};
+    expect(buildVisibilityReport([observation()],brokerSubject,[ownPage]).opportunities).toHaveLength(1);
+  });
+  it("abstains without support, public-page inspection, permissions, or relevant observation",()=>{
+    expect(buildVisibilityReport([observation()],{...subject,expertise:[]},[page]).opportunities).toEqual([]);
+    expect(buildVisibilityReport([observation()],subject,[]).opportunities).toEqual([]);
+    expect(buildVisibilityReport([observation()],{...subject,expertise:[{...source,publishAllowed:false}]},[page]).opportunities).toEqual([]);
+    expect(buildVisibilityReport([observation({clusterId:"choose_agent"})],subject,[page]).opportunities).toEqual([]);
+    expect(buildVisibilityReport([observation({status:"failed"})],subject,[page]).discovery.percent).toBeNull();
+  });
+});
+describe("expertise evidence",()=>{
+  it("does not turn declarations or a team's evidence into personal expertise",()=>{
+    expect(summarizeExpertise([{...source,kind:"declaration"}],"agent",subject.name).find(t=>t.topic==="rural")?.status).toBe("insufficient");
+    expect(summarizeExpertise([{...source,entityKind:"team"}],"agent",subject.name).find(t=>t.topic==="rural")?.status).toBe("insufficient");
+  });
+  it("keeps contrary reports and does not treat syndicated copies as independent support",()=>{
+    const negative={...source,id:"negative",excerpt:"The client reported poor communication during the rural inspection.",statement:"The client reported poor communication during the rural inspection.",polarity:"contradictory" as const};
+    const themes=summarizeExpertise([source,{...source,id:"copy",url:"https://another.example/review"},negative],"agent",subject.name);
+    expect(themes.find(t=>t.topic==="rural")).toMatchObject({status:"needs_review",strength:0});
+    expect(themes.find(t=>t.topic==="rural")?.evidence).toHaveLength(2);
+    expect(buildVisibilityReport([observation()],{...subject,expertise:[source,negative]},[page]).opportunities).toEqual([]);
+  });
+  it("validates exact excerpts, permission notes and nonfuture dates",()=>{
+    const {id: _id,contentHash:_hash,observedAt:_at,...input}=source;
+    expect(expertiseSourceSchema.safeParse(input).success).toBe(true);
+    expect(expertiseSourceSchema.safeParse({...input,statement:"An invented outcome that is not in this source."}).success).toBe(false);
+    expect(expertiseSourceSchema.safeParse({...input,sourceDate:"2099-01-01"}).success).toBe(false);
+    expect(expertiseSourceSchema.safeParse({...input,permissionNote:""}).success).toBe(false);
+  });
+  it("suggests exact passages without inventing review themes",()=>{
+    const suggestions=suggestExpertisePassages(source.statement);
+    expect(suggestions.some(s=>s.topic==="rural" && s.statement===source.statement)).toBe(true);
   });
 });
 
-describe("deterministic subject evaluation", () => {
-  it("requires every name token as whole words", () => {
-    expect(nameAppears("Consider Jordan Rivera at Pacific Coast Realty.", "Jordan Rivera")).toBe(true);
-    expect(nameAppears("Jordan's brother Sam Rivera is a plumber.", "Jordan Rivera")).toBe(true);
-    expect(nameAppears("Riverajordan LLC", "Jordan Rivera")).toBe(false);
-    expect(nameAppears("Jordan Smith and Maria Rivera-Lopez", "Jordan Rivera")).toBe(true);
+describe("citation footprint boundaries", () => {
+  it("does not award an agent the other profiles of an unrecognized brokerage", () => {
+    const hosted = {...subject,websiteHost:"localbrokerage.example",websiteUrl:"https://localbrokerage.example/agents/Jordan"};
+    expect(citationBelongsToSubject(toCitation("https://localbrokerage.example/agents/Other")!,hosted)).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://localbrokerage.example/agents/Jordan")!,hosted)).toBe(true);
+    expect(citationBelongsToSubject(toCitation("https://localbrokerage.example/agents/jordan")!,hosted)).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://localbrokerage.example/agents/Jordan/another-agent")!,hosted)).toBe(false);
   });
-
-  it("counts only provider-returned citations on the subject's footprint", () => {
-    const own = toCitation("https://www.jordanrivera.com/about", "About")!;
-    const profile = toCitation("https://www.zillow.com/profile/jordan-rivera-rsf/reviews")!;
-    const other = toCitation("https://www.zillow.com/profile/someone-else")!;
-    const lookalike = toCitation("https://jordanrivera.com.evil.example/")!;
-    expect(citationBelongsToSubject(own, subject)).toBe(true);
-    expect(citationBelongsToSubject(profile, subject)).toBe(true);
-    expect(citationBelongsToSubject(other, subject)).toBe(false);
-    expect(citationBelongsToSubject(lookalike, subject)).toBe(false);
-    const evaluation = evaluateSubject("Jordan Rivera (see https://jordanrivera.com)", [], subject);
-    expect(evaluation.mentioned).toBe(true);
-    expect(evaluation.cited).toBe(false); // prose URL is not a citation
-  });
-
-  it("labels directory hosts", () => {
-    expect(directoryLabel("www.zillow.com")).toBe("Zillow agent profile");
-    expect(directoryLabel("realestate.usnews.com")).toBe("U.S. News agent directory");
-    expect(directoryLabel("randomblog.example")).toBeUndefined();
-  });
-});
-
-describe("visibility report", () => {
-  const runs: VisibilityRun[] = [
-    run({ id: "r1", mentioned: false, cited: false, recommended: false, citations: [toCitation("https://www.zillow.com/profile/a")!, toCitation("https://realestate.usnews.com/x")!], entities: [{ name: "Alex Chen", kind: "agent", recommended: true, brokerage: "Compass" }] }),
-    run({ id: "r2", clusterId: "sell_home", promptId: "sell_home.listing_agent", mentioned: false, cited: false, recommended: false, citations: [toCitation("https://www.zillow.com/profile/b")!, toCitation("https://alexchen.example/about")!], entities: [{ name: "Alex Chen", kind: "agent", recommended: true }] }),
-    run({ id: "r3", clusterId: "luxury", promptId: "luxury.specialists", mentioned: true, cited: true, recommended: true, citations: [toCitation("https://jordanrivera.com/luxury")!], entities: [{ name: "Jordan Rivera", kind: "agent", recommended: true }] }),
-    run({ id: "r4", clusterId: "relocation", promptId: "relocation.pick_local", status: "failed", errorCode: "provider_timeout" }),
-    run({ id: "r5", clusterId: "branded_identity", promptId: "branded_identity.who_is", branded: true, mentioned: true, cited: false, recommended: false }),
-    run({ id: "r6", clusterId: "branded_trust", promptId: "branded_trust.license_brokerage", branded: true, mentioned: true, cited: true, recommended: true }),
-  ];
-
-  it("reports rates with numerators, denominators, and failures", () => {
-    const report = buildVisibilityReport(runs, subject);
-    expect(report.completed).toBe(5);
-    expect(report.failed).toBe(1);
-    expect(report.discovery).toEqual({ numerator: 1, denominator: 3, percent: 33 });
-    expect(report.citation).toEqual({ numerator: 1, denominator: 3, percent: 33 });
-    expect(report.identityAccuracy).toEqual({ numerator: 1, denominator: 2, percent: 50 });
-    expect(report.costUsd).toBeCloseTo(0.6, 5);
-    expect(report.limits.some((limit) => /1 run\(s\) failed/.test(limit))).toBe(true);
-  });
-
-  it("excludes the subject from competitors and ranks by recommendation", () => {
-    const report = buildVisibilityReport(runs, subject);
-    expect(report.competitors[0]).toMatchObject({ name: "Alex Chen", recommended: 2, runs: 2 });
-    expect(report.competitors.some((competitor) => competitor.name === "Jordan Rivera")).toBe(false);
-  });
-
-  it("turns cited directories without a footprint into claim opportunities and flags own-site coverage", () => {
-    const report = buildVisibilityReport(runs, subject);
-    const claims = report.opportunities.filter((item) => item.kind === "profile_claim");
-    // zillow.com is cited twice but the subject controls a zillow profile URL only
-    // if a citation pointed at it; here it did not, so the gap stands.
-    expect(claims.map((item) => item.targetHost)).toContain("zillow.com");
-    expect(claims.find((item) => item.targetHost === "zillow.com")?.evidenceRunIds).toEqual(["r1", "r2"]);
-    const usnews = claims.find((item) => item.targetHost === "realestate.usnews.com");
-    expect(usnews?.factors.reach).toBeCloseTo(1 / 3, 5);
-    expect(usnews!.priority).toBeLessThan(claims.find((item) => item.targetHost === "zillow.com")!.priority);
-    const coverage = report.opportunities.find((item) => item.kind === "own_site_cited_more");
-    expect(coverage).toBeDefined();
-    expect(report.opportunities.every((item) => item.priority >= 0 && item.priority <= 100)).toBe(true);
-    expect(report.opportunities[0]!.priority).toBeGreaterThanOrEqual(report.opportunities.at(-1)!.priority);
-  });
-
-  it("marks a subject-owned citation host as yours in source gaps", () => {
-    const report = buildVisibilityReport(runs, subject);
-    const own = report.sourceGaps.find((gap) => gap.host === "jordanrivera.com");
-    expect(own?.yours).toBe(true);
-  });
-
-  it("reports insufficient evidence instead of inventing opportunities", () => {
-    const report = buildVisibilityReport([run({ id: "x", status: "failed", errorCode: "provider_auth" })], subject);
-    expect(report.discovery.percent).toBeNull();
-    expect(report.opportunities).toEqual([]);
+  it("retains identity-bearing query parameters and ignores only tracking parameters", () => {
+    const hosted = {...subject,websiteHost:"directory.example",websiteUrl:"https://directory.example/profile?id=1",profileUrls:[]};
+    expect(citationBelongsToSubject(toCitation("https://directory.example/profile?id=2")!,hosted)).toBe(false);
+    expect(citationBelongsToSubject(toCitation("https://directory.example/profile?id=1&utm_source=engine")!,hosted)).toBe(true);
+    expect(citationBelongsToSubject(toCitation("https://directory.example/")!,hosted)).toBe(false);
   });
 });

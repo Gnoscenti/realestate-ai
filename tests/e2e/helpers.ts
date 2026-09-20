@@ -33,7 +33,7 @@ export async function completeOnboarding(
   if (!(await heading.isVisible().catch(() => false))) {
     await grantTestAccess(page);
     const setup = page
-      .getByRole("button", { name: /Add profile \(optional\)|Set up profile \/ MLS|Edit profile \/ MLS/i })
+      .getByRole("button", { name: /Add profile \(optional\)|Set up profile|Edit profile/i })
       .first();
     await setup.waitFor({ state: "visible", timeout: 20_000 });
     await setup.click();
@@ -57,15 +57,12 @@ export async function completeOnboarding(
  * already redeemed by that workspace simply shows the app on the next load.
  */
 export async function grantTestAccess(page: Page) {
-  const appVisible = page.getByText(/Command Center|Action Desk/i).first();
+  const appVisible = page.getByTestId("entitled-workspace");
   const codeInput = page.locator("#access-code");
-  // The shell asks the server for the entitlement on load; wait for either outcome.
-  await Promise.race([
-    appVisible.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined),
-    codeInput.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined),
-  ]);
-  if (await appVisible.isVisible().catch(() => false)) return;
-  if (!(await codeInput.isVisible().catch(() => false))) return;
+  // A feature list inside the paywall is not evidence that the app unlocked.
+  await appVisible.or(codeInput).first().waitFor({state:"visible",timeout:20_000});
+  if (await appVisible.isVisible()) return;
+  await codeInput.waitFor({state:"visible",timeout:15_000});
   await codeInput.fill(TEST_ACCESS_CODE);
   await page.getByRole("button", { name: "Redeem" }).click();
   await appVisible.waitFor({ state: "visible", timeout: 20_000 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Building2,
@@ -194,7 +194,7 @@ function Brand({ collapsed }: { collapsed?: boolean }) {
             RealEstate AI
           </div>
           <div className="text-[11px] text-[var(--color-fg-subtle)]">
-            Agent workspace · iOS ready
+            Agent workspace · Responsive web
           </div>
         </div>
       )}
@@ -224,11 +224,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (s) => s.leads.filter((l) => l.heat === "hot").length,
   );
   const myBook = myListings(properties).length;
-  const billing = useAppStore((s) => s.billing);
   const activateBilling = useAppStore((s) => s.activateBilling);
   const clearBilling = useAppStore((s) => s.clearBilling);
-  const [serverAccess, setServerAccess] = useState<"pending" | "active" | "inactive">("pending");
-  const accessOk = serverAccess === "active" || (serverAccess === "pending" && hasAppAccess(billing));
+  const [accessCheck,setAccessCheck]=useState<{userId:string|null;status:"pending"|"active"|"inactive"|"error"}>({userId:null,status:"pending"});
+  const [accessAttempt,setAccessAttempt]=useState(0);
+  const setServerAccess=useCallback((status:"pending"|"active"|"inactive"|"error")=>{
+    setAccessCheck({userId:user?.id || null,status});
+  },[user?.id]);
+  const serverAccess=accessCheck.userId===user?.id ? accessCheck.status : "pending";
+  const accessOk = serverAccess === "active";
+  const handleAccessGranted=useCallback(()=>setServerAccess("active"),[setServerAccess]);
   const emailAlerts = useAppStore((s) => s.emailAlerts);
   const alertUnread = emailUnreadCount(emailAlerts);
   const targetWorkspaceKey = workspaceStorageKey(user?.id);
@@ -274,15 +279,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The product tour is opt-in from the help button. Automatically opening an
   // 11-step modal on first use obscures the task the tester came to complete.
 
-  // Server-side entitlement is the authority (ledger D-008). The browser
-  // billing mirror only bridges the first paint; it is corrected here.
+  // Access must be confirmed for this identity. A cached browser billing value
+  // cannot unlock the shell while loading or after a failed server request.
   useEffect(() => {
-    if (!workspaceReady || !user) return;
+    if (!workspaceReady || !user?.id) return;
     let cancelled = false;
+    setServerAccess("pending");
     void import("@/lib/billing/api")
       .then(({ getMyAccess }) => getMyAccess())
       .then((entitlement) => {
         if (cancelled) return;
+        const billing=useAppStore.getState().billing;
         if (entitlement.active) {
           setServerAccess("active");
           if (!hasAppAccess(billing) || billing.currentPeriodEnd !== entitlement.currentPeriodEnd) {
@@ -302,15 +309,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {
-        // Keep the current mirror if the server is unreachable; the next
-        // paid server call still fails closed.
-        if (!cancelled) setServerAccess(hasAppAccess(billing) ? "active" : "inactive");
+        if (!cancelled) setServerAccess("error");
       });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-check on identity/workspace change only
-  }, [workspaceReady, user?.id]);
+  }, [workspaceReady,user?.id,accessAttempt,setServerAccess,activateBilling,clearBilling]);
 
   // App icon + favicon notification dots
   useEffect(() => {
@@ -353,11 +357,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!accessOk) {
+  if(serverAccess==="pending") {
+    return <div role="status" className="flex min-h-dvh items-center justify-center text-sm">Verifying workspace access…</div>;
+  }
+  if(serverAccess==="error") {
+    return <div className="flex min-h-dvh items-center justify-center p-6">
+      <div className="max-w-md space-y-4 text-center">
+        <p role="alert">We couldn't verify your access. Check your connection and retry.</p>
+        <Button onClick={()=>setAccessAttempt(attempt=>attempt+1)}>Retry access check</Button>
+      </div>
+    </div>;
+  }
+  if (!accessOk && pathname !== "/aieo") {
     return (
       <Paywall
         agentName={profile?.name ?? user.displayName ?? undefined}
-        onAccessGranted={() => setServerAccess("active")}
+        onAccessGranted={handleAccessGranted}
       />
     );
   }
@@ -379,7 +394,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
+    <div data-testid={accessOk ? "entitled-workspace" : "free-workspace"} className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
       <aside
         className={cn(
           "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",
@@ -488,6 +503,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 size="icon"
                 variant="ghost"
                 className="min-h-[44px] min-w-[44px] md:hidden"
+                aria-label="Open navigation"
               >
                 <Menu className="h-5 w-5" />
               </Button>

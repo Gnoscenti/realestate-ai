@@ -9,7 +9,7 @@
  * batch reports `completed`. Nothing is silently retried or dropped: a failed
  * run stays visible with its error code.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { requireEntitlement } from "@/lib/billing/entitlement.server";
@@ -17,19 +17,22 @@ import { getLatestCiteLockScan } from "../repository.server";
 import { citeLockSubjectFingerprint } from "../scan.server";
 import type { CiteLockScanInput } from "../scan-types";
 import { BASKET_VERSION, buildVisibilityBasket, type VisibilitySubject } from "./basket";
-import { evaluateSubject, hostOf, normalizeHost } from "./evaluate";
+import { listExpertise, listExpertisePages } from "./expertise.server";
+import { summarizeExpertise, type EntityKind } from "./expertise";
+import { evaluateSubject, nameAppears, hostOf, normalizeHost } from "./evaluate";
 import {
   askGrounded,
   configuredProviders,
   extractEntities,
   ProviderError,
+  providerSurface,
   type ExtractedEntity,
   type GroundedAnswer,
   type ProviderSpec,
 } from "./providers.server";
 import { buildVisibilityReport, type VisibilityReport, type VisibilityRun } from "./report";
 
-const LEASE_SECONDS = 120;
+const LEASE_SECONDS = 180;
 const MAX_ATTEMPTS = 2;
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -47,6 +50,7 @@ export function visibilityLimits() {
 }
 
 async function consumeQuota(sql: Sql, scope: string, max: number, by = 1): Promise<void> {
+  if (by > max) throw new Error("Planned work exceeds the daily visibility budget.");
   const rows = await sql.query<{ count: number }>(
     `insert into citelock_visibility_quota_buckets (scope, window_started_at, count)
      values ($1, date_trunc('day', now()), $2)
@@ -134,11 +138,16 @@ type RunRow = {
   error_code: string | null;
   answer_text: string | null;
   citations: VisibilityRun["citations"] | string;
+  sources: NonNullable<VisibilityRun["sources"]> | string;
   search_calls: number | null;
   mentioned: boolean | null;
   cited: boolean | null;
   recommended: boolean | null;
   attempt: number;
+  evaluation: ReturnType<typeof evaluateSubject> | string | null;
+  method_version: string;
+  surface: string;
+  usage: Record<string, unknown> | string | null;
   entities: ExtractedEntity[] | string;
   extraction_model: string | null;
   cost_usd_ticks: number | string;
@@ -161,10 +170,15 @@ function toRun(row: RunRow): VisibilityRun {
     errorCode: row.error_code || undefined,
     answerText: row.answer_text || undefined,
     citations: json(row.citations, []),
+    sources: json(row.sources, []),
     searchCalls: row.search_calls ?? undefined,
     mentioned: row.mentioned ?? undefined,
     cited: row.cited ?? undefined,
     recommended: row.recommended ?? undefined,
+    evaluation: json(row.evaluation, null) || undefined,
+    methodVersion: row.method_version,
+    surface: row.surface,
+    usage: row.usage ? JSON.stringify(json(row.usage, null)) : undefined,
     entities: json(row.entities, []),
     extractionModel: row.extraction_model || undefined,
     costUsdTicks: Number(row.cost_usd_ticks) || 0,
@@ -177,11 +191,15 @@ function toRun(row: RunRow): VisibilityRun {
 export async function resolveVisibilitySubject(
   userId: string,
   workspaceId: string,
-  input: CiteLockScanInput & { area: string },
+  input: CiteLockScanInput & { area: string; entityKind?: EntityKind },
   sql: Sql,
 ): Promise<{ subject: VisibilitySubject; fingerprint: string }> {
-  const fingerprint = citeLockSubjectFingerprint(input);
-  const scan = await getLatestCiteLockScan(userId, workspaceId, fingerprint, sql);
+  const scanFingerprint = citeLockSubjectFingerprint(input);
+  const fingerprint = input.entityKind && input.entityKind !== "agent"
+    ? createHash("sha256").update(scanFingerprint + ":" + input.entityKind).digest("hex") : scanFingerprint;
+  const scan = await getLatestCiteLockScan(userId, workspaceId, scanFingerprint, sql);
+  const expertise = await listExpertise(userId, workspaceId, fingerprint, sql);
+  const themes = summarizeExpertise(expertise, input.entityKind || "agent", input.agentName);
   const patch = scan?.profilePatch || {};
   const profileUrls = new Set<string>();
   for (const url of patch.sameAs || []) if (url) profileUrls.add(url);
@@ -198,8 +216,12 @@ export async function resolveVisibilitySubject(
     fingerprint,
     subject: {
       name: input.agentName.trim(),
+      entityKind: input.entityKind || "agent",
+      expertise,
+      expertiseTopics: themes.filter(t => t.status === "supported").map(t => t.topic),
       area: input.area.trim(),
       websiteHost,
+      websiteUrl: input.website,
       brokerage: patch.brokerageBrand || patch.brokerage || undefined,
       license: input.license || patch.license || undefined,
       profileUrls: [...profileUrls],
@@ -207,36 +229,57 @@ export async function resolveVisibilitySubject(
   };
 }
 
-export type StartBatchDependencies = { sql?: Sql; providers?: ProviderSpec[] };
+export type StartBatchDependencies = { sql?: Sql; providers?: ProviderSpec[]; baselineBatchId?: string };
 
 export async function startVisibilityBatch(
   userId: string,
   workspaceId: string,
-  input: CiteLockScanInput & { area: string },
+  input: CiteLockScanInput & { area: string; entityKind?: EntityKind },
   dependencies: StartBatchDependencies = {},
 ): Promise<VisibilityBatch> {
   const sql = dependencies.sql || (await getSql());
+  return sql.transaction(async (sql) => {
+  // Serialize starts per workspace; the next statement sees the committed predecessor.
+  await sql.query("select id from workspaces where id=$1 for update", [workspaceId]);
   const workspace = await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
   await requireEntitlement(userId, workspace.id, sql);
-  const providers = dependencies.providers || configuredProviders();
+  let providers = dependencies.providers || configuredProviders();
   if (!providers.length)
     throw new Error("No answer-engine provider key is configured on this deployment.");
 
   const running = await sql.query<{ id: string }>(
     `select id from citelock_visibility_batches
       where workspace_id = $1 and status = 'running'
-        and started_at > now() - interval '1 hour'
       limit 1`,
     [workspace.id],
   );
   if (running.length) throw new Error("A visibility batch is already running. Let it finish first.");
 
-  const { subject, fingerprint } = await resolveVisibilitySubject(userId, workspace.id, input, sql);
-  const prompts = buildVisibilityBasket(subject);
+  let { subject, fingerprint } = await resolveVisibilitySubject(userId, workspace.id, input, sql);
+  if (/[\n\r{}<>]/.test(input.area) || input.area.length > 160 ||
+      input.area.toLowerCase().includes(input.agentName.toLowerCase()))
+    throw new Error("Use only a geographic market area, without the subject name or instructions.");
+  let prompts = buildVisibilityBasket(subject);
+  if (dependencies.baselineBatchId) {
+    const baseline = await getVisibilityRuns(userId,workspace.id,dependencies.baselineBatchId,sql);
+    if (baseline.batch.basketVersion !== BASKET_VERSION || baseline.batch.status==="running" ||
+        baseline.runs.some(run => run.methodVersion !== "expertise-v2.1" || run.surface !== providerSurface(run.provider)))
+      throw new Error("Start a new baseline for this method, or finish the existing batch first.");
+    subject=baseline.batch.subject; fingerprint=baseline.batch.subjectFingerprint;
+    prompts=[...new Map(baseline.runs.map(run=>[run.promptId,{
+      id:run.promptId,clusterId:run.clusterId,branded:run.branded,text:run.prompt,
+    }])).values()];
+    const selected=[...new Map(baseline.runs.map(run=>[run.provider,run.requestedModel])).entries()];
+    providers=selected.map(([provider,model])=>{
+      const configured=providers.find(p=>p.provider===provider);
+      if(!configured) throw new Error("A baseline provider is no longer configured. Start a separate baseline.");
+      return {...configured,model};
+    });
+  }
   const planned = prompts.length * providers.length;
   const limits = visibilityLimits();
   await consumeQuota(sql, `workspace:${workspace.id}:batches`, limits.batchesPerWorkspacePerDay);
-  await consumeQuota(sql, "global:runs", limits.globalRunsPerDay, planned);
+  await consumeQuota(sql, "global:runs", limits.globalRunsPerDay, planned * MAX_ATTEMPTS);
 
   const batchId = randomUUID();
   const rows = await sql.query<BatchRow>(
@@ -261,8 +304,8 @@ export async function startVisibilityBatch(
       await sql.query(
         `insert into citelock_visibility_runs (
            id, workspace_id, batch_id, subject_fingerprint, cluster_id, prompt_id,
-           prompt, branded, provider, requested_model
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+           prompt, branded, provider, requested_model, method_version, surface
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'expertise-v2.1',$11)`,
         [
           randomUUID(),
           workspace.id,
@@ -274,11 +317,13 @@ export async function startVisibilityBatch(
           prompt.branded,
           spec.provider,
           spec.model,
+          providerSurface(spec.provider),
         ],
       );
     }
   }
   return toBatch(rows[0]!);
+  });
 }
 
 export type ContinueDependencies = {
@@ -304,7 +349,16 @@ async function executeRun(
     answer = await ask(spec, run.prompt);
   } catch (error) {
     const code = error instanceof ProviderError ? error.code : "provider_unknown";
-    const retryable = /timeout|network|rate_limited|http_5/.test(code) && run.attempt < MAX_ATTEMPTS;
+    if (code === "provider_rate_limited") {
+      const delay = error instanceof ProviderError ? error.retryAfterMs ?? 60_000 : 60_000;
+      await sql.query(
+        `insert into citelock_provider_cooldowns(provider,retry_after)
+         values ($1,now()+($2 * interval '1 millisecond'))
+         on conflict(provider) do update set retry_after=greatest(citelock_provider_cooldowns.retry_after,excluded.retry_after)`,
+        [run.provider,delay],
+      );
+    }
+    const retryable = code === "provider_rate_limited" && run.attempt < MAX_ATTEMPTS;
     await sql.query(
       `update citelock_visibility_runs
           set status = $2, error_code = $3, lease_until = null, latency_ms = $4,
@@ -328,23 +382,19 @@ async function executeRun(
       extractionModel = `failed:${error instanceof ProviderError ? error.code : "unknown"}`;
     }
   }
-  // "recommended" is deterministic: branded runs require a consistent identity,
-  // unbranded runs require the subject to be named at all (the prompt asked for
-  // recommendations) AND, when extraction succeeded, to be marked recommended.
-  const subjectEntity = entities.find((entity) => {
-    const a = entity.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    return a === subject.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  });
-  const recommended = run.branded
-    ? evaluation.identityConsistent
-    : evaluation.mentioned && (subjectEntity ? subjectEntity.recommended : true);
+  // Conservative classification: no favorable fallback when extraction fails.
+  // An extracted name must still have identity support and no local negative text.
+  const subjectEntity = entities.find(entity => nameAppears(entity.name, subject.name) &&
+    entity.kind === (subject.entityKind || "agent"));
+  const recommended = !evaluation.negativeMention && !evaluation.ambiguousIdentity &&
+    (evaluation.recommended || Boolean(subjectEntity?.recommended));
   await sql.query(
     `update citelock_visibility_runs
         set status = 'ok', error_code = null, lease_until = null,
             returned_model = $2, answer_text = $3, citations = $4::jsonb, search_calls = $5,
             mentioned = $6, cited = $7, recommended = $8, entities = $9::jsonb,
             extraction_model = $10, usage = $11::jsonb, cost_usd_ticks = $12,
-            latency_ms = $13, observed_at = now()
+            latency_ms = $13, observed_at = now(), evaluation = $14::jsonb, sources = $15::jsonb
       where id = $1`,
     [
       run.id,
@@ -360,6 +410,8 @@ async function executeRun(
       answer.usage ? JSON.stringify(answer.usage) : null,
       Math.round(ticks),
       Date.now() - started,
+      JSON.stringify(evaluation),
+      JSON.stringify(answer.sources || []),
     ],
   );
 }
@@ -385,6 +437,7 @@ export async function continueVisibilityBatch(
   );
   const batchRow = batchRows[0];
   if (!batchRow) throw new Error("Batch not found");
+  await requireEntitlement(userId, workspace.id, sql);
   const batch = toBatch(batchRow);
   const limits = visibilityLimits();
   const providers = dependencies.providers || configuredProviders();
@@ -393,6 +446,10 @@ export async function continueVisibilityBatch(
   let executed = 0;
 
   if (batch.status === "running") {
+    // Expired work may have been charged. Preserve uncertainty instead of replaying.
+    await sql.query(
+      "update citelock_visibility_runs set status='failed', error_code='provider_outcome_unknown', lease_until=null, observed_at=now() where batch_id=$1 and workspace_id=$2 and status='running' and lease_until < now()",
+      [batchId,workspace.id]);
     while (now() < deadline) {
       const leased = await sql.query<RunRow>(
         `update citelock_visibility_runs
@@ -401,9 +458,13 @@ export async function continueVisibilityBatch(
           where id in (
             select id from citelock_visibility_runs
              where batch_id = $1 and workspace_id = $2
-               and (status = 'pending' or (status = 'running' and lease_until < now()))
+               and status = 'pending'
+               and not exists (
+                 select 1 from citelock_provider_cooldowns c
+                 where c.provider=citelock_visibility_runs.provider and c.retry_after > now()
+               )
              order by branded, prompt_id, provider
-             limit $3
+             limit $3 for update skip locked
           )
           returning *`,
         [batchId, workspace.id, limits.runsPerContinue],
@@ -412,17 +473,18 @@ export async function continueVisibilityBatch(
       await Promise.all(
         leased.map(async (run) => {
           const spec = providers.find((candidate) => candidate.provider === run.provider);
-          if (!spec) {
+          if (!spec || run.surface !== providerSurface(run.provider)) {
             await sql.query(
-              `update citelock_visibility_runs set status = 'failed', error_code = 'provider_not_configured', lease_until = null, observed_at = now() where id = $1`,
-              [run.id],
+              `update citelock_visibility_runs set status = 'failed', error_code = $2, lease_until = null, observed_at = now() where id = $1`,
+              [run.id, spec ? "provider_surface_changed" : "provider_not_configured"],
             );
             return;
           }
-          await executeRun(sql, run, batch.subject, spec, dependencies);
+          await executeRun(sql, run, batch.subject, { ...spec, model: run.requested_model }, dependencies);
         }),
       );
       executed += leased.length;
+      break; // One bounded slice per request; browser resumes pending work.
     }
   }
 
@@ -486,42 +548,50 @@ export async function getVisibilityRuns(
     [batchId, workspace.id],
   );
   const runs = rows.map(toRun);
-  return { batch, runs, report: buildVisibilityReport(runs, batch.subject) };
+  const pages = await listExpertisePages(userId, workspace.id, batch.subjectFingerprint, sql);
+  // Preserve the historical prompt/subject snapshot but use current rights and
+  // contradictions when deciding what the user may improve now.
+  const expertise = await listExpertise(userId, workspace.id, batch.subjectFingerprint, sql);
+  return { batch, runs, report: buildVisibilityReport(runs, {...batch.subject, expertise}, pages) };
 }
 
-/** Per-cluster discovery over time for the comparison series (same basket version). */
-export async function visibilityTrend(
-  userId: string,
-  workspaceId: string,
-  subjectFingerprint: string,
-  sqlOverride?: Sql,
-): Promise<{ batchId: string; startedAt: string; clusterId: string; mentioned: number; completed: number }[]> {
-  if (!/^[a-f0-9]{64}$/.test(subjectFingerprint)) throw new Error("Invalid CiteLock subject fingerprint");
-  const sql = sqlOverride || (await getSql());
-  const workspace = await requireWorkspaceAccess(userId, workspaceId, undefined, sql);
-  const rows = await sql.query<{
-    batch_id: string;
-    started_at: string | Date;
-    cluster_id: string;
-    mentioned: number;
-    completed: number;
-  }>(
-    `select r.batch_id, b.started_at, r.cluster_id,
-            sum(case when r.mentioned then 1 else 0 end)::int as mentioned,
-            sum(case when r.status = 'ok' then 1 else 0 end)::int as completed
-       from citelock_visibility_runs r
-       join citelock_visibility_batches b on b.id = r.batch_id
-      where r.workspace_id = $1 and r.subject_fingerprint = $2 and b.status <> 'running'
-        and b.basket_version = $3 and r.branded = false
-      group by r.batch_id, b.started_at, r.cluster_id
-      order by b.started_at asc`,
-    [workspace.id, subjectFingerprint, BASKET_VERSION],
-  );
-  return rows.map((row) => ({
-    batchId: row.batch_id,
-    startedAt: iso(row.started_at)!,
-    clusterId: row.cluster_id,
-    mentioned: row.mentioned,
-    completed: row.completed,
-  }));
+export type VisibilityTrendRow = {
+  batchId:string; startedAt:string; clusterId:string; provider:string; model:string;
+  prompt:string; surface:string; method:string; seriesId:string;
+  mentioned:number; recommended:number; cited:number; completed:number; failed:number;
+  previousDate:string|null; change:string;
+};
+/** A configuration change starts a separate series. Same-day repetitions are not lift. */
+export async function visibilityTrend(userId:string,workspaceId:string,fingerprint:string,sqlOverride?:Sql):Promise<VisibilityTrendRow[]> {
+  const sql=sqlOverride || await getSql();
+  await requireWorkspaceAccess(userId,workspaceId,undefined,sql);
+  if(!/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error("Invalid subject");
+  const batches=await listVisibilityBatches(userId,workspaceId,fingerprint,sql);
+  const series=new Map<string,VisibilityTrendRow>();
+  const result:VisibilityTrendRow[]=[];
+  for(const batch of batches.filter(b=>b.status!=="running").reverse()) {
+    const rows=await sql.query<RunRow>("select * from citelock_visibility_runs where batch_id=$1 and workspace_id=$2 and branded=false",[batch.id,workspaceId]);
+    for(const raw of rows) {
+      const run=toRun(raw);
+      const config=[fingerprint,batch.basketVersion,batch.subject.area,batch.subject.entityKind || "agent",run.provider,
+        run.requestedModel,run.returnedModel || "unavailable",run.prompt,run.surface,run.methodVersion,run.extractionModel];
+      const key=createHash("sha256").update(JSON.stringify(config)).digest("hex");
+      const prior=series.get(key);
+      const comparable=prior && prior.startedAt.slice(0,10)!==batch.startedAt.slice(0,10) && prior.completed && run.status==="ok";
+      const row:VisibilityTrendRow={
+        batchId:batch.id,startedAt:batch.startedAt,clusterId:run.clusterId,provider:run.provider,
+        model:run.returnedModel || run.requestedModel,prompt:run.prompt,surface:run.surface || "api_web_grounded",
+        method:run.methodVersion || "legacy-v1",seriesId:key,
+        mentioned:Number(run.mentioned || false),recommended:Number(["expertise-v2","expertise-v2.1"].includes(run.methodVersion || "") && run.recommended || false),
+        cited:Number(run.cited || false),completed:Number(run.status==="ok"),failed:Number(run.status==="failed"),
+        previousDate:comparable ? prior.startedAt : null,
+        change:comparable ? "Comparable observations; descriptive only, not demonstrated lift." : "No comparable prior observation on a different date.",
+      };
+      if(comparable && prior.recommended===row.recommended && prior.cited===row.cited && prior.mentioned===row.mentioned)
+        row.change="No change in this comparable observation; no lift established.";
+      if(row.completed && (!prior || prior.startedAt.slice(0,10)!==row.startedAt.slice(0,10))) series.set(key,row);
+      result.push(row);
+    }
+  }
+  return result;
 }

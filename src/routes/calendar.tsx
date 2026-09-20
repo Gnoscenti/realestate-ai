@@ -5,12 +5,10 @@ import {
   Calendar as CalendarIcon,
   Check,
   Clock,
-  Link2,
   Plus,
-  RefreshCw,
+  Download,
   Star,
   Trash2,
-  Unlink,
   User,
   Wrench,
 } from "lucide-react";
@@ -29,12 +27,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   APPOINTMENT_KIND_LABEL,
-  CALENDAR_PROVIDERS,
-  appointmentsNeedingAttention,
+  extractRemindersFromNotes,
   flattenReminders,
   formatApptWhen,
   type AppointmentKind,
-  type CalendarProviderId,
 } from "@/lib/calendar";
 import {
   CONTRACTOR_CATEGORIES,
@@ -45,6 +41,8 @@ import {
   type ContractorCategory,
 } from "@/lib/contractors";
 import { useAppStore } from "@/lib/store";
+import { appointmentToIcs, downloadTextFile, manualAppointmentSchema } from "@/lib/calendar-export";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/calendar")({
@@ -53,12 +51,8 @@ export const Route = createFileRoute("/calendar")({
 
 function CalendarPage() {
   const profile = useAppStore((s) => s.agentProfile);
-  const connections = useAppStore((s) => s.calendarConnections);
   const appointments = useAppStore((s) => s.appointments);
   const contractors = useAppStore((s) => s.contractors);
-  const connectCalendar = useAppStore((s) => s.connectCalendar);
-  const disconnectCalendar = useAppStore((s) => s.disconnectCalendar);
-  const syncCalendars = useAppStore((s) => s.syncCalendars);
   const setAppointmentStatus = useAppStore((s) => s.setAppointmentStatus);
   const deleteAppointment = useAppStore((s) => s.deleteAppointment);
   const addContractor = useAppStore((s) => s.addContractor);
@@ -67,7 +61,26 @@ function CalendarPage() {
   const archiveContractor = useAppStore((s) => s.archiveContractor);
   const updateContractor = useAppStore((s) => s.updateContractor);
 
-  const [emailDraft, setEmailDraft] = useState<Record<string, string>>({});
+  const addAppointment = useAppStore((s) => s.addAppointment);
+  const [showAppointment, setShowAppointment] = useState(false);
+  const [appointmentError, setAppointmentError] = useState("");
+  const [appointment, setAppointment] = useState({
+    title: "", kind: "showing" as AppointmentKind, start: "", end: "", location: "", clientName: "", notes: "",
+  });
+  const saveAppointment = () => {
+    try {
+      if (!appointment.start || !appointment.end) throw new Error("Choose a start and end time.");
+      const parsed = manualAppointmentSchema.safeParse({
+        ...appointment, start: new Date(appointment.start).toISOString(), end: new Date(appointment.end).toISOString(),
+      });
+      if (!parsed.success) throw new Error(parsed.error.issues[0].message);
+      addAppointment({ ...parsed.data, source: "manual", status: "scheduled",
+        reminders: extractRemindersFromNotes(parsed.data.title, parsed.data.notes) });
+      setShowAppointment(false); setAppointmentError("");
+      setAppointment({ title: "", kind: "showing", start: "", end: "", location: "", clientName: "", notes: "" });
+      toast.success("Appointment saved on this device");
+    } catch (error) { setAppointmentError(error instanceof Error ? error.message : "Could not save the appointment."); }
+  };
   const [catFilter, setCatFilter] = useState<
     ContractorCategory | "all" | "common"
   >("common");
@@ -85,7 +98,7 @@ function CalendarPage() {
   });
 
   const upcoming = useMemo(
-    () => appointmentsNeedingAttention(appointments, 120),
+    () => [...appointments].sort((a, b) => Date.parse(a.start) - Date.parse(b.start)),
     [appointments],
   );
   const reminders = useMemo(
@@ -118,29 +131,6 @@ function CalendarPage() {
       .sort((a, b) => b.useCount - a.useCount);
   }, [catFilter, commonList, contractors]);
 
-  const connectedCount = connections.filter((c) => c.connected).length;
-
-  const connect = (id: CalendarProviderId) => {
-    const email =
-      emailDraft[id] ||
-      (profile?.website
-        ? `calendar@${profile.website.replace(/^https?:\/\//, "").split("/")[0]}`
-        : undefined);
-    connectCalendar(id, email);
-    toast.success(
-      `${CALENDAR_PROVIDERS.find((p) => p.id === id)?.label} connected (demo — nothing imported)`,
-    );
-  };
-
-  const onSync = () => {
-    if (!connectedCount) {
-      toast.message("Connect at least one calendar first");
-      return;
-    }
-    syncCalendars();
-    toast.success("Refreshed. No external calendar is connected, so nothing was imported");
-  };
-
   const markUsed = (id: string, company: string) => {
     logContractorUse(id);
     toast.success(`Logged use · ${company} stays on Common list`);
@@ -163,23 +153,21 @@ function CalendarPage() {
                 <CalendarIcon className="h-3 w-3" />
                 Calendar hub
               </Badge>
-              <Badge variant="secondary">{connectedCount} connected</Badge>
-              <Badge variant="secondary">{upcoming.length} upcoming</Badge>
+              <Badge variant="secondary">Saved on this device</Badge>
+              <Badge variant="secondary">{upcoming.length} appointments</Badge>
             </div>
             <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-              Calendars, AI reminders & vendors
+              Appointments, preparation & vendors
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Connect is a local demo toggle in this build: there is no OAuth and
-              nothing is imported yet. Appointments and reminders come from what
-              is stored on this device. Keep termite,
-              inspection, electrician, and other vendors under category
-              headings — with a Commonly Used list that persists.
+              Add appointments and preparation notes, then export a calendar file for Google,
+              Apple or Outlook. Records stay in this browser. Calendar sync, invitations and
+              background notifications are not connected. Keep a copy with Export calendar.
             </p>
           </div>
-          <Button onClick={onSync} className="shrink-0">
-            <RefreshCw className="h-4 w-4" />
-            Sync calendars
+          <Button onClick={() => setShowAppointment(v => !v)} className="shrink-0">
+            <Plus className="h-4 w-4" />
+            Add appointment
           </Button>
         </div>
       </div>
@@ -188,134 +176,46 @@ function CalendarPage() {
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
           <TabsTrigger value="reminders">
-            AI reminders
+            Preparation notes
             {reminders.length > 0 && (
               <span className="ml-1.5 rounded-full bg-[var(--color-primary-soft)] px-1.5 text-[10px] text-[var(--color-primary)]">
                 {reminders.length}
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="connect">Connect</TabsTrigger>
           <TabsTrigger value="contractors">Contractors</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="connect" className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {CALENDAR_PROVIDERS.map((p) => {
-              const conn = connections.find((c) => c.id === p.id);
-              const connected = conn?.connected;
-              return (
-                <Card key={p.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] text-xs font-bold text-white"
-                          style={{ background: p.color }}
-                        >
-                          {p.short.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <CardTitle className="text-base">{p.label}</CardTitle>
-                          <CardDescription className="text-xs">
-                            {p.blurb}
-                          </CardDescription>
-                        </div>
-                      </div>
-                      <Badge variant={connected ? "success" : "secondary"}>
-                        {connected ? "Connected" : "Off"}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {!connected ? (
-                      <>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Account email</Label>
-                          <Input
-                            value={emailDraft[p.id] ?? ""}
-                            onChange={(e) =>
-                              setEmailDraft((d) => ({
-                                ...d,
-                                [p.id]: e.target.value,
-                              }))
-                            }
-                            placeholder={`${p.id}@yourbrokerage.com`}
-                          />
-                        </div>
-                        <Button
-                          className="w-full"
-                          onClick={() => connect(p.id)}
-                        >
-                          <Link2 className="h-4 w-4" />
-                          Connect (demo)
-                        </Button>
-                      </>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs text-[var(--color-fg-muted)]">
-                          {conn?.accountEmail}
-                          {conn?.lastSyncAt
-                            ? ` · synced ${formatApptWhen(conn.lastSyncAt)}`
-                            : ""}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={onSync}
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            Sync now
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              disconnectCalendar(p.id);
-                              toast.message(`${p.label} disconnected`);
-                            }}
-                          >
-                            <Unlink className="h-3.5 w-3.5" />
-                            Disconnect
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-          <p className="text-xs text-[var(--color-fg-subtle)]">
-            Demo only. Toggling a provider here does not start an OAuth flow and
-            does not import anything from Google, Apple, Outlook, or CalDAV.
-          </p>
-        </TabsContent>
-
         <TabsContent value="appointments" className="space-y-3">
-          {!connectedCount && appointments.length === 0 && (
-            <Card>
-              <CardContent className="flex flex-col items-start gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="font-medium">No calendars connected yet</div>
-                  <p className="text-sm text-[var(--color-fg-muted)]">
-                    Calendar import is not implemented yet, so appointments must be
-                      added manually.
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    connect("google");
-                    toast.success("Google Calendar connected (demo)");
-                  }}
-                >
-                  Quick-connect Google
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
+          {showAppointment && <Card>
+            <CardHeader><CardTitle>New appointment</CardTitle>
+              <CardDescription>Times use your device timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).</CardDescription></CardHeader>
+            <CardContent><form className="grid gap-4 sm:grid-cols-2" onSubmit={e => { e.preventDefault(); saveAppointment(); }}>
+              <div className="space-y-1"><Label htmlFor="appointment-title">Title</Label><Input id="appointment-title" required maxLength={200}
+                value={appointment.title} onChange={e => setAppointment(v => ({...v,title:e.target.value}))} /></div>
+              <div className="space-y-1"><Label htmlFor="appointment-kind">Type</Label><select id="appointment-kind"
+                className="h-10 w-full rounded-md border bg-[var(--color-surface)] px-3" value={appointment.kind}
+                onChange={e => setAppointment(v => ({...v,kind:e.target.value as AppointmentKind}))}>
+                {Object.entries(APPOINTMENT_KIND_LABEL).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></div>
+              <div className="space-y-1"><Label htmlFor="appointment-start">Starts</Label><Input id="appointment-start" type="datetime-local" required
+                value={appointment.start} onChange={e => setAppointment(v => ({...v,start:e.target.value}))} /></div>
+              <div className="space-y-1"><Label htmlFor="appointment-end">Ends</Label><Input id="appointment-end" type="datetime-local" required
+                value={appointment.end} onChange={e => setAppointment(v => ({...v,end:e.target.value}))} /></div>
+              <div className="space-y-1"><Label htmlFor="appointment-location">Location</Label><Input id="appointment-location" maxLength={500}
+                value={appointment.location} onChange={e => setAppointment(v => ({...v,location:e.target.value}))} /></div>
+              <div className="space-y-1"><Label htmlFor="appointment-client">Client (optional)</Label><Input id="appointment-client" maxLength={200}
+                value={appointment.clientName} onChange={e => setAppointment(v => ({...v,clientName:e.target.value}))} /></div>
+              <div className="space-y-1 sm:col-span-2"><Label htmlFor="appointment-notes">Preparation notes</Label><Textarea id="appointment-notes" maxLength={5000}
+                value={appointment.notes} onChange={e => setAppointment(v => ({...v,notes:e.target.value}))} /></div>
+              {appointmentError && <p role="alert" className="sm:col-span-2 text-sm text-red-600">{appointmentError}</p>}
+              <div className="flex gap-2"><Button type="submit">Save appointment</Button>
+                <Button type="button" variant="outline" onClick={() => setShowAppointment(false)}>Cancel</Button></div>
+            </form></CardContent>
+          </Card>}
+          {appointments.length === 0 && <Card><CardContent className="space-y-2 py-8">
+            <p className="font-medium">Your calendar is clear</p>
+            <p className="text-sm text-[var(--color-fg-muted)]">Use Add appointment to save your first event. Export it to your preferred calendar when ready.</p>
+          </CardContent></Card>}
           {upcoming.map((a) => (
             <Card key={a.id}>
               <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
@@ -368,6 +268,10 @@ function CalendarPage() {
                   )}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => {
+                    try { downloadTextFile("appointment.ics", appointmentToIcs(a), "text/calendar;charset=utf-8"); }
+                    catch (error) { toast.error(error instanceof Error ? error.message : "Could not export appointment"); }
+                  }}><Download className="h-3.5 w-3.5" />Export calendar</Button>
                   {a.status !== "completed" && (
                     <Button
                       size="sm"
@@ -384,6 +288,7 @@ function CalendarPage() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    aria-label={"Delete " + a.title}
                     onClick={() => {
                       deleteAppointment(a.id);
                       toast.message("Removed from hub");
@@ -396,12 +301,6 @@ function CalendarPage() {
             </Card>
           ))}
 
-          {appointments.length > 0 && upcoming.length === 0 && (
-            <p className="py-8 text-center text-sm text-[var(--color-fg-muted)]">
-              No appointments in the next few days. Sync again or add from your
-              calendar.
-            </p>
-          )}
         </TabsContent>
 
         <TabsContent value="reminders" className="space-y-3">
@@ -412,14 +311,13 @@ function CalendarPage() {
                 Reminders from appointments saved on this device
               </CardTitle>
               <CardDescription>
-                Prep tasks from appointments saved on this device — ask the
-                assistant “what’s on my calendar?” anytime
+                Your notes and rule-based suggestions for the next four days. Completed appointments are excluded.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {reminders.length === 0 ? (
                 <p className="text-sm text-[var(--color-fg-muted)]">
-                  Connect a calendar and sync to load reminders.
+                  No preparation notes in the next four days. Add an appointment with notes to see them here.
                 </p>
               ) : (
                 reminders.map((r, i) => (

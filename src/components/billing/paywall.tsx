@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Check,
@@ -195,6 +196,9 @@ export function Paywall({ agentName, onAccessGranted }: Props) {
           </p>
         </div>
 
+        <Link to="/aieo" className="mb-4 block rounded-xl border border-[var(--color-primary)] bg-[var(--color-primary-soft)] p-4 text-center text-sm font-semibold text-[var(--color-primary)]">
+          Try the free Citelock visibility guide
+        </Link>
         <div className="surface-card overflow-hidden shadow-[var(--shadow-lg)]">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-primary-soft)] px-5 py-4">
             <div className="flex items-end justify-between gap-3">

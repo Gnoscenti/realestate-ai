@@ -4,6 +4,7 @@ import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import {
   socialContentSchema,
+  platformSchema,
   socialCommandSchema,
   validatePostUrl,
   type SocialContent,
@@ -13,6 +14,7 @@ import {
 } from "./types";
 import { hasBlockingFinding, reviewCaption } from "./fair-housing";
 import {
+  PostizError,
   createPostizPost,
   getPostizPostStatus,
   loadPostizConnection,
@@ -145,6 +147,7 @@ export async function changeSocialDraft(
   const rows = await sql.query<Row>("select * from social_drafts where workspace_id = $1 and id = $2", [workspaceId, id]);
   const current = rows[0];
   if (!current) throw new Error("Draft not found");
+  if (current.state === "publishing") throw new Error("This revision is awaiting scheduler confirmation. Check Postiz before taking another action.");
   if (current.revision !== revision) throw new Error("This draft changed in another tab. Reload before continuing.");
   if (command.action === "approve" && current.state !== "draft") throw new Error("Only a draft can be approved");
   if (command.action === "approve") {
@@ -160,6 +163,10 @@ export async function changeSocialDraft(
     throw new Error("This revision was already posted; edit a new revision first");
   if (command.action === "edit" && current.state === "scheduled")
     throw new Error("This revision is scheduled with your scheduler. Cancel it there before editing.");
+  if(command.action==="approve" || command.action==="handoff") {
+    const {requireLinkedSocialSupport}=await import("@/lib/aieo/visibility/interventions.server");
+    await requireLinkedSocialSupport(userId,workspaceId,id,sql);
+  }
   const content = command.action === "edit" ? command.content : parseContent(current.content);
   const state =
     command.action === "edit"
@@ -179,7 +186,7 @@ export async function changeSocialDraft(
     `with changed as (
        update social_drafts set content = $4::jsonb, state = $5, approved_by = $6,
          approved_at = $7, post_url = $8, revision = revision + 1, updated_at = now()
-       where workspace_id = $1 and id = $2 and revision = $3 returning *
+       where workspace_id = $1 and id = $2 and revision = $3 and state <> 'publishing' returning *
      ), event as (
        insert into social_draft_events (workspace_id, draft_id, revision, actor_user_id, action, snapshot)
        select workspace_id, id, revision, $9, $10, to_jsonb(changed) from changed
@@ -248,6 +255,8 @@ export async function publishSocialDraft(
   const content = parseContent(current.content);
   if (hasBlockingFinding(reviewCaption(content.caption)))
     throw new Error("Resolve the blocking fair-housing findings before publishing");
+  const {requireLinkedSocialSupport}=await import("@/lib/aieo/visibility/interventions.server");
+  await requireLinkedSocialSupport(userId,workspaceId,input.id,sql);
   const connection = await loadPostizConnection(userId, workspaceId, sql);
   if (!connection) throw new Error("Connect your Postiz workspace first (Social desk → Publishing)");
   const channels = await (dependencies.channels
@@ -256,17 +265,30 @@ export async function publishSocialDraft(
   const channel = channels.find((item) => item.id === input.channelId);
   if (!channel) throw new Error("That channel is no longer connected in Postiz");
   if (channel.disabled) throw new Error(`${channel.name} is disabled in Postiz`);
-  if (channel.platform && channel.platform !== content.platform)
+  if (!channel.platform || channel.platform !== content.platform)
     throw new Error(`This draft is written for ${content.platform}; the channel is ${channel.platform}`);
   const scheduledFor = input.scheduledFor || new Date(Date.now() + 2 * 60_000).toISOString();
   if (Date.parse(scheduledFor) < Date.now() - 60_000) throw new Error("Choose a time in the future");
 
   const publicationId = randomUUID();
+  const reserved=await sql.query(
+    `with frozen as (
+       update social_drafts set state='publishing',updated_at=now()
+       where workspace_id=$1 and id=$2 and revision=$3 and state in ('approved','handed_off')
+       returning id
+     )
+     insert into social_draft_publications(id,workspace_id,draft_id,revision,provider,channel_id,channel_name,channel_platform,status,scheduled_for,response)
+     select $4,$1,$2::uuid,$3,'postiz',$5,$6,$7,'unknown',$8,'{"stage":"reserved"}'::jsonb from frozen
+     returning id`,
+    [workspaceId,input.id,current.revision,publicationId,channel.id,channel.name,channel.platform,scheduledFor]);
+  if(!reserved.length) throw new Error("This revision changed or a publishing request is already reserved. Reload before continuing.");
+  let dispatched=false;
   try {
     const upload = dependencies.upload || uploadMediaToPostiz;
     const media: { id: string; path: string }[] = [];
     for (const url of content.mediaUrls) media.push(await upload(connection, url));
     const create = dependencies.create || createPostizPost;
+    dispatched=true;
     const result = await create(connection, {
       channelId: channel.id,
       content: content.caption,
@@ -275,27 +297,13 @@ export async function publishSocialDraft(
       mode: input.scheduledFor ? "schedule" : "now",
     });
     const publication = await sql.query<PublicationRow>(
-      `insert into social_draft_publications (
-         id, workspace_id, draft_id, revision, provider, channel_id, channel_name, channel_platform,
-         provider_post_id, status, scheduled_for, response
-       ) values ($1,$2,$3,$4,'postiz',$5,$6,$7,$8,'scheduled',$9,$10::jsonb) returning *`,
-      [
-        publicationId,
-        workspaceId,
-        input.id,
-        current.revision,
-        channel.id,
-        channel.name,
-        channel.platform,
-        result.providerPostId,
-        scheduledFor,
-        JSON.stringify(result.raw ?? null),
-      ],
-    );
+      `update social_draft_publications set provider_post_id=$3,status='scheduled',response=$4::jsonb,updated_at=now()
+       where id=$1 and workspace_id=$2 returning *`,
+      [publicationId,workspaceId,result.providerPostId,JSON.stringify(result.raw ?? null)]);
     const changed = await sql.query<Row>(
       `with changed as (
          update social_drafts set state = 'scheduled', revision = revision + 1, updated_at = now()
-         where workspace_id = $1 and id = $2 and revision = $3 returning *
+         where workspace_id = $1 and id = $2 and revision = $3 and state='publishing' returning *
        ), event as (
          insert into social_draft_events (workspace_id, draft_id, revision, actor_user_id, action, snapshot)
          select workspace_id, id, revision, $4, 'schedule', to_jsonb(changed) from changed
@@ -306,15 +314,13 @@ export async function publishSocialDraft(
     return { draft: toDraft(changed[0]), publication: toPublication(publication[0]!) };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publish failed";
+    const rejected = !dispatched || (error instanceof PostizError && /^(postiz_auth|postiz_rate_limited|postiz_http_4\d\d)$/.test(error.code));
     await sql.query(
-      `insert into social_draft_publications (
-         id, workspace_id, draft_id, revision, provider, channel_id, channel_name, channel_platform,
-         status, scheduled_for, response
-       ) values ($1,$2,$3,$4,'postiz',$5,$6,$7,'failed',$8,$9::jsonb)`,
-      [publicationId, workspaceId, input.id, current.revision, channel.id, channel.name, channel.platform, scheduledFor, JSON.stringify({ error: message })],
-    );
-    // The failed publication row is the durable record; the draft revision is
-    // untouched so the approved text is never lost.
+      `update social_draft_publications set status=$3,response=$4::jsonb,updated_at=now()
+       where id=$1 and workspace_id=$2 and status='unknown'`,
+      [publicationId,workspaceId,rejected?"failed":"unknown",JSON.stringify({error:message,outcome:rejected?"rejected":"unknown; reconcile in Postiz, do not replay"})]);
+    if(rejected) await sql.query("update social_drafts set state='approved',updated_at=now() where id=$1 and workspace_id=$2 and revision=$3 and state='publishing'",
+      [input.id,workspaceId,current.revision]);
     throw new Error(message);
   }
 }
@@ -340,33 +346,47 @@ export async function refreshPublication(
   const connection = await loadPostizConnection(userId, workspaceId, sql);
   if (!connection) throw new Error("Postiz connection was removed");
   const status = await (dependencies.status || getPostizPostStatus)(connection, current.provider_post_id);
-  let next: SocialPublication["status"] = "scheduled";
-  let releaseUrl: string | null = current.release_url;
-  if (status?.state === "PUBLISHED") {
-    next = "published";
-    releaseUrl = status.releaseUrl || releaseUrl;
-  } else if (status?.state === "ERROR" || status === null) {
-    next = "failed";
-  }
-  const updated = await sql.query<PublicationRow>(
-    `update social_draft_publications set status = $3, release_url = $4, updated_at = now()
-      where workspace_id = $1 and id = $2 returning *`,
-    [workspaceId, publicationId, next, releaseUrl],
-  );
-  if (next !== "scheduled") {
-    await sql.query(
-      `with changed as (
-         update social_drafts set state = $3, post_url = coalesce($4, post_url), revision = revision + 1, updated_at = now()
-         where workspace_id = $1 and id = $2 and state = 'scheduled' returning *
-       ), event as (
-         insert into social_draft_events (workspace_id, draft_id, revision, actor_user_id, action, snapshot)
-         select workspace_id, id, revision, $5, $6, to_jsonb(changed) from changed
-       ) select * from changed`,
-      [workspaceId, current.draft_id, next === "published" ? "published" : "failed", releaseUrl, userId, next === "published" ? "publish" : "fail"],
+  // The provider call is deliberately outside the transaction. Serialize its result
+  // with other refreshes so a late pending response cannot downgrade a terminal one.
+  return sql.transaction(async tx => {
+    const [locked] = await tx.query<PublicationRow>(
+      "select * from social_draft_publications where workspace_id=$1 and id=$2 for update",
+      [workspaceId, publicationId],
     );
-  }
-  return {
-    publication: toPublication(updated[0]!),
-    draft: await getSocialDraft(userId, workspaceId, current.draft_id, sql),
-  };
+    if (!locked) throw new Error("Publication not found");
+    if (locked.status !== "scheduled") {
+      return { publication: toPublication(locked), draft: await getSocialDraft(userId, workspaceId, locked.draft_id, tx) };
+    }
+    let next: SocialPublication["status"] = "scheduled";
+    let releaseUrl = locked.release_url;
+    if (status?.state === "PUBLISHED") {
+      next = "published";
+      const platform = platformSchema.safeParse(locked.channel_platform);
+      if (status.releaseUrl && platform.success) {
+        // Treat the provider URL as untrusted input, just like a manual receipt.
+        // A bad URL must not discard the independently reported publication status.
+        try { releaseUrl = validatePostUrl(platform.data, status.releaseUrl); } catch { /* retain the last validated URL */ }
+      }
+    } else if (status?.state === "ERROR") {
+      next = "failed";
+    }
+    const [updated] = await tx.query<PublicationRow>(
+      `update social_draft_publications set status=$3,release_url=$4,updated_at=now()
+       where workspace_id=$1 and id=$2 returning *`,
+      [workspaceId, publicationId, next, releaseUrl],
+    );
+    if (next !== "scheduled") {
+      await tx.query(
+        `with changed as (
+           update social_drafts set state=$3,post_url=coalesce($4,post_url),revision=revision+1,updated_at=now()
+           where workspace_id=$1 and id=$2 and state in ('scheduled','publishing') and revision in ($7,$7+1) returning *
+         ), event as (
+           insert into social_draft_events (workspace_id,draft_id,revision,actor_user_id,action,snapshot)
+           select workspace_id,id,revision,$5,$6,to_jsonb(changed) from changed
+         ) select * from changed`,
+        [workspaceId, locked.draft_id, next, releaseUrl, userId, next === "published" ? "publish" : "fail", locked.revision],
+      );
+    }
+    return { publication: toPublication(updated!), draft: await getSocialDraft(userId, workspaceId, locked.draft_id, tx) };
+  });
 }

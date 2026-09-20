@@ -24,10 +24,11 @@ function demoSigningSecret(): string {
 
 /**
  * Demo checkout grants access without taking payment, so it must be explicit
- * and must have a signing secret in production.
+ * and is disabled in production.
  */
 export function demoCheckoutAllowed(): boolean {
   return (
+    process.env.NODE_ENV !== "production" &&
     process.env.ALLOW_DEMO_CHECKOUT === "1" &&
     Boolean(demoSigningSecret())
   );
@@ -63,12 +64,11 @@ async function verifyDemoSessionId(
   userId: string,
 ): Promise<boolean> {
   if (!demoCheckoutAllowed()) return false;
-  const parts = sessionId.split("_");
-  if (parts.length !== 4 || parts[0] !== "cs" || parts[1] !== "demo") {
-    return false;
-  }
-  const nonce = parts[2]!;
-  const supplied = parts[3]!;
+  // Both base64url components may contain underscores; do not split on them.
+  const parts = /^cs_demo_([A-Za-z0-9_-]{24})_([A-Za-z0-9_-]{43})$/.exec(sessionId);
+  if (!parts) return false;
+  const nonce = parts[1]!;
+  const supplied = parts[2]!;
   const { createHmac, timingSafeEqual } = await import("node:crypto");
   const expected = createHmac("sha256", demoSigningSecret())
     .update(`${userId}:${nonce}`)
@@ -111,7 +111,7 @@ export async function createCheckoutSession(opts: {
     }checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: opts.cancelUrl,
     client_reference_id: opts.userId.slice(0, 200),
-    allow_promotion_codes: true,
+    allow_promotion_codes: false,
     billing_address_collection: "auto",
     line_items: [
       {

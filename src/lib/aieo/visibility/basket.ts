@@ -1,3 +1,4 @@
+import { EXPERTISE_TOPICS, type EntityKind, type ExpertiseEvidence } from "./expertise";
 /**
  * Versioned client-intent prompt basket for CiteLock Visibility.
  *
@@ -8,7 +9,7 @@
  * starts a new comparison series.
  */
 
-export const BASKET_VERSION = "v1" as const;
+export const BASKET_VERSION = "v2-expertise" as const;
 
 export type VisibilityCluster = {
   id: string;
@@ -28,10 +29,15 @@ export type VisibilityPrompt = {
 export type VisibilitySubject = {
   /** Exact person name as verified/declared. */
   name: string;
+  entityKind?: EntityKind;
+  expertise?: ExpertiseEvidence[];
+  expertiseTopics?: (keyof typeof EXPERTISE_TOPICS)[];
   /** Free-text market, e.g. "Rancho Santa Fe, CA". */
   area: string;
   /** Website host (no www.), when known. */
   websiteHost?: string;
+  /** Exact public website; a non-root path never owns the whole brokerage domain. */
+  websiteUrl?: string;
   /** Marketing brokerage brand, when known. */
   brokerage?: string;
   /** License number, used only for branded trust evaluation. */
@@ -60,9 +66,9 @@ export const VISIBILITY_CLUSTERS: VisibilityCluster[] = [
     branded: false,
   },
   {
-    id: "luxury",
-    label: "Luxury / high-end",
-    intent: "A high-end buyer or seller asks for specialists.",
+    id: "property_process",
+    label: "Property due diligence",
+    intent: "A client asks about property-specific due diligence support.",
     branded: false,
   },
   {
@@ -113,10 +119,10 @@ export function buildVisibilityBasket(subject: VisibilitySubject): VisibilityPro
       text: `I'm relocating to ${area} from out of state. How should I choose a local real estate agent, and can you name a few well-regarded ones with sources?`,
     },
     {
-      id: "luxury.specialists",
-      clusterId: "luxury",
+      id: "property_process.due_diligence",
+      clusterId: "property_process",
       branded: false,
-      text: `Who are the best luxury real estate agents in ${area} for high-end properties? Name specific agents and cite sources.`,
+      text: `Which real estate agents in ${area} can help a buyer understand property inspections and due diligence? Name specific agents and cite sources.`,
     },
     {
       id: "brokerage.local_presence",
@@ -137,9 +143,26 @@ export function buildVisibilityBasket(subject: VisibilitySubject): VisibilityPro
       text: `Is ${name} a licensed real estate agent in ${area}, and which brokerage are they with? Cite sources.`,
     },
   ];
+  for (const topic of [...new Set(subject.expertiseTopics || [])].sort().slice(0,3)) {
+    prompts.push({
+      id: "expertise." + topic, clusterId: "expertise." + topic, branded: false,
+      text: `I need help with ${EXPERTISE_TOPICS[topic].toLowerCase()} when buying or selling property in ${area}. Which real estate ${subject.entityKind === "brokerage" ? "brokerages" : subject.entityKind === "team" ? "teams" : "agents"} should I consider, and what sources support that recommendation?`,
+    });
+  }
+  if (subject.entityKind && subject.entityKind !== "agent") {
+    for (const prompt of prompts) prompt.text=prompt.text
+      .replace(/\bagents or teams\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
+      .replace(/\bagents\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
+      .replace(/\bagent\b/g,subject.entityKind === "brokerage" ? "brokerage" : "team");
+  }
   return prompts;
 }
 
 export function clusterById(id: string): VisibilityCluster | undefined {
-  return VISIBILITY_CLUSTERS.find((cluster) => cluster.id === id);
+  const fixed = VISIBILITY_CLUSTERS.find((cluster) => cluster.id === id);
+  if (fixed) return fixed;
+  const topic = id.replace("expertise.", "") as keyof typeof EXPERTISE_TOPICS;
+  return id.startsWith("expertise.") && EXPERTISE_TOPICS[topic] ? {
+    id, label:EXPERTISE_TOPICS[topic], intent:"Designed research question based on supported expertise; not measured demand.", branded:false,
+  } : undefined;
 }

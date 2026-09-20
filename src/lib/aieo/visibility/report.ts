@@ -3,17 +3,21 @@
  * Every rate is reported with its numerator and denominator; failed runs are
  * counted and shown, never folded into a zero.
  */
-import { VISIBILITY_CLUSTERS, clusterById, type VisibilitySubject } from "./basket";
+import { clusterById, type VisibilitySubject } from "./basket";
 import {
   citationBelongsToSubject,
+  toCitation,
+  evaluateSubject,
+  type SubjectEvaluation,
   directoryLabel,
   hostMatches,
   subjectFootprint,
   type GroundedCitation,
 } from "./evaluate";
-import type { ExtractedEntity } from "./providers.server";
+import { summarizeExpertise, TOPIC_PATTERNS, type ExpertiseEvidence, type PageObservation } from "./expertise";
+import type { ExtractedEntity, GroundedSource } from "./providers.server";
 
-export const REPORT_ALGORITHM_VERSION = "visibility-1.0" as const;
+export const REPORT_ALGORITHM_VERSION = "visibility-2.2" as const;
 
 export type VisibilityRun = {
   id: string;
@@ -29,10 +33,15 @@ export type VisibilityRun = {
   errorCode?: string;
   answerText?: string;
   citations: GroundedCitation[];
+  sources?: GroundedSource[];
   searchCalls?: number;
   mentioned?: boolean;
   cited?: boolean;
   recommended?: boolean;
+  evaluation?: SubjectEvaluation;
+  methodVersion?: string;
+  surface?: string;
+  usage?: string;
   entities: ExtractedEntity[];
   extractionModel?: string;
   costUsdTicks: number;
@@ -85,6 +94,14 @@ export type Opportunity = {
   targetLabel?: string;
   factors: { gap: number; reach: number; actionability: number; fit: number };
   priority: number;
+  supportingEvidence?: ExpertiseEvidence[];
+  pageEvidence?: PageObservation[];
+  clientQuestion?: string;
+  contentGap?: string;
+  hypothesis?: string;
+  testPlan?: string;
+  evidenceStrength?: number;
+  status?: "ready" | "needs_research";
   effort: "low" | "medium" | "high";
 };
 
@@ -95,6 +112,9 @@ export type VisibilityReport = {
   failed: number;
   providers: string[];
   discovery: Rate;
+  mentions: Rate;
+  ambiguous: number;
+  negative: number;
   citation: Rate;
   identityAccuracy: Rate;
   clusters: ClusterSummary[];
@@ -112,15 +132,22 @@ function entityKey(entity: ExtractedEntity): string {
 function isSubjectEntity(entity: ExtractedEntity, subject: VisibilitySubject): boolean {
   const a = entity.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const b = subject.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  return a === b || (subject.brokerage
-    ? a === subject.brokerage.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
-    : false);
+  return a === b && entity.kind === (subject.entityKind || "agent");
 }
 
 export function buildVisibilityReport(
   runs: VisibilityRun[],
   subject: VisibilitySubject,
+  pages: PageObservation[] = [],
 ): VisibilityReport {
+  // One persisted execution key is one observation, even if a caller supplies duplicates.
+  runs = [...new Map(runs.map(run => [run.batchId + ":" + run.promptId + ":" + run.provider, run])).values()];
+  runs = runs.map(run => {
+    const evaluation = run.evaluation || (run.answerText ? evaluateSubject(run.answerText,run.citations,subject) : undefined);
+    return {...run, evaluation, recommended: evaluation
+      ? !evaluation.ambiguousIdentity && !evaluation.negativeMention && Boolean(evaluation.recommended || (["expertise-v2", "expertise-v2.1"].includes(run.methodVersion || "") && run.recommended))
+      : ["expertise-v2", "expertise-v2.1"].includes(run.methodVersion || "") && Boolean(run.recommended)};
+  });
   const completedRuns = runs.filter((run) => run.status === "ok");
   const failedRuns = runs.filter((run) => run.status === "failed");
   const unbranded = completedRuns.filter((run) => !run.branded);
@@ -128,7 +155,7 @@ export function buildVisibilityReport(
   const providers = [...new Set(runs.map((run) => run.provider))].sort();
   const footprint = subjectFootprint(subject);
 
-  const clusters: ClusterSummary[] = VISIBILITY_CLUSTERS.map((cluster) => {
+  const clusters: ClusterSummary[] = [...new Set(runs.map(run => run.clusterId))].map(id => clusterById(id) || {id,label:id,intent:"Historical question",branded:runs.find(run => run.clusterId===id)?.branded || false}).map((cluster) => {
     const clusterRuns = runs.filter((run) => run.clusterId === cluster.id);
     const ok = clusterRuns.filter((run) => run.status === "ok");
     const failed = clusterRuns.filter((run) => run.status === "failed").length;
@@ -257,100 +284,57 @@ export function buildVisibilityReport(
     }))
     .sort((a, b) => b.citingRuns - a.citingRuns || a.host.localeCompare(b.host));
 
-  const discovery = rate(unbranded.filter((run) => run.mentioned).length, unbranded.length);
+  const discovery = rate(unbranded.filter((run) => run.recommended).length, unbranded.length);
+  const mentions = rate(unbranded.filter((run) => run.mentioned).length, unbranded.length);
   const citation = rate(unbranded.filter((run) => run.cited).length, unbranded.length);
-  const identityAccuracy = rate(branded.filter((run) => run.recommended).length, branded.length);
+  const identityAccuracy = rate(branded.filter((run) => run.evaluation?.identityConsistent).length, branded.length);
 
   const opportunities: Opportunity[] = [];
-  const gap = discovery.denominator > 0 ? 1 - discovery.numerator / discovery.denominator : 1;
   const unbrandedCount = unbranded.length;
-  for (const source of sourceGaps) {
-    if (source.yours) continue;
-    const label = directoryLabel(source.host);
-    if (!label) continue; // press/blog hosts are surfaced as context, not claims
-    const reach = unbrandedCount > 0 ? source.citingRuns / unbrandedCount : 0;
-    if (reach < 0.15 && source.citingRuns < 2) continue;
-    const actionability = 0.9;
-    const fit = 1;
-    const evidenceRunIds = unbranded
-      .filter((run) => run.citations.some((item) => item.host === source.host))
-      .map((run) => run.id);
+  const themes = summarizeExpertise(subject.expertise || [],subject.entityKind || "agent",subject.name);
+  const latestPages = [...new Map([...pages].sort((a,b)=>a.observedAt.localeCompare(b.observedAt)).map(p=>[p.url,p])).values()]
+    .filter(p => {
+      const citation = toCitation(p.url);
+      return p.identityMatched && citation && subject.websiteHost &&
+        hostMatches(citation.host, subject.websiteHost) && citationBelongsToSubject(citation, subject);
+    });
+  for (const theme of themes) {
+    if(theme.status !== "supported" || !theme.publishable.length) continue;
+    const relevant = unbranded.filter(run=>run.clusterId === "expertise."+theme.topic);
+    const missed = relevant.filter(run => !run.recommended && !run.evaluation?.ambiguousIdentity &&
+      run.citations.length && run.entities.some(e => e.recommended && !isSubjectEntity(e,subject)));
+    if (!missed.length || !latestPages.length) continue;
+    const gap = missed.length / relevant.length;
+    const covered = latestPages.some(page=>TOPIC_PATTERNS[theme.topic].test(page.text));
+    const strength = theme.strength;
     opportunities.push({
-      key: `profile_claim:${source.host}`,
-      kind: "profile_claim",
-      title: `Claim and complete your ${label}`,
-      why: `Engines cited ${source.host} in ${source.citingRuns} of ${unbrandedCount} unbranded answers, and none of those citations pointed at a profile you control.`,
-      evidenceRunIds,
-      clusterIds: source.clusters,
-      targetHost: source.host,
-      targetLabel: label,
-      factors: { gap, reach, actionability, fit },
-      priority: Math.round(100 * gap * reach * actionability * fit),
-      effort: "low",
+      key:"expertise:"+theme.topic, kind:"site_page",
+      title:(covered ? "Make the supporting evidence clearer: " : "Add an expertise section: ")+theme.label,
+      why:`In ${missed.length}/${relevant.length} completed questions about this expertise, the resolved subject was not recommended while other entities were recommended and sources were cited. This is an observation, not a ranking explanation.`,
+      evidenceRunIds:missed.map(run=>run.id), clusterIds:["expertise."+theme.topic],
+      clientQuestion:relevant[0]!.prompt,
+      supportingEvidence:theme.publishable,
+      pageEvidence:latestPages.map(page=>({...page,text:page.text.slice(0,1600)})),
+      contentGap: covered
+        ? "The inspected public pages mention this topic, but the sampled answers did not recommend the resolved subject. Test a clearer, source-linked explanation."
+        : "No topic-matching passage was found in the inspected public pages. This bounded check does not establish absence across the entire website.",
+      hypothesis:"A useful page connecting permitted evidence to this client question may make the expertise easier to discover and assess. Citation or recommendation gains are not guaranteed.",
+      testPlan:"Publish the reviewed content, verify the live text, then rerun the same saved basket. Compare recommendation, mention and citation counts only for matching provider, returned model, prompt, location, surface and method on separate dates. Retain failures and no-change results.",
+      evidenceStrength:strength, targetHost:subject.websiteHost,
+      factors:{gap,reach:missed.length/relevant.length,actionability:1,fit:1},
+      priority:Math.round(100*gap*strength), effort:"medium", status:"ready",
     });
   }
-
-  const ownSiteCited = unbranded.filter((run) =>
-    run.citations.some((item) => footprint.hosts.some((own) => hostMatches(item.host, own))),
-  );
-  const nonDirectoryCited = unbranded.filter((run) =>
-    run.citations.some((item) => !directoryLabel(item.host)),
-  );
-  if (unbrandedCount > 0 && subject.websiteHost) {
-    const reach = nonDirectoryCited.length / unbrandedCount;
-    if (ownSiteCited.length === 0 && reach > 0) {
-      opportunities.push({
-        key: "site_page:area_expertise",
-        kind: "site_page",
-        title: `Publish a ${subject.area} expertise page on ${subject.websiteHost}`,
-        why: `Engines cited independent websites (not directories) in ${nonDirectoryCited.length} of ${unbrandedCount} unbranded answers, but never ${subject.websiteHost}. A factual, first-hand page about how you serve ${subject.area} gives them something citable.`,
-        evidenceRunIds: nonDirectoryCited.map((run) => run.id),
-        clusterIds: [...new Set(nonDirectoryCited.map((run) => run.clusterId))].sort(),
-        targetHost: subject.websiteHost,
-        factors: { gap, reach, actionability: 1, fit: 1 },
-        priority: Math.round(100 * gap * reach * 1 * 1),
-        effort: "medium",
-      });
-    } else if (ownSiteCited.length > 0 && ownSiteCited.length < unbrandedCount) {
-      const reach = 1 - ownSiteCited.length / unbrandedCount;
-      opportunities.push({
-        key: "own_site_cited_more:coverage",
-        kind: "own_site_cited_more",
-        title: `Extend ${subject.websiteHost} to the intents where it is not cited`,
-        why: `${subject.websiteHost} was cited in ${ownSiteCited.length} of ${unbrandedCount} unbranded answers. Cover the missing intents with first-hand pages.`,
-        evidenceRunIds: unbranded.filter((run) => !ownSiteCited.includes(run)).map((run) => run.id),
-        clusterIds: [...new Set(unbranded.filter((run) => !ownSiteCited.includes(run)).map((run) => run.clusterId))].sort(),
-        targetHost: subject.websiteHost,
-        factors: { gap, reach, actionability: 0.8, fit: 1 },
-        priority: Math.round(100 * gap * reach * 0.8),
-        effort: "medium",
-      });
-    }
-  }
-
-  const brandedMentionedWrong = branded.filter((run) => run.mentioned && !run.recommended);
-  if (branded.length > 0 && brandedMentionedWrong.length > 0) {
-    const reach = brandedMentionedWrong.length / branded.length;
-    opportunities.push({
-      key: "identity_fix:branded",
-      kind: "identity_fix",
-      title: "Make your name, brokerage, and license consistent across public profiles",
-      why: `${brandedMentionedWrong.length} of ${branded.length} branded answers named you without a consistent brokerage, license, or citation to a page you control.`,
-      evidenceRunIds: brandedMentionedWrong.map((run) => run.id),
-      clusterIds: [...new Set(brandedMentionedWrong.map((run) => run.clusterId))].sort(),
-      factors: { gap: reach, reach, actionability: 1, fit: 1 },
-      priority: Math.round(100 * reach * reach),
-      effort: "low",
-    });
-  }
-
-  opportunities.sort((a, b) => b.priority - a.priority || a.key.localeCompare(b.key));
+  opportunities.sort((a,b)=>b.priority-a.priority || a.key.localeCompare(b.key));
 
   const limits: string[] = [
     "API observations of provider web-grounded surfaces; not measurements of the consumer ChatGPT, Gemini, or Grok apps.",
     "Prompts are designed research questions, not measured search demand.",
+    "Opportunity priority measures evidence sufficiency and actionable fit, never agent quality, sales volume or predicted lift.",
+    "Review evidence is client-reported; selected sources may be biased, incomplete or contradictory. Missing evidence is unknown.",
     "Competitor names are model-extracted from answer text and labeled as such; subject mention/citation is deterministic.",
   ];
+  if (!opportunities.length) limits.push("No actionable opportunity yet: add permitted, entity-matched expertise, inspect a public page, and run the matching expertise questions. Contradictory or missing evidence requires review.");
   if (failedRuns.length) limits.push(`${failedRuns.length} run(s) failed and are excluded from every rate; their error codes are shown.`);
   if (unbrandedCount < 10) limits.push("Fewer than 10 completed unbranded runs: rates are descriptive, not statistically powered.");
 
@@ -363,6 +347,9 @@ export function buildVisibilityReport(
     failed: failedRuns.length,
     providers,
     discovery,
+    mentions,
+    ambiguous: unbranded.filter(r=>r.evaluation?.ambiguousIdentity).length,
+    negative: unbranded.filter(r=>r.evaluation?.negativeMention).length,
     citation,
     identityAccuracy,
     clusters,

@@ -11,8 +11,9 @@
  *   - xai/grok: live-verified (Responses API, web_search, url_citation annotations)
  *   - openai:   implemented from current docs; not live-verified (no key here)
  *   - gemini:   implemented from current docs; key present but quota-exhausted (429)
- *   - perplexity: implemented from current docs; not live-verified (no key here)
+ *   - perplexity: Agent SDK live-verified 2026-09-20; see ledger for exact scope.
  */
+import Perplexity from "@perplexity-ai/perplexity_ai";
 import { readResponseText } from "@/lib/safe-outbound-url.server";
 import { toCitation, type GroundedCitation } from "./evaluate";
 
@@ -28,9 +29,26 @@ export type ProviderSpec = {
   verified: boolean;
 };
 
+export const PERPLEXITY_AGENT_SURFACE = "perplexity_agent_web_v1";
+export const PERPLEXITY_AGENT_MODEL = "openai/gpt-5.6-luna";
+
+export function providerSurface(provider: string): string {
+  return provider === "perplexity" ? PERPLEXITY_AGENT_SURFACE : "api_web_grounded";
+}
+
+export type GroundedSource = GroundedCitation & {
+  sourceId: number;
+  snippet?: string;
+  date?: string;
+  lastUpdated?: string;
+};
+
 export type GroundedAnswer = {
   text: string;
   citations: GroundedCitation[];
+  /** Retrieved sources are not counted as answer citations. */
+  sources?: GroundedSource[];
+  httpStatus?: number;
   returnedModel?: string;
   searchCalls?: number;
   usage?: Record<string, unknown>;
@@ -42,6 +60,8 @@ export class ProviderError extends Error {
   constructor(
     readonly code: string,
     message?: string,
+    readonly retryAfterMs?: number,
+    readonly httpStatus?: number,
   ) {
     super(message || code);
     this.name = "ProviderError";
@@ -83,10 +103,10 @@ export function configuredProviders(): ProviderSpec[] {
   if (perplexity)
     specs.push({
       provider: "perplexity",
-      label: "Perplexity",
-      model: env("PERPLEXITY_VISIBILITY_MODEL") || "sonar-pro",
+      label: "Perplexity Agent",
+      model: env("PERPLEXITY_VISIBILITY_MODEL") || PERPLEXITY_AGENT_MODEL,
       key: perplexity,
-      verified: false,
+      verified: true,
     });
   return specs;
 }
@@ -252,42 +272,102 @@ async function askGemini(spec: ProviderSpec, prompt: string): Promise<GroundedAn
   };
 }
 
+/** Parse both Retry-After forms without retrying earlier than requested. */
+export function retryAfterMs(value: string | null, now = Date.now()): number {
+  if (!value?.trim()) return 60_000;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.max(1_000, Math.ceil(seconds * 1_000));
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(1_000, date - now) : 60_000;
+}
+
 async function askPerplexity(spec: ProviderSpec, prompt: string): Promise<GroundedAnswer> {
-  const { status, json } = await postJson(
-    "https://api.perplexity.ai/chat/completions",
-    { Authorization: `Bearer ${spec.key}` },
-    {
-      model: spec.model,
-      messages: [{ role: "user", content: prompt }],
+  if (!spec.key.trim()) throw new ProviderError("provider_not_configured");
+  if (!/^[a-z0-9-]+\/[a-zA-Z0-9._:-]+$/.test(spec.model))
+    throw new ProviderError("provider_model_unavailable", "Set PERPLEXITY_VISIBILITY_MODEL to an Agent provider/model ID.");
+  const client = new Perplexity({
+    apiKey: spec.key,
+    baseURL: "https://api.perplexity.ai",
+    maxRetries: 0, // Engine owns the durable paid-call retry budget.
+    timeout: TIMEOUT_MS,
+    logLevel: "off", // Never let SDK debug logging expose prompts or credentials.
+    fetch: async (url, init) => {
+      // SDK 0.38.5 uses the documented /v1/responses Agent alias.
+      const response = await fetch(url, { ...init, redirect: "error" });
+      const text = await readResponseText(response, 4_000_000);
+      return new Response(text, { status: response.status, headers: response.headers });
     },
-  );
-  if (status < 200 || status >= 300) throw httpError(status, json);
-  const choices = json.choices as { message?: { content?: string } }[] | undefined;
-  const text = choices?.[0]?.message?.content?.trim() || "";
-  if (!text) throw new ProviderError("provider_empty_response");
-  const citations = new Map<string, GroundedCitation>();
-  const results = json.search_results as { url?: string; title?: string }[] | undefined;
-  for (const result of results || []) {
-    if (typeof result.url !== "string") continue;
-    const citation = toCitation(result.url, result.title);
-    if (citation && !citations.has(citation.url)) citations.set(citation.url, citation);
+  });
+  try {
+    const { data: response, response: http } = await client.responses.create({
+      model: spec.model,
+      input: prompt,
+      tools: [{ type: "web_search", max_tokens: 6000, max_tokens_per_page: 1200 }],
+      instructions: "Search the web before answering. Ground factual claims in retrieved sources and cite them inline. If evidence is insufficient, say so. Do not invent sources.",
+      max_steps: 2,
+      max_output_tokens: 2000,
+      store: false,
+    }).withResponse();
+    if (response.status !== "completed" || response.error)
+      throw new ProviderError("provider_incomplete", undefined, undefined, http.status);
+    if (typeof response.output_text !== "string" || !response.output_text.trim())
+      throw new ProviderError("provider_empty_answer", undefined, undefined, http.status);
+    const citations: GroundedCitation[] = [];
+    const sources: GroundedSource[] = [];
+    let searchItems = 0;
+    for (const item of response.output) {
+      if (item.type === "search_results") {
+        searchItems += 1;
+        for (const source of item.results) {
+          const link = toCitation(source.url, source.title);
+          if (link) sources.push({ ...link, sourceId: source.id, snippet: source.snippet,
+            date: source.date || undefined, lastUpdated: source.last_updated || undefined });
+        }
+      } else if (item.type === "message") {
+        for (const part of item.content) {
+          if (part.type !== "output_text") continue;
+          for (const annotation of part.annotations || []) {
+            if (annotation.type !== "url_citation" || !annotation.url) continue;
+            const citation = toCitation(annotation.url, annotation.title);
+            if (citation) citations.push(citation);
+          }
+        }
+      }
+    }
+    const invocations = response.usage?.tool_calls_details?.search_web?.invocation;
+    const searchCalls = typeof invocations === "number" && Number.isFinite(invocations)
+      ? invocations : searchItems;
+    if (!searchItems && searchCalls <= 0)
+      throw new ProviderError("provider_ungrounded", undefined, undefined, http.status);
+    const cost = response.usage?.cost;
+    return {
+      text: response.output_text.trim(),
+      citations: [...new Map(citations.map(citation => [citation.url, citation])).values()],
+      sources,
+      returnedModel: response.model,
+      searchCalls,
+      usage: response.usage ? { ...response.usage } : undefined,
+      costUsdTicks: cost?.currency === "USD" && Number.isFinite(cost.total_cost) && cost.total_cost >= 0
+        ? Math.round(cost.total_cost * 1e10) : undefined,
+      httpStatus: http.status,
+    };
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    if (error instanceof Perplexity.APIConnectionTimeoutError)
+      throw new ProviderError("provider_timeout");
+    if (error instanceof Perplexity.APIConnectionError)
+      throw new ProviderError("provider_network");
+    if (error instanceof Perplexity.APIError) {
+      const status = error.status;
+      const code = status === 401 || status === 403 ? "provider_auth"
+        : status === 429 ? "provider_rate_limited"
+        : status === 404 ? "provider_model_unavailable" : `provider_http_${status}`;
+      // Never propagate SDK messages/bodies: upstream may reflect sensitive input.
+      throw new ProviderError(code, undefined,
+        status === 429 ? retryAfterMs(error.headers?.get("retry-after") || null) : undefined, status);
+    }
+    throw new ProviderError(error instanceof SyntaxError ? "provider_invalid_json" : "provider_malformed_response");
   }
-  for (const url of (json.citations as unknown[] | undefined) || []) {
-    if (typeof url !== "string") continue;
-    const citation = toCitation(url);
-    if (citation && !citations.has(citation.url)) citations.set(citation.url, citation);
-  }
-  const usage = (json.usage as Record<string, unknown> | undefined) || undefined;
-  const cost = (usage?.cost as { total_cost?: number } | undefined)?.total_cost;
-  return {
-    text,
-    citations: [...citations.values()],
-    returnedModel: typeof json.model === "string" ? json.model : spec.model,
-    searchCalls: typeof usage?.num_search_queries === "number" ? usage.num_search_queries : undefined,
-    usage,
-    costUsdTicks:
-      typeof cost === "number" && Number.isFinite(cost) ? Math.round(cost * 1e10) : undefined,
-  };
 }
 
 export async function askGrounded(spec: ProviderSpec, prompt: string): Promise<GroundedAnswer> {

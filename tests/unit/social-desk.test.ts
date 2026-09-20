@@ -15,6 +15,7 @@ import { hasBlockingFinding, reviewCaption } from "@/lib/social-desk/fair-housin
 import { draftCaption } from "@/lib/social-desk/drafting.server";
 import {
   decryptSecret,
+  PostizError,
   encryptSecret,
   parseChannels,
   parseCreatePostResponse,
@@ -218,7 +219,7 @@ describe("Postiz publishing", () => {
         {
           channels: async () => channels,
           create: (async () => {
-            throw new Error("Postiz rate limit reached (90 posts/hour)");
+            throw new PostizError("postiz_rate_limited","Postiz rate limit reached (90 posts/hour)");
           }) as never,
         },
       ),

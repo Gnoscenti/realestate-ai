@@ -25,13 +25,13 @@ export const Route = createFileRoute("/login")({
 const HIGHLIGHTS = [
   {
     icon: Zap,
-    title: "Speed-to-lead in under 5 minutes",
-    body: "Ranked Action Desk with reply packs ready before the lead goes cold.",
+    title: "Get discovered for the work you do best",
+    body: "Connect supported expertise to real AI discovery questions and usable public-content improvements.",
   },
   {
     icon: BarChart3,
-    title: "CMAs that sound like you",
-    body: "Comps, narrative, and pricing stories pulled from your book — not generic filler.",
+    title: "Social content with sources and review",
+    body: "Draft from facts, approve the exact revision and distribute through your authorized accounts.",
   },
   {
     icon: Calendar,
@@ -121,11 +121,12 @@ function LoginPage() {
 
           <div>
             <h1 className="font-display text-4xl font-semibold tracking-tight text-[var(--color-fg)] sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]">
-              Your AI command center for every listing, lead, and closing.
+              Get discovered for the work you do best.
             </h1>
             <p className="mt-4 max-w-xl text-base leading-relaxed text-[var(--color-fg-muted)] sm:text-lg">
-              Ranked daily work, instant response packs, CMAs, and content that
-              sounds like you — on iPhone or desktop with one login.
+              Citelock finds evidence-supported discovery gaps, creates useful
+              improvements and connects them to your Social Desk. Track what you
+              publish and what later AI answers actually say.
             </p>
           </div>
 

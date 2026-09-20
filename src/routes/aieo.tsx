@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AIEO_PILLAR_LABEL, scoreAieo } from "@/lib/aieo/score";
 import {
@@ -34,6 +33,8 @@ import {
 import { getMyLatestCiteLockScan, runMyCiteLockScan } from "@/lib/aieo/api";
 import {
   continueMyVisibilityBatch,
+  createMyInterventionSocial,
+  repeatMyVisibilityBatch,
   draftMyIntervention,
   getMyVisibilityBatch,
   getMyVisibilityTrend,
@@ -44,6 +45,11 @@ import {
   startMyVisibilityBatch,
   updateMyIntervention,
 } from "@/lib/aieo/visibility/api";
+import { ExpertisePanel } from "@/components/citelock/expertise-panel";
+import { GuidePanel } from "@/components/citelock/guide-panel";
+import { getMyAccess } from "@/lib/billing/api";
+import { SubjectEditor } from "@/components/citelock/subject-editor";
+import type { SubjectInput } from "@/lib/aieo/visibility/subjects";
 import type { CiteAgentProfile, CiteProperty } from "@/lib/aieo/provenance";
 import type { Opportunity, Rate, VisibilityRun } from "@/lib/aieo/visibility/report";
 import type { VisibilityBatch } from "@/lib/aieo/visibility/engine.server";
@@ -56,8 +62,9 @@ export const Route = createFileRoute("/aieo")({
   component: CiteLockPage,
 });
 
-type Tab = "visibility" | "opportunities" | "readiness" | "evidence";
+type Tab = "expertise" | "visibility" | "opportunities" | "readiness" | "evidence";
 const TAB_LABEL: Record<Tab, string> = {
+  expertise: "Supported expertise",
   visibility: "Where you show up",
   opportunities: "What to fix",
   readiness: "Readiness",
@@ -90,15 +97,32 @@ function RateChip({ label, rate, hint }: { label: string; rate: Rate; hint?: str
 }
 
 function CiteLockPage() {
+  const [mode,setMode] = useState<"guide" | "advanced">("guide");
+  const [access,setAccess] = useState<"loading" | "full" | "basic" | "error">("loading");
+  useEffect(()=>{let active=true; void getMyAccess().then(result=>{if(active)setAccess(result.active ? "full":"basic");}).catch(()=>{if(active)setAccess("error");});return()=>{active=false;};},[]);
+  return <div className="mx-auto max-w-7xl space-y-5">
+    <div className="flex flex-wrap gap-2">
+      <Button variant={mode==="guide" ? "default":"outline"} onClick={()=>setMode("guide")}>Visibility guide</Button>
+      <Button variant={mode==="advanced" ? "default":"outline"} disabled={access!=="full"} onClick={()=>setMode("advanced")}>Advanced workspace</Button>
+      {access==="basic" && <Link to="/" className="self-center text-xs text-[var(--color-primary)]">Full access includes measurement + Social Desk</Link>}
+      {access==="error" && <p role="alert" className="text-xs">Could not verify advanced access. Reload to retry.</p>}
+    </div>
+    {mode==="guide" ? <GuidePanel /> : <MeasurementWorkspace />}
+  </div>;
+}
+
+function MeasurementWorkspace() {
   const profile = useAppStore((state) => state.agentProfile);
   const properties = useAppStore((state) => state.properties);
   const memory = useAppStore((state) => state.agentMemory);
-  const [tab, setTab] = useState<Tab>("visibility");
+  const [tab, setTab] = useState<Tab>("expertise");
   const [jurisdiction, setJurisdiction] = useState<CiteJurisdiction>("US-CA");
   const [scan, setScan] = useState<CiteLockScanRecord | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderInfo | null>(null);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  const [providerRetry, setProviderRetry] = useState(0);
   const [batches, setBatches] = useState<VisibilityBatch[]>([]);
   const [detail, setDetail] = useState<BatchDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -108,13 +132,11 @@ function CiteLockPage() {
   const [trend, setTrend] = useState<Trend>([]);
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [subjectFingerprint, setSubjectFingerprint] = useState<string | null>(null);
-  const [area, setArea] = useState(profile?.areaOfOperations || "");
+  const [subjectInput, setSubjectInput] = useState<SubjectInput | null>(null);
+  const historyRequest=useRef(0);
   const [scoreClock, setScoreClock] = useState(() => new Date().toISOString());
   const cancelRef = useRef(false);
-
-  useEffect(() => {
-    if (profile?.areaOfOperations && !area) setArea(profile.areaOfOperations);
-  }, [profile?.areaOfOperations, area]);
+  useEffect(() => () => { cancelRef.current = true; }, []);
 
   useEffect(() => {
     const code = (profile as CiteAgentProfile | null)?.licenseJurisdiction;
@@ -126,9 +148,13 @@ function CiteLockPage() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (subjectInput?.entityKind === "agent") setJurisdiction(subjectInput.jurisdiction);
+  }, [subjectInput]);
+
   const scanInput = useMemo(
     () =>
-      profile?.website && profile?.name
+      subjectInput?.entityKind === "agent" ? { ...subjectInput, jurisdiction } : profile?.website && profile?.name
         ? {
             website: profile.website,
             agentName: profile.name,
@@ -137,26 +163,22 @@ function CiteLockPage() {
             jurisdiction,
           }
         : null,
-    [profile, jurisdiction],
+    [profile, jurisdiction, subjectInput],
   );
-  const subjectInput = useMemo(
-    () => (scanInput && area.trim().length >= 2 ? { ...scanInput, area: area.trim() } : null),
-    [scanInput, area],
-  );
-
   useEffect(() => {
     let active = true;
+    setProviderError(null);
     void getVisibilityProviders()
       .then((info) => {
         if (active) setProviders(info);
       })
-      .catch(() => {
-        if (active) setProviders(null);
+      .catch((error) => {
+        if (active) { setProviders(null); setProviderError(errorMessage(error, "Could not load provider configuration.")); }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [providerRetry]);
 
   useEffect(() => {
     if (!scanInput) {
@@ -177,28 +199,33 @@ function CiteLockPage() {
   }, [scanInput]);
 
   const loadHistory = useCallback(
-    async (fingerprint: string, selectLatest: boolean) => {
+    async (fingerprint: string, selectLatest: boolean, signal?:AbortSignal) => {
+      const request=++historyRequest.current;
       const [list, series, drafts] = await Promise.all([
         listMyVisibilityBatches({ data: { subjectFingerprint: fingerprint } }),
         getMyVisibilityTrend({ data: { subjectFingerprint: fingerprint } }),
         listMyInterventions({ data: { subjectFingerprint: fingerprint } }),
       ]);
+      if(signal?.aborted || request!==historyRequest.current) return;
       setBatches(list);
       setTrend(series);
       setInterventions(drafts);
       if (selectLatest && list[0]) {
         setDetailLoading(true);
         try {
-          setDetail(await getMyVisibilityBatch({ data: { batchId: list[0].id } }));
+          const next=await getMyVisibilityBatch({ data: { batchId: list[0].id } });
+          if(!signal?.aborted && request===historyRequest.current) setDetail(next);
         } finally {
-          setDetailLoading(false);
+          if(!signal?.aborted && request===historyRequest.current) setDetailLoading(false);
         }
-      }
+      } else if(selectLatest) {setDetail(null);setDetailLoading(false);}
     },
     [],
   );
 
   useEffect(() => {
+    ++historyRequest.current;
+    setSubjectFingerprint(null);setBatches([]);setDetail(null);setTrend([]);setInterventions([]);setDetailLoading(false);
     if (!subjectInput) {
       setSubjectFingerprint(null);
       setBatches([]);
@@ -206,17 +233,19 @@ function CiteLockPage() {
       return;
     }
     let active = true;
+    const controller=new AbortController();
     void resolveMyVisibilitySubject({ data: subjectInput })
       .then(async (resolved) => {
         if (!active) return;
         setSubjectFingerprint(resolved.fingerprint);
-        await loadHistory(resolved.fingerprint, true);
+        await loadHistory(resolved.fingerprint, true, controller.signal);
       })
       .catch((error) => {
         if (active) setBatchError(errorMessage(error, "Could not load visibility history"));
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [subjectInput, loadHistory]);
 
@@ -232,6 +261,8 @@ function CiteLockPage() {
       const step = await continueMyVisibilityBatch({ data: { batchId: batch.id } });
       remaining = step.remaining;
       setProgress({ done: step.batch.plannedRuns - remaining, total: step.batch.plannedRuns });
+      // Another request can own an unexpired lease. Avoid a tight server-request loop while waiting.
+      if (!step.executed && remaining > 0 && !cancelRef.current) await new Promise(resolve => window.setTimeout(resolve, 2000));
     }
     const finished = await getMyVisibilityBatch({ data: { batchId: batch.id } });
     setDetail(finished);
@@ -297,13 +328,15 @@ function CiteLockPage() {
   };
 
   const selectBatch = async (batchId: string) => {
+    const request = ++historyRequest.current;
     setDetailLoading(true);
     try {
-      setDetail(await getMyVisibilityBatch({ data: { batchId } }));
+      const next = await getMyVisibilityBatch({ data: { batchId } });
+      if (request === historyRequest.current) setDetail(next);
     } catch (error) {
-      toast.error(errorMessage(error, "Could not load that batch"));
+      if (request === historyRequest.current) toast.error(errorMessage(error, "Could not load that batch"));
     } finally {
-      setDetailLoading(false);
+      if (request === historyRequest.current) setDetailLoading(false);
     }
   };
 
@@ -328,7 +361,6 @@ function CiteLockPage() {
     [reportProfile, properties, memory?.preferredVoice, scan, scoreClock],
   );
 
-  const missingSetup = !profile?.website || !profile?.name;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -339,35 +371,16 @@ function CiteLockPage() {
             CiteLock · answer-engine visibility
           </Badge>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            See where AI answers send your clients — and what to change so they name you
+            Get discovered for the work you do best.
           </h1>
           <p className="max-w-3xl text-sm text-[var(--color-fg-muted)]">
-            CiteLock asks answer engines the unbranded questions your clients ask, records who they name and which
+            CiteLock connects supported expertise to designed client questions, records who engines recommend and which
             sources they cite, and turns the gaps into drafted fixes you approve. Every number shows its sample
             size; nothing here guarantees a citation.
           </p>
         </div>
       </section>
 
-      {missingSetup ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Set up your profile to start</CardTitle>
-            <CardDescription>
-              CiteLock needs your name, public website, and market area. Add them from the profile button in the
-              sidebar; nothing else is required.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("realestate-ai:open-profile-setup"))}
-            >
-              Open profile setup
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -381,21 +394,13 @@ function CiteLockPage() {
                     .join(", ")}. Basket ${providers.basketVersion}: ${providers.clusters.filter((cluster) => !cluster.branded).length} unbranded intents + ${providers.clusters.filter((cluster) => cluster.branded).length} branded checks. Limit ${providers.limits.batchesPerWorkspacePerDay} batches/day.`
                 : providers
                   ? "No answer-engine provider key is configured on this server. Ask your administrator to add XAI_API_KEY (or OPENAI/GEMINI/PERPLEXITY)."
-                  : "Loading provider configuration…"}
+                  : providerError || "Loading provider configuration…"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-              <div>
-                <Label htmlFor="citelock-area">Market area used in client questions</Label>
-                <Input
-                  id="citelock-area"
-                  className="mt-1.5"
-                  value={area}
-                  onChange={(event) => setArea(event.target.value)}
-                  placeholder="Rancho Santa Fe, CA"
-                />
-              </div>
+            {providerError && <Button variant="outline" onClick={() => setProviderRetry(n => n + 1)}>Retry provider configuration</Button>}
+            <SubjectEditor initialAgent={profile} disabled={batchBusy} onChange={setSubjectInput} />
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 onClick={runBatch}
@@ -411,7 +416,7 @@ function CiteLockPage() {
               </Button>
             </div>
             <p className="text-xs text-[var(--color-fg-muted)]">
-              Subject: <strong className="text-[var(--color-fg)]">{profile?.name}</strong> · {profile?.website}
+              Subject: <strong className="text-[var(--color-fg)]">{subjectInput?.agentName || "Save an identity above"}</strong> · {subjectInput?.website}
               {scan ? ` · evidence scan ${new Date(scan.evaluatedAt).toLocaleDateString()}` : " · no evidence scan yet (run one under Readiness to bind brokerage and profile links)"}
             </p>
             {batchError && (
@@ -438,7 +443,6 @@ function CiteLockPage() {
             )}
           </CardContent>
         </Card>
-      )}
 
       <div className="flex flex-wrap gap-1">
         {(Object.keys(TAB_LABEL) as Tab[]).map((item) => (
@@ -448,6 +452,12 @@ function CiteLockPage() {
         ))}
       </div>
 
+      {tab === "expertise" && subjectInput && subjectFingerprint && <ExpertisePanel key={subjectFingerprint} subject={subjectInput} fingerprint={subjectFingerprint}
+        onSaved={async()=>{await loadHistory(subjectFingerprint,false);if(detail)setDetail(await getMyVisibilityBatch({data:{batchId:detail.batch.id}}));}} />}
+      {detail && !batchBusy && detail.batch.status !== "running" && <Button variant="outline" onClick={async()=>{
+        setBatchBusy(true);cancelRef.current=false;try{await driveBatch(await repeatMyVisibilityBatch({data:{batchId:detail.batch.id}}));}
+        catch(e){toast.error(errorMessage(e,"Could not repeat the basket"));}finally{setBatchBusy(false);setProgress(null);}
+      }}>Repeat this exact basket after publishing</Button>}
       {tab === "visibility" && (
         <VisibilityTab
           batches={batches}
@@ -520,12 +530,14 @@ function VisibilityTab({
       )}
       {report && detail && (
         <>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <RateChip
               label="Discovery rate"
               rate={report.discovery}
-              hint="Unbranded client questions where an engine named you."
+              hint="Completed unbranded answers recommending the resolved subject; API observations only."
             />
+            <RateChip
+              label="Mention rate" rate={report.mentions} hint="Includes neutral or negative name mentions; separate from recommendation." />
             <RateChip
               label="Citation rate"
               rate={report.citation}
@@ -543,7 +555,7 @@ function VisibilityTab({
             </Badge>
             <span>
               {new Date(detail.batch.startedAt).toLocaleString()} · {report.completed} answers, {report.failed} failed ·
-              engines {report.providers.join(", ")} · basket {detail.batch.basketVersion} · cost ${report.costUsd.toFixed(2)}
+              {report.ambiguous} ambiguous identities · {report.negative} negative mentions · engines {report.providers.join(", ")} · basket {detail.batch.basketVersion} · cost ${report.costUsd.toFixed(2)}
             </span>
           </div>
 
@@ -673,7 +685,7 @@ function VisibilityTab({
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-[var(--color-primary)]" /> Discovery over time
             </CardTitle>
-            <CardDescription>Same basket version, completed batches only. Named / completed per intent.</CardDescription>
+            <CardDescription>Separate series for each provider, returned model, prompt, geography, surface and method. Same-day repeats do not establish lift.</CardDescription>
           </CardHeader>
           <CardContent>
             {trend.length ? (
@@ -711,41 +723,16 @@ function VisibilityTab({
   );
 }
 
-function TrendTable({ trend, clusters }: { trend: Trend; clusters: ProviderInfo["clusters"] }) {
-  const batchIds = [...new Set(trend.map((row) => row.batchId))];
-  const byBatch = new Map(trend.map((row) => [`${row.batchId}:${row.clusterId}`, row]));
-  const clusterIds = [...new Set(trend.map((row) => row.clusterId))];
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-[var(--color-fg-subtle)]">
-            <th className="py-1 pr-2">Intent</th>
-            {batchIds.map((id) => (
-              <th key={id} className="py-1 pr-2 tabular">
-                {new Date(trend.find((row) => row.batchId === id)!.startedAt).toLocaleDateString()}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {clusterIds.map((clusterId) => (
-            <tr key={clusterId} className="border-t border-[var(--color-border)]">
-              <td className="py-1 pr-2">{clusters.find((cluster) => cluster.id === clusterId)?.label || clusterId}</td>
-              {batchIds.map((id) => {
-                const cell = byBatch.get(`${id}:${clusterId}`);
-                return (
-                  <td key={id} className="py-1 pr-2 tabular">
-                    {cell ? `${cell.mentioned}/${cell.completed}` : "—"}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function TrendTable({ trend }: { trend: Trend; clusters: ProviderInfo["clusters"] }) {
+  return <div className="space-y-3">
+    {trend.map(row=><details key={row.batchId+row.seriesId} className="rounded-md border p-2 text-xs">
+      <summary className="cursor-pointer">{new Date(row.startedAt).toLocaleDateString()} · {row.provider} · {row.model} · {row.clusterId}
+        <span className="ml-2">recommended {row.recommended}/{row.completed} · mentioned {row.mentioned}/{row.completed} · cited {row.cited}/{row.completed} · failed {row.failed}</span>
+      </summary>
+      <p className="mt-2">{row.prompt}</p><p className="mt-1">{row.surface} · {row.method} · series {row.seriesId.slice(0,12)}</p>
+      <p className="mt-1">{row.change}{row.previousDate ? " Prior: "+new Date(row.previousDate).toLocaleDateString() : ""}</p>
+    </details>)}
+  </div>;
 }
 
 function RunRow({ run, expanded, onToggle }: { run: VisibilityRun; expanded: boolean; onToggle: () => void }) {
@@ -762,10 +749,12 @@ function RunRow({ run, expanded, onToggle }: { run: VisibilityRun; expanded: boo
           <span className="flex items-center gap-1 text-xs">
             {run.mentioned ? <Eye className="h-3.5 w-3.5 text-[var(--color-success)]" /> : <EyeOff className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />}
             {run.mentioned ? "named" : "not named"}
+            {run.evaluation?.negativeMention ? " · negative mention" : run.evaluation?.ambiguousIdentity ? " · identity ambiguous" : run.recommended ? " · recommended" : ""}
             {run.cited ? <Link2 className="ml-2 h-3.5 w-3.5 text-[var(--color-success)]" /> : null}
             {run.cited ? "cited" : ""}
           </span>
         )}
+        {run.status === "pending" && run.errorCode === "provider_rate_limited" && <span className="text-xs text-[var(--color-fg-muted)]">Rate limited · waiting for provider cooldown</span>}
         {run.status === "failed" && <span className="text-xs text-[var(--color-danger)]">{run.errorCode}</span>}
       </button>
       {expanded && (
@@ -792,7 +781,22 @@ function RunRow({ run, expanded, onToggle }: { run: VisibilityRun; expanded: boo
               </ul>
             </div>
           )}
+          {Boolean(run.sources?.length) && run.citations.length === 0 && <p className="text-[var(--color-fg-muted)]">No URL-citation annotations were returned. Retrieved sources below do not establish that the answer cited your page.</p>}
+          {Boolean(run.sources?.length) && (
+            <details>
+              <summary className="cursor-pointer">Retrieved sources ({run.sources?.length}) · excluded from citation counts</summary>
+              <ul className="mt-2 space-y-1">
+                {run.sources?.map((source, index) => (
+                  <li key={`${source.url}:${index}`}>
+                    <a href={source.url} target="_blank" rel="noreferrer" className="text-[var(--color-primary)] hover:underline">{source.title || source.url}</a>
+                    {source.date && <span> · {source.date}</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <div className="text-[var(--color-fg-subtle)]">
+            {run.surface ? `${run.surface} · ` : ""}
             {run.observedAt ? `${new Date(run.observedAt).toLocaleString()} · ` : ""}
             {run.latencyMs ? `${(run.latencyMs / 1000).toFixed(1)}s · ` : ""}
             {typeof run.searchCalls === "number" ? `${run.searchCalls} web searches · ` : ""}
@@ -815,7 +819,7 @@ function OpportunitiesTab({
   onChange: () => Promise<void>;
 }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [facts, setFacts] = useState("");
+  const [rightsReviewed,setRightsReviewed]=useState<Record<string,boolean>>({});
   const [deployUrl, setDeployUrl] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, { title: string; content: string }>>({});
   const report = detail?.report;
@@ -829,7 +833,7 @@ function OpportunitiesTab({
           batchId: detail.batch.id,
           opportunityKey: opportunity.key,
           kind,
-          declaredFacts: facts.split("\n").map((line) => line.trim()).filter(Boolean),
+          declaredFacts: [],
         },
       });
       toast.success("Draft created — review it below before approving");
@@ -845,18 +849,18 @@ function OpportunitiesTab({
     setBusyKey(intervention.id);
     try {
       if (action === "deployed") {
-        const url = deployUrl[intervention.id]?.trim();
+        const url = (deployUrl[intervention.id] || intervention.deployedUrl)?.trim();
         if (!url) {
           toast.error("Enter the live URL where you published this");
           return;
         }
-        const result = await updateMyIntervention({ data: { id: intervention.id, command: { action: "deployed", url } } });
+        const result = await updateMyIntervention({ data: { id: intervention.id, command: { action: "deployed", url, expectedRevision:intervention.revision } } });
         if (result.state === "verified") toast.success("Verified on the live page");
         else toast.message(result.verificationNote || "Not verified yet");
       } else if (action === "edit") {
         const edit = editing[intervention.id];
         if (!edit) return;
-        await updateMyIntervention({ data: { id: intervention.id, command: { action: "edit", title: edit.title, content: edit.content } } });
+        await updateMyIntervention({ data: { id: intervention.id, command: { action: "edit", title: edit.title, content: edit.content, expectedRevision:intervention.revision } } });
         setEditing((current) => {
           const next = { ...current };
           delete next[intervention.id];
@@ -864,7 +868,7 @@ function OpportunitiesTab({
         });
         toast.success("Draft updated");
       } else {
-        await updateMyIntervention({ data: { id: intervention.id, command: { action } } });
+        await updateMyIntervention({ data: { id: intervention.id, command: action==="approve" ? {action,expectedRevision:intervention.revision,reviewedFactsAndRights:true} : {action,expectedRevision:intervention.revision} } });
         toast.success(action === "approve" ? "Approved" : "Dismissed");
       }
       await onChange();
@@ -883,7 +887,7 @@ function OpportunitiesTab({
             <Target className="h-4 w-4 text-[var(--color-primary)]" /> Ranked opportunities
           </CardTitle>
           <CardDescription>
-            priority = 100 × gap × reach × actionability × fit (all 0–1). Heuristic, not a lift prediction. Each one
+            priority = 100 × supported fit × evidence strength × observed gap × actionability (all 0–1). Heuristic, not a lift prediction. Each one
             lists the answers it came from.
           </CardDescription>
         </CardHeader>
@@ -891,21 +895,9 @@ function OpportunitiesTab({
           {!report && <p className="text-sm text-[var(--color-fg-muted)]">Run a visibility batch first.</p>}
           {report && report.opportunities.length === 0 && (
             <p className="text-sm text-[var(--color-fg-muted)]">
-              Insufficient opportunity evidence in this batch: engines either named you already or returned no
-              claimable sources. Re-run after publishing changes, or add profile links under Readiness.
+              No supported opportunity yet. Add permitted evidence and inspect your public pages under Supported expertise,
+              then run a new baseline with the matching expertise questions. Contradictory evidence needs review.
             </p>
-          )}
-          {report && report.opportunities.length > 0 && (
-            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
-              <Label htmlFor="citelock-facts">Facts you can support (one per line) — used for drafts, never invented</Label>
-              <Textarea
-                id="citelock-facts"
-                className="mt-1.5"
-                value={facts}
-                onChange={(event) => setFacts(event.target.value)}
-                placeholder={"Represented buyers in 14 Rancho Santa Fe transactions since 2019\nCovenant resident since 2012\nSpecialize in equestrian and well/septic due diligence"}
-              />
-            </div>
           )}
           {report?.opportunities.map((opportunity) => (
             <div key={opportunity.key} className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
@@ -915,8 +907,15 @@ function OpportunitiesTab({
                 <Badge variant="outline" className="capitalize">{opportunity.effort} effort</Badge>
               </div>
               <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{opportunity.why}</p>
+              <p className="mt-2 text-sm">{opportunity.clientQuestion}</p>
+              <p className="mt-2 text-xs"><strong>Content gap: </strong>{opportunity.contentGap}</p>
+              <p className="mt-1 text-xs"><strong>Hypothesis: </strong>{opportunity.hypothesis}</p>
+              <p className="mt-1 text-xs"><strong>Test: </strong>{opportunity.testPlan}</p>
+              <ul className="mt-2 space-y-1 text-xs">{opportunity.supportingEvidence?.map(e=><li key={e.id}>
+                {e.statement} — {e.sourceLabel}, {e.sourceDate} {e.url && <a href={e.url} target="_blank" rel="noreferrer" className="text-primary">View source</a>}
+              </li>)}</ul>
               <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)] tabular">
-                gap {opportunity.factors.gap.toFixed(2)} · reach {opportunity.factors.reach.toFixed(2)} · actionability{" "}
+                gap {opportunity.factors.gap.toFixed(2)} · evidence strength {opportunity.evidenceStrength?.toFixed(2) ?? "unknown"} · actionability{" "}
                 {opportunity.factors.actionability.toFixed(2)} · fit {opportunity.factors.fit.toFixed(2)} · evidence: {opportunity.evidenceRunIds.length} answers ·
                 intents: {opportunity.clusterIds.join(", ")}
               </p>
@@ -937,11 +936,7 @@ function OpportunitiesTab({
                     </Button>
                   </>
                 )}
-                <Button asChild size="sm" variant="ghost">
-                  <Link to="/marketing" search={{ origin: `citelock:${opportunity.key}` }}>
-                    Draft social posts
-                  </Link>
-                </Button>
+
               </div>
             </div>
           ))}
@@ -958,13 +953,13 @@ function OpportunitiesTab({
           {interventions.map((intervention) => {
             const edit = editing[intervention.id];
             return (
-              <div key={intervention.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+              <div key={intervention.id} data-testid="intervention-card" className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant={intervention.state === "verified" ? "success" : intervention.state === "dismissed" ? "secondary" : intervention.state === "approved" || intervention.state === "deployed" ? "accent" : "outline"}
                     className="capitalize"
                   >
-                    {intervention.state}
+                    {intervention.state === "deployed" ? "Publication reported" : intervention.state} · revision {intervention.revision}
                   </Badge>
                   <Badge variant="outline" className="capitalize">{intervention.kind.replace("_", " ")}</Badge>
                   <span className="text-sm font-medium">{intervention.title}</span>
@@ -974,8 +969,8 @@ function OpportunitiesTab({
                 </div>
                 {edit ? (
                   <div className="mt-2 space-y-2">
-                    <Input value={edit.title} onChange={(event) => setEditing({ ...editing, [intervention.id]: { ...edit, title: event.target.value } })} />
-                    <Textarea rows={12} value={edit.content} onChange={(event) => setEditing({ ...editing, [intervention.id]: { ...edit, content: event.target.value } })} />
+                    <Input aria-label="Intervention title" value={edit.title} onChange={(event) => setEditing({ ...editing, [intervention.id]: { ...edit, title: event.target.value } })} />
+                    <Textarea aria-label="Intervention public content" rows={12} value={edit.content} onChange={(event) => setEditing({ ...editing, [intervention.id]: { ...edit, content: event.target.value } })} />
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => command(intervention, "edit")} disabled={busyKey === intervention.id}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditing((current) => { const next = { ...current }; delete next[intervention.id]; return next; })}>Cancel</Button>
@@ -986,27 +981,50 @@ function OpportunitiesTab({
                     {intervention.content}
                   </pre>
                 )}
+                {intervention.package && <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer">Sources, placement instructions and follow-up test</summary>
+                  <p className="mt-2">{intervention.package.gap}</p><p>{intervention.package.hypothesis}</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5">{intervention.package.deploymentInstructions.map(step=><li key={step}>{step}</li>)}</ol>
+                  <p className="mt-2">{intervention.package.testPlan}</p>
+                  <p className="mt-2 font-medium">Case-study interview questions — missing facts remain questions</p>
+                  <ul className="list-disc pl-5">{intervention.package.interviewQuestions.map(q=><li key={q}>{q}</li>)}</ul>
+                </details>}
+                {intervention.state==="proposed" && !edit && <label className="mt-3 flex items-start gap-2 text-xs">
+                  <input type="checkbox" checked={Boolean(rightsReviewed[intervention.id+":"+intervention.revision])}
+                    onChange={e=>setRightsReviewed({...rightsReviewed,[intervention.id+":"+intervention.revision]:e.target.checked})}/>
+                  I reviewed the facts, exact entity, source attribution and publication rights for this revision.
+                </label>}
                 {intervention.verificationNote && (
                   <p className={cn("mt-2 text-xs", intervention.state === "verified" ? "text-[var(--color-success)]" : "text-[var(--color-warning)]")}>
                     {intervention.verificationNote}
                   </p>
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(intervention.content).then(() => toast.success("Copied"))}>
+                  <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(intervention.content).then(() => toast.success("Copied")).catch(()=>toast.error("Clipboard unavailable. Select and copy the text above."))}>
                     <Copy className="h-3.5 w-3.5" /> Copy
                   </Button>
                   {intervention.state === "proposed" && !edit && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => setEditing({ ...editing, [intervention.id]: { title: intervention.title, content: intervention.content } })}>Edit</Button>
-                      <Button size="sm" onClick={() => command(intervention, "approve")} disabled={busyKey === intervention.id}>
+                      <Button size="sm" onClick={() => command(intervention, "approve")} disabled={busyKey === intervention.id || !rightsReviewed[intervention.id+":"+intervention.revision]}>
                         <CheckCircle2 className="h-3.5 w-3.5" /> Approve
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => command(intervention, "dismiss")} disabled={busyKey === intervention.id}>Dismiss</Button>
                     </>
                   )}
+                  {["approved","deployed","verified"].includes(intervention.state) && intervention.package && (
+                    intervention.socialDraftId ? <Button asChild size="sm" variant="outline"><Link to="/marketing" search={{origin:"citelock:"+intervention.id}}>Open linked social draft</Link></Button>
+                    : <Button size="sm" variant="outline" disabled={busyKey===intervention.id} onClick={async()=>{
+                      setBusyKey(intervention.id);
+                      try {await createMyInterventionSocial({data:{id:intervention.id,revision:intervention.revision,platform:"linkedin"}});
+                        await onChange();toast.success("Linked draft saved in Social Desk; review and approve it there.");}
+                      catch(e){toast.error(errorMessage(e,"Could not create linked social draft"));}finally{setBusyKey(null);}
+                    }}>Create linked social draft</Button>
+                  )}
                   {(intervention.state === "approved" || intervention.state === "deployed") && (
                     <div className="flex flex-1 flex-wrap items-center gap-2">
                       <Input
+                        aria-label="Published intervention URL"
                         className="max-w-md"
                         placeholder="https://your-site.com/the-page-you-published"
                         value={deployUrl[intervention.id] ?? intervention.deployedUrl ?? ""}

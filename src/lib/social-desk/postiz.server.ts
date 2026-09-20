@@ -18,7 +18,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
-import { readResponseText, safeFetch } from "@/lib/safe-outbound-url.server";
+import { readResponseBytes, readResponseText, safeFetch } from "@/lib/safe-outbound-url.server";
 import { POSTIZ_PLATFORM_MAP, type SocialPlatform } from "./types";
 
 export const POSTIZ_DEFAULT_API_URL = "https://api.postiz.com";
@@ -242,17 +242,14 @@ export async function uploadMediaToPostiz(
 ): Promise<{ id: string; path: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
-  let bytes: ArrayBuffer;
+  let bytes: Uint8Array<ArrayBuffer>;
   let contentType: string;
   try {
     const { response } = await fetchImpl(imageUrl, { signal: controller.signal }, { maxRedirects: 2, allowCrossOriginRedirects: true });
     if (!response.ok) throw new PostizError("media_fetch_failed", `HTTP ${response.status} fetching image`);
     contentType = response.headers.get("content-type") || "application/octet-stream";
     if (!/^image\//.test(contentType)) throw new PostizError("media_not_image", `Not an image: ${contentType}`);
-    const declared = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > 15 * 1024 * 1024) throw new PostizError("media_too_large");
-    bytes = await response.arrayBuffer();
-    if (bytes.byteLength > 15 * 1024 * 1024) throw new PostizError("media_too_large");
+    bytes = await readResponseBytes(response, 15 * 1024 * 1024);
   } finally {
     clearTimeout(timer);
   }

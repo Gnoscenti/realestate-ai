@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSql } from "@/lib/db";
+import { randomUUID } from "node:crypto";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 import { redeemAccessCode } from "@/lib/billing/entitlement.server";
 import { saveCiteLockScan } from "@/lib/aieo/repository.server";
@@ -18,9 +18,23 @@ import {
   draftIntervention,
   listInterventions,
   verificationSignature,
+  socialFromIntervention,
 } from "@/lib/aieo/visibility/interventions.server";
+import { source, subject, page, observation } from "../fixtures/visibility-expertise";
+import { buildVisibilityReport } from "@/lib/aieo/visibility/report";
+import { saveExpertise, listExpertise, observeExpertisePage, withdrawExpertise } from "@/lib/aieo/visibility/expertise.server";
+import { getSocialDraft, changeSocialDraft } from "@/lib/social-desk/repository.server";
 import { toCitation } from "@/lib/aieo/visibility/evaluate";
 
+// Each scenario owns a fresh global budget fixture. Persistent PostgreSQL
+// otherwise accumulates quotas across test runs, unlike an in-memory database.
+// This resets only a known test fixture; application quota limits stay unchanged.
+beforeEach(async () => {
+  const url=process.env.DATABASE_URL;
+  if(url && !/_tests?$/.test(new URL(url).pathname)) throw new Error("Visibility tests require an isolated _test database.");
+  const sql=await getSql();
+  await sql.query("delete from citelock_visibility_quota_buckets where scope='global:runs'");
+});
 afterEach(() => vi.unstubAllEnvs());
 
 const INPUT = {
@@ -75,7 +89,7 @@ describe("visibility batch lifecycle", () => {
     const ask = vi.fn(async (_spec: ProviderSpec, prompt: string) => {
       if (/relocating/.test(prompt)) throw new ProviderError("provider_http_400");
       if (/Jordan Rivera/.test(prompt)) return answer("Jordan Rivera is with Pacific Coast Realty. https://jordanrivera.example/about", ["https://jordanrivera.example/about"]);
-      return answer("Consider Alex Chen (Compass) and Jordan Rivera.", ["https://www.zillow.com/profile/alex-chen", "https://www.realtor.com/agent/x"]);
+      return answer("Consider Alex Chen (Compass). Consider Jordan Rivera at Pacific Coast Realty.", ["https://www.zillow.com/profile/alex-chen", "https://www.realtor.com/agent/x"]);
     });
     const extract = vi.fn(async () => ({
       entities: [
@@ -101,13 +115,13 @@ describe("visibility batch lifecycle", () => {
     const failed = detail.runs.find((run) => run.status === "failed");
     expect(failed?.errorCode).toBe("provider_http_400");
     const branded = detail.runs.filter((run) => run.branded);
-    expect(branded.every((run) => run.returnedModel === "grok-4.6-real" && run.cited && run.recommended)).toBe(true);
+    expect(branded.every((run) => run.returnedModel === "grok-4.6-real" && run.cited && run.evaluation?.identityConsistent)).toBe(true);
     expect(detail.report.discovery).toEqual({ numerator: 4, denominator: 4, percent: 100 });
     expect(detail.report.identityAccuracy.percent).toBe(100);
     expect(detail.report.competitors[0]?.name).toBe("Alex Chen");
     // The subject controls one Zillow profile URL, but the cited page is a
     // competitor's, so Zillow is still a source gap.
-    expect(detail.report.opportunities.some((item) => item.targetHost === "zillow.com")).toBe(true);
+    expect(detail.report.opportunities).toEqual([]); // no expertise evidence yet
     expect(detail.batch.costUsd).toBeGreaterThan(0);
     // Extraction was not run for branded prompts.
     expect(extract).toHaveBeenCalledTimes(4);
@@ -123,7 +137,7 @@ describe("visibility batch lifecycle", () => {
     expect(ask).toHaveBeenCalledTimes(7);
   });
 
-  it("retries transient failures once and then records them", async () => {
+  it("records ambiguous paid timeouts without replaying them", async () => {
     const { userId, workspace } = await entitledWorkspace();
     const batch = await startVisibilityBatch(userId, workspace.id, INPUT, { providers: [spec] });
     const ask = vi.fn(async () => {
@@ -137,7 +151,7 @@ describe("visibility batch lifecycle", () => {
     }
     expect(step.batch.status).toBe("failed");
     expect(step.batch.failedRuns).toBe(7);
-    expect(ask).toHaveBeenCalledTimes(14);
+    expect(ask).toHaveBeenCalledTimes(7);
   });
 
   it("enforces the per-workspace daily batch budget and single running batch", async () => {
@@ -147,6 +161,24 @@ describe("visibility batch lifecycle", () => {
     await expect(startVisibilityBatch(userId, workspace.id, INPUT, { providers: [spec] })).rejects.toThrow(/already running/);
   });
 
+  it("serializes concurrent starts and rolls back batch quota when the global budget refuses work",async()=>{
+    const {userId,workspace}=await entitledWorkspace();
+    vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_DAY","1");
+    await expect(startVisibilityBatch(userId,workspace.id,INPUT,{providers:[spec]})).rejects.toThrow(/budget/);
+    const sql=await getSql();
+    expect(await sql.query("select * from citelock_visibility_batches where workspace_id=$1",[workspace.id])).toHaveLength(0);
+    expect(await sql.query("select * from citelock_visibility_quota_buckets where scope=$1",["workspace:"+workspace.id+":batches"])).toHaveLength(0);
+    vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_DAY","1000");
+    const attempts=await Promise.allSettled([
+      startVisibilityBatch(userId,workspace.id,INPUT,{providers:[spec]}),
+      startVisibilityBatch(userId,workspace.id,INPUT,{providers:[spec]}),
+    ]);
+    expect(attempts.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+    const [batch]=await listVisibilityBatches(userId,workspace.id,citeLockSubjectFingerprint(INPUT));
+    const detail=await getVisibilityRuns(userId,workspace.id,batch!.id);
+    expect(detail.runs).toHaveLength(batch!.plannedRuns);
+  });
+
   it("does not reveal another tenant's batch", async () => {
     const { userId, workspace } = await entitledWorkspace();
     const batch = await startVisibilityBatch(userId, workspace.id, INPUT, { providers: [spec] });
@@ -154,91 +186,165 @@ describe("visibility batch lifecycle", () => {
   });
 });
 
-describe("interventions", () => {
-  it("builds a checklist without a model, gates approval, and verifies the live page", async () => {
-    const { userId, workspace } = await entitledWorkspace();
-    const opportunity = {
-      key: "profile_claim:zillow.com",
-      kind: "profile_claim" as const,
-      title: "Claim and complete your Zillow agent profile",
-      why: "cited",
-      evidenceRunIds: [],
-      clusterIds: ["choose_agent"],
-      targetHost: "zillow.com",
-      targetLabel: "Zillow agent profile",
-      factors: { gap: 1, reach: 0.5, actionability: 0.9, fit: 1 },
-      priority: 45,
-      effort: "low" as const,
-    };
-    const draft = await draftIntervention(userId, workspace.id, {
-      subjectFingerprint: citeLockSubjectFingerprint(INPUT),
-      subject: { name: "Jordan Rivera", area: INPUT.area, websiteHost: "jordanrivera.example", profileUrls: [] },
-      opportunity,
-      kind: "profile_claim",
-      declaredFacts: ["Covenant resident since 2012"],
+describe("connected expertise improvement lifecycle",()=>{
+  it("stores source evidence, produces an improvement, requires revision review, confirms live text and links social",async()=>{
+    const {userId,workspace}=await entitledWorkspace();
+    const fingerprint=citeLockSubjectFingerprint(INPUT);
+    const {id:_id,contentHash:_hash,observedAt:_at,...input}=source;
+    const saved=await saveExpertise(userId,workspace.id,fingerprint,input);
+    await expect(saveExpertise(userId,workspace.id,fingerprint,input)).rejects.toThrow(/already recorded/);
+    await expect(listExpertise("stranger",workspace.id,fingerprint)).rejects.toThrow("Workspace not found");
+    const inspected=await observeExpertisePage(userId,workspace.id,fingerprint,subject,page.url,{
+      fetchPage:async()=>({url:page.url,text:page.text}),
     });
-    expect(draft.state).toBe("proposed");
-    expect(draft.draftedWith).toBe("checklist");
-    expect(draft.content).toContain("Claim the profile for Jordan Rivera");
-    expect(draft.facts).toContain("Covenant resident since 2012");
+    expect(inspected.identityMatched).toBe(true);
+    const batch=await startVisibilityBatch(userId,workspace.id,INPUT,{providers:[spec]});
+    expect(batch.plannedRuns).toBe(8);
+    let step;
+    do {
+      step=await continueVisibilityBatch(userId,workspace.id,batch.id,{providers:[spec],
+        ask:async()=>answer(observation().answerText!,["https://alexchen.example/rural"]),
+        extract:async()=>({entities:observation().entities,model:"extract-test",costUsdTicks:0}),
+      });
+    } while(step.remaining);
+    const detail=await getVisibilityRuns(userId,workspace.id,batch.id);
+    const opportunity=detail.report.opportunities[0]!;
+    expect(opportunity.supportingEvidence?.[0]?.id).toBe(saved.id);
+    const draft=await draftIntervention(userId,workspace.id,{subjectFingerprint:fingerprint,subject:detail.batch.subject,
+      opportunity,kind:"site_page",declaredFacts:[],batchId:batch.id});
+    expect(draft.content).toContain(source.statement);
+    expect(draft.package?.deploymentInstructions.length).toBeGreaterThan(0);
+    await expect(applyInterventionCommand(userId,workspace.id,draft.id,{action:"deployed",url:page.url,expectedRevision:1})).rejects.toThrow(/Approve/);
+    const approved=await applyInterventionCommand(userId,workspace.id,draft.id,{action:"approve",expectedRevision:1,reviewedFactsAndRights:true});
+    await expect(applyInterventionCommand(userId,workspace.id,draft.id,{action:"edit",expectedRevision:1,title:"Stale",content:"This edit is stale and must not replace approved content."})).rejects.toThrow(/changed/);
+    const missing=await applyInterventionCommand(userId,workspace.id,draft.id,{action:"deployed",url:page.url,expectedRevision:approved.revision},
+      {fetchPage:async()=>"<p>Coming soon</p>"});
+    expect(missing.state).toBe("deployed");
+    const partial=await applyInterventionCommand(userId,workspace.id,draft.id,{action:"deployed",url:page.url,expectedRevision:missing.revision},
+      {fetchPage:async()=>source.statement});
+    expect(partial.state).toBe("deployed");
+    const verified=await applyInterventionCommand(userId,workspace.id,draft.id,{action:"deployed",url:page.url,expectedRevision:partial.revision},
+      {fetchPage:async()=>draft.content});
+    expect(verified.state).toBe("verified");
+    const linked=await socialFromIntervention(userId,workspace.id,draft.id,verified.revision,"linkedin");
+    expect((await socialFromIntervention(userId,workspace.id,draft.id,verified.revision,"linkedin")).id).toBe(linked.id);
+    const social=await getSocialDraft(userId,workspace.id,linked.id);
+    expect(social.state).toBe("draft");expect(social.content.origin).toContain(draft.id);
+    expect(social.content.caption).toContain(page.url);
+    const approvedSocial=await changeSocialDraft(userId,workspace.id,social.id,social.revision,{action:"approve",reviewedFactsAndRights:true});
+    const handed=await changeSocialDraft(userId,workspace.id,social.id,approvedSocial.revision,{action:"handoff"});
+    const receipt=await changeSocialDraft(userId,workspace.id,social.id,handed.revision,{action:"receipt",postUrl:"https://linkedin.com/posts/test-123"});
+    expect(receipt.state).toBe("reported_posted");
+    const repeated=await startVisibilityBatch(userId,workspace.id,INPUT,{providers:[spec],baselineBatchId:batch.id});
+    const repeatedDetail=await getVisibilityRuns(userId,workspace.id,repeated.id);
+    expect(repeatedDetail.runs.map(r=>r.prompt)).toEqual(detail.runs.map(r=>r.prompt));
+    const persisted=await listInterventions(userId,workspace.id,fingerprint);
+    expect(persisted[0]?.socialDraftId).toBe(social.id);
+    await expect(withdrawExpertise("stranger",workspace.id,saved.id,"Permission revoked")).rejects.toThrow("Workspace not found");
+    const pending=await draftIntervention(userId,workspace.id,{subjectFingerprint:fingerprint,subject:detail.batch.subject,
+      opportunity,kind:"site_page",declaredFacts:[],batchId:batch.id});
+    const pendingApproved=await applyInterventionCommand(userId,workspace.id,pending.id,{
+      action:"approve",expectedRevision:pending.revision,reviewedFactsAndRights:true,
+    });
+    const withdrawn=await withdrawExpertise(userId,workspace.id,saved.id,"Permission revoked by the source owner");
+    const fetchAfterWithdrawal=vi.fn(async()=>pending.content);
+    await expect(applyInterventionCommand(userId,workspace.id,pending.id,{
+      action:"deployed",url:page.url,expectedRevision:pendingApproved.revision,
+    },{fetchPage:fetchAfterWithdrawal})).rejects.toThrow(/permission has changed/);
+    expect(fetchAfterWithdrawal).not.toHaveBeenCalled();
+    expect(withdrawn.withdrawnAt).toBeTruthy();
+    expect((await listExpertise(userId,workspace.id,fingerprint))[0]?.withdrawalReason).toContain("Permission revoked");
+    expect((await getVisibilityRuns(userId,workspace.id,batch.id)).report.opportunities).toEqual([]);
+    await expect(socialFromIntervention(userId,workspace.id,draft.id,verified.revision,"linkedin")).rejects.toThrow(/permission has changed/);
+    expect((await getVisibilityRuns(userId,workspace.id,batch.id)).runs).toHaveLength(8);
+    const editedSocial=await changeSocialDraft(userId,workspace.id,social.id,receipt.revision,{
+      action:"edit",content:{...receipt.content,origin:"manual",caption:"A revised caption still has the original source obligations."},
+    });
+    await expect(changeSocialDraft(userId,workspace.id,social.id,editedSocial.revision,{
+      action:"approve",reviewedFactsAndRights:true,
+    })).rejects.toThrow(/permission has changed/);
 
-    await expect(
-      applyInterventionCommand(userId, workspace.id, draft.id, { action: "deployed", url: "https://jordanrivera.example/zillow" }),
-    ).rejects.toThrow(/Approve/);
-    const approved = await applyInterventionCommand(userId, workspace.id, draft.id, { action: "approve" });
-    expect(approved.state).toBe("approved");
+  });
+  it("refuses live verification if source permission is withdrawn during the fetch",async()=>{
+    const {userId,workspace}=await entitledWorkspace();
+    const fingerprint=citeLockSubjectFingerprint(INPUT);
+    const {id:_id,contentHash:_hash,observedAt:_at,...input}=source;
+    const saved=await saveExpertise(userId,workspace.id,fingerprint,input);
+    const supported={...subject,expertise:[saved]};
+    const opportunity=buildVisibilityReport([observation()],supported,[page]).opportunities[0]!;
+    const draft=await draftIntervention(userId,workspace.id,{subjectFingerprint:fingerprint,subject:supported,
+      opportunity,kind:"site_page",declaredFacts:[]});
+    const approved=await applyInterventionCommand(userId,workspace.id,draft.id,{
+      action:"approve",expectedRevision:draft.revision,reviewedFactsAndRights:true,
+    });
+    await expect(applyInterventionCommand(userId,workspace.id,draft.id,{
+      action:"deployed",url:page.url,expectedRevision:approved.revision,
+    },{fetchPage:async()=>{
+      await withdrawExpertise(userId,workspace.id,saved.id,"Permission withdrawn while checking the public page");
+      return draft.content;
+    }})).rejects.toThrow(/permission has changed/);
+    const current=(await listInterventions(userId,workspace.id,fingerprint))[0]!;
+    expect(current.state).toBe("approved");
+    expect(current.revision).toBe(approved.revision);
+  });
+  it("requires evidence rather than a model key or an empty checklist",async()=>{
+    const {userId,workspace}=await entitledWorkspace();
+    const opportunity=buildVisibilityReport([observation()],subject,[page]).opportunities[0]!;
+    await expect(draftIntervention(userId,workspace.id,{
+      subjectFingerprint:citeLockSubjectFingerprint(INPUT),subject,opportunity:{...opportunity,supportingEvidence:[]},
+      kind:"site_page",declaredFacts:["Unsupported ranking claim"],
+    })).rejects.toThrow(/needs matched source evidence/);
+    expect(verificationSignature("# Empty heading")).toEqual([]);
+  });
+  it("does not attribute an ambiguous public namesake",async()=>{
+    const {userId,workspace}=await entitledWorkspace();
+    const result=await observeExpertisePage(userId,workspace.id,citeLockSubjectFingerprint(INPUT),subject,page.url,
+      {fetchPage:async()=>({url:page.url,text:"Jordan Rivera works in a different place. No other context is available."})});
+    expect(result.identityMatched).toBe(false);expect(result.suggestions).toEqual([]);
+  });
+});
 
-    const signature = verificationSignature(draft.content)[0]!;
-    const notLive = await applyInterventionCommand(
-      userId,
-      workspace.id,
-      draft.id,
-      { action: "deployed", url: "https://jordanrivera.example/zillow" },
-      { fetchPage: async () => "<html><body>Coming soon</body></html>" },
-    );
-    expect(notLive.state).toBe("deployed");
-    expect(notLive.verificationNote).toMatch(/none of/);
-    const live = await applyInterventionCommand(
-      userId,
-      workspace.id,
-      draft.id,
-      { action: "deployed", url: "https://jordanrivera.example/zillow" },
-      { fetchPage: async () => `<html><body><p>${signature}</p></body></html>` },
-    );
-    expect(live.state).toBe("verified");
-    expect(live.verifiedAt).toBeTruthy();
-    const listed = await listInterventions(userId, workspace.id, citeLockSubjectFingerprint(INPUT));
-    expect(listed[0]?.state).toBe("verified");
-    await expect(
-      applyInterventionCommand(userId, workspace.id, draft.id, { action: "edit", title: "x", content: "y" }),
-    ).rejects.toThrow(/verified/);
+
+describe("Agent surface persistence and provider cooldown", () => {
+  it("persists retrieved sources without citation credit and refuses legacy baseline reuse", async () => {
+    const {userId, workspace} = await entitledWorkspace();
+    const agent: ProviderSpec = {...spec, provider:"perplexity", model:"openai/gpt-5.6-luna"};
+    const batch=await startVisibilityBatch(userId,workspace.id,INPUT,{providers:[agent]});
+    const ask=vi.fn(async()=>({...answer("Jordan Rivera is named.",[]),
+      sources:[{...toCitation(INPUT.website)!,sourceId:1,snippet:"Retrieved, not cited"}]}));
+    const extract=async()=>({entities:[],model:"unsupported"});
+    let step;
+    do { step=await continueVisibilityBatch(userId,workspace.id,batch.id,{providers:[agent],ask,extract}); } while(step.remaining);
+    const detail=await getVisibilityRuns(userId,workspace.id,batch.id);
+    expect(detail.runs.every(run=>run.surface==="perplexity_agent_web_v1" && !run.cited && run.sources?.length===1)).toBe(true);
+    const sql=await getSql();
+    await sql.query("update citelock_visibility_runs set surface='api_web_grounded' where batch_id=$1",[batch.id]);
+    await expect(startVisibilityBatch(userId,workspace.id,INPUT,{providers:[agent],baselineBatchId:batch.id})).rejects.toThrow(/new baseline/);
   });
 
-  it("fails closed when a page draft needs a model and none is configured", async () => {
-    vi.stubEnv("XAI_API_KEY", "");
-    vi.stubEnv("GROK_API_KEY", "");
-    const { userId, workspace } = await entitledWorkspace();
-    await expect(
-      draftIntervention(userId, workspace.id, {
-        subjectFingerprint: citeLockSubjectFingerprint(INPUT),
-        subject: { name: "Jordan Rivera", area: INPUT.area, websiteHost: "jordanrivera.example", profileUrls: [] },
-        opportunity: {
-          key: "site_page:area_expertise",
-          kind: "site_page",
-          title: "Publish a page",
-          why: "",
-          evidenceRunIds: [],
-          clusterIds: [],
-          factors: { gap: 1, reach: 1, actionability: 1, fit: 1 },
-          priority: 100,
-          effort: "medium",
-        },
-        kind: "site_page",
-        declaredFacts: [],
-      }),
-    ).rejects.toThrow(/XAI_API_KEY/);
-    const sql = await getSql();
-    const rows = await sql.query("select count(*)::int as count from citelock_interventions where workspace_id = $1", [workspace.id]);
-    expect((rows[0] as { count: number }).count).toBe(0);
+  it("holds every workspace until Retry-After, retries once, and retains terminal failures", async () => {
+    vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_CALL","1");
+    const one=await entitledWorkspace(), two=await entitledWorkspace();
+    const agent:ProviderSpec={...spec,provider:"perplexity",model:"openai/gpt-5.6-luna"};
+    const batch=await startVisibilityBatch(one.userId,one.workspace.id,INPUT,{providers:[agent]});
+    const other=await startVisibilityBatch(two.userId,two.workspace.id,INPUT,{providers:[agent]});
+    const sql=await getSql();
+    const ask=vi.fn(async()=>{throw new ProviderError("provider_rate_limited",undefined,90_000,429);});
+    try {
+      await continueVisibilityBatch(one.userId,one.workspace.id,batch.id,{providers:[agent],ask});
+      expect(ask).toHaveBeenCalledTimes(1);
+      const cooldown=await sql.query<{seconds:number}>("select extract(epoch from (retry_after-now()))::int as seconds from citelock_provider_cooldowns where provider='perplexity'");
+      expect(cooldown[0]!.seconds).toBeGreaterThanOrEqual(85);
+      expect((await continueVisibilityBatch(one.userId,one.workspace.id,batch.id,{providers:[agent],ask})).executed).toBe(0);
+      expect((await continueVisibilityBatch(two.userId,two.workspace.id,other.id,{providers:[agent],ask})).executed).toBe(0);
+      expect(ask).toHaveBeenCalledTimes(1);
+      await sql.query("update citelock_provider_cooldowns set retry_after=now()-interval '1 second' where provider='perplexity'");
+      await continueVisibilityBatch(one.userId,one.workspace.id,batch.id,{providers:[agent],ask});
+      expect(ask).toHaveBeenCalledTimes(2);
+      const detail=await getVisibilityRuns(one.userId,one.workspace.id,batch.id);
+      expect(detail.runs.filter(run=>run.status==="failed" && run.errorCode==="provider_rate_limited")).toHaveLength(1);
+    } finally {
+      await sql.query("delete from citelock_provider_cooldowns where provider='perplexity'");
+    }
   });
 });

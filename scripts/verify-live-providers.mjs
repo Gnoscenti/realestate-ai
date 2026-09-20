@@ -43,7 +43,7 @@ try {
     await lookup({ operation: "search", query: "San Diego, CA" });
     await lookup({ operation: "agents", query: "san-diego-ca" });
   }
-  for (const spec of configuredProviders()) {
+  for (const spec of configuredProviders().filter(s => !process.env.LIVE_PROVIDER || s.provider === process.env.LIVE_PROVIDER)) {
     try {
       const answer = await askGrounded(spec, "Who are well-regarded real estate agents in Rancho Santa Fe, California? Cite sources.");
       const check = { provider: spec.provider, model: spec.model, returnedModel: answer.returnedModel, citations: answer.citations.length, searchCalls: answer.searchCalls, costUsd: answer.costUsdTicks ? answer.costUsdTicks / 1e10 : undefined, ok: true };
@@ -58,5 +58,7 @@ try {
   await writeFile("tmp/live-provider-checks.json", JSON.stringify({ checkedAt: new Date().toISOString(), checks }, null, 2), { mode: 0o600 });
   if (checks.some((c) => c.ok === false)) process.exitCode = 1;
 } finally {
+  const { getPglite } = await server.ssrLoadModule("/src/lib/db.ts");
+  await (await getPglite()).close();
   await server.close();
 }

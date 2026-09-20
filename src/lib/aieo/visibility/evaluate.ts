@@ -1,7 +1,7 @@
 /**
  * Deterministic evaluation of a grounded answer against the subject.
  *
- * - `mentioned`: every name token appears as a whole word in the answer.
+ * - `mentioned`: the exact normalized name appears contiguously in the answer.
  * - `cited`: a provider-returned citation URL belongs to the subject's footprint
  *   (website host or a controlled profile URL). Prose URLs never count.
  * - `identityConsistent`: for branded prompts, the answer also carries the
@@ -23,6 +23,9 @@ export type SubjectEvaluation = {
   cited: boolean;
   identityConsistent: boolean;
   citedUrls: string[];
+  recommended: boolean;
+  negativeMention: boolean;
+  ambiguousIdentity: boolean;
 };
 
 export const DIRECTORY_HOSTS: Record<string, string> = {
@@ -104,65 +107,52 @@ function normalizeText(value: string): string {
     .trim();
 }
 
-function nameTokens(name: string): string[] {
-  return normalizeText(name)
-    .split(" ")
-    .filter((token) => token.length > 1);
-}
-
-/** Whole-word presence of every name token within any 6-token window. */
 export function nameAppears(text: string, name: string): boolean {
-  const wanted = [...new Set(nameTokens(name))];
-  if (wanted.length === 0) return false;
-  const tokens = normalizeText(text).split(" ");
-  const width = wanted.length + 3;
-  for (let index = 0; index < tokens.length; index += 1) {
-    const window = new Set(tokens.slice(index, index + width));
-    if (wanted.every((token) => window.has(token))) return true;
-  }
-  return false;
+  const wanted = normalizeText(name);
+  return wanted.length >= 3 && (" " + normalizeText(text) + " ").includes(" " + wanted + " ");
 }
 
-/** Subject-controlled footprint: website host + profile URL hosts/paths. */
-export function subjectFootprint(subject: VisibilitySubject): {
-  hosts: string[];
-  profileUrls: string[];
-} {
-  const hosts = new Set<string>();
-  if (subject.websiteHost) hosts.add(normalizeHost(subject.websiteHost));
-  const profileUrls: string[] = [];
-  for (const raw of subject.profileUrls) {
-    try {
-      const url = new URL(raw);
-      url.hash = "";
-      url.search = "";
-      profileUrls.push(url.toString().replace(/\/$/, "").toLowerCase());
-    } catch {
-      /* skip invalid */
-    }
-  }
-  return { hosts: [...hosts], profileUrls };
-}
-
-/** A citation is the subject's when it is on their site or exactly a profile they control. */
-export function citationBelongsToSubject(
-  citation: GroundedCitation,
-  subject: VisibilitySubject,
-): boolean {
-  const footprint = subjectFootprint(subject);
-  if (footprint.hosts.some((host) => hostMatches(citation.host, host))) return true;
-  let normalized: string;
+/** Canonical public URL: retain case-sensitive paths and identity-bearing query parameters. */
+function canonicalUrl(raw: string): string | null {
   try {
-    const url = new URL(citation.url);
+    const url = new URL(raw);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
     url.hash = "";
-    url.search = "";
-    normalized = url.toString().replace(/\/$/, "").toLowerCase();
-  } catch {
-    return false;
+    url.hostname = normalizeHost(url.hostname);
+    // HTTP -> HTTPS upgrades are common; identity is in the host/path/query.
+    url.protocol = "https:";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^utm_/i.test(key) || /^(fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+    }
+    url.searchParams.sort();
+    url.pathname = url.pathname.replace(/\/$/, "") || "/";
+    return url.toString();
+  } catch { return null; }
+}
+
+/** Only a root website on a non-directory domain is treated as an owned host. */
+export function subjectFootprint(subject: VisibilitySubject): { hosts: string[]; profileUrls: string[] } {
+  const hosts: string[] = [];
+  const profileUrls = subject.profileUrls.map(canonicalUrl).filter((url): url is string => Boolean(url));
+  const website = subject.websiteUrl ? canonicalUrl(subject.websiteUrl) : null;
+  if (website) {
+    const url = new URL(website);
+    if (url.pathname === "/" && !url.search && !directoryLabel(url.hostname)) hosts.push(url.hostname);
+    else if (url.pathname !== "/" || url.search) profileUrls.push(website);
+  } else if (subject.websiteHost && !directoryLabel(subject.websiteHost)) {
+    // Historical v2 observations only stored the host. New observations always retain websiteUrl.
+    hosts.push(normalizeHost(subject.websiteHost));
   }
-  return footprint.profileUrls.some(
-    (profile) => normalized === profile || normalized.startsWith(profile + "/"),
-  );
+  return { hosts, profileUrls };
+}
+
+/** Provider citations to an exact profile count; another profile or query identity does not. */
+export function citationBelongsToSubject(citation: GroundedCitation, subject: VisibilitySubject): boolean {
+  const normalized = canonicalUrl(citation.url);
+  if (!normalized) return false;
+  const footprint = subjectFootprint(subject);
+  if (footprint.hosts.some(host => normalizeHost(new URL(normalized).hostname) === host)) return true;
+  return footprint.profileUrls.includes(normalized);
 }
 
 export function evaluateSubject(
@@ -175,11 +165,18 @@ export function evaluateSubject(
     .filter((citation) => citationBelongsToSubject(citation, subject))
     .map((citation) => citation.url);
   const cited = citedUrls.length > 0;
-  const normalized = normalizeText(answer);
-  const brokerageSeen = Boolean(
-    subject.brokerage && normalized.includes(normalizeText(subject.brokerage)),
-  );
-  const licenseSeen = Boolean(subject.license && answer.includes(subject.license));
-  const identityConsistent = mentioned && (brokerageSeen || licenseSeen || cited);
-  return { mentioned, cited, identityConsistent, citedUrls };
+  const sentences = answer.replace(/\*\*/g, "").split(/(?<=[.!?])\s+|\n+/).filter(s => nameAppears(s,subject.name));
+  const negativeMention = sentences.some(s =>
+    /\b(?:do not|don't|cannot|can't|would not|wouldn't|not)\s+(?:personally\s+)?recommend\b|\b(?:avoid|unresponsive|disappoint\w*|poor service)\b/i.test(s));
+  const anchored = sentences.some(s => {
+    const normalized = " " + normalizeText(s) + " ";
+    return Boolean((subject.brokerage && normalized.includes(" " + normalizeText(subject.brokerage) + " ")) ||
+      (subject.license && normalized.includes(" " + normalizeText(subject.license) + " ")));
+  });
+  const identityConsistent = mentioned && (anchored || cited);
+  const ambiguousIdentity = mentioned && !identityConsistent;
+  const recommended = identityConsistent && !negativeMention && sentences.some(s =>
+    /\b(recommend\w*|consider|shortlist\w*|interview|suggest\w*)\b/i.test(s) &&
+    !/\b(?:not|cannot|can't|unable|no)\b.{0,30}\b(?:verif\w*|confirm\w*|recommend\w*)\b/i.test(s));
+  return { mentioned, cited, identityConsistent, citedUrls, recommended, negativeMention, ambiguousIdentity };
 }

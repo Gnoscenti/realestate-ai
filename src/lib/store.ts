@@ -43,7 +43,6 @@ import {
   DEFAULT_CONNECTIONS,
   type CalendarAppointment,
   type CalendarConnection,
-  type CalendarProviderId,
   type AppointmentStatus,
 } from "@/lib/calendar";
 import type { Contractor } from "@/lib/contractors";
@@ -116,9 +115,6 @@ interface AppState {
   recordSignal: (signal: MemorySignal) => void;
   resetMemory: () => void;
 
-  connectCalendar: (id: CalendarProviderId, email?: string) => void;
-  disconnectCalendar: (id: CalendarProviderId) => void;
-  syncCalendars: () => void;
   addAppointment: (
     apt: Omit<CalendarAppointment, "id" | "importedAt">,
   ) => void;
@@ -623,63 +619,6 @@ export const useAppStore = create<AppState>()(
         const profile = get().agentProfile;
         set({
           agentMemory: profile ? seedMemory(profile) : createEmptyMemory(),
-        });
-      },
-
-      connectCalendar: (id, email) => {
-        set((s) => ({
-          calendarConnections: s.calendarConnections.map((c) =>
-            c.id === id
-              ? {
-                  ...c,
-                  connected: true,
-                  accountEmail:
-                    email?.trim() ||
-                    c.accountEmail ||
-                    `${id}.agent@workspace.demo`,
-                  lastSyncAt: new Date().toISOString(),
-                }
-              : c,
-          ),
-        }));
-        get().pushActivity({
-          type: "chat",
-          title: "Calendar connected",
-          description: `${id} linked for appointment import`,
-          badge: "Calendar",
-        });
-        get().syncCalendars();
-      },
-
-      disconnectCalendar: (id) => {
-        set((s) => ({
-          calendarConnections: s.calendarConnections.map((c) =>
-            c.id === id
-              ? { ...c, connected: false, lastSyncAt: undefined }
-              : c,
-          ),
-        }));
-      },
-
-      syncCalendars: () => {
-        const connected = get().calendarConnections.filter((c) => c.connected);
-        if (connected.length === 0) return;
-        // Real OAuth import lands here later — never inject sample appointments.
-        set((s) => ({
-          calendarConnections: s.calendarConnections.map((c) =>
-            c.connected ? { ...c, lastSyncAt: new Date().toISOString() } : c,
-          ),
-        }));
-        get().pushActivity({
-          type: "chat",
-          title: "Calendar ready",
-          description:
-            "Provider linked. Add appointments manually — no sample events are created.",
-          badge: "Calendar",
-        });
-        get().recordSignal({
-          kind: "chat",
-          text: "calendar connected awaiting real appointments",
         });
       },
 

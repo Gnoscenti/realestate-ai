@@ -598,3 +598,412 @@ Open items added this pass:
 - The repo directory is untracked in the parent git repository at `~/code`; nothing was staged or committed (standing constraint).
 
 - Correction (08:50): `realestate-ai` has its own `.git` with remote `origin = github.com/Gnoscenti/realestate-ai`, branch `feat/ship-citelock-social-live` (local ahead 1, behind 7 as of 2026-09-07). The parent `~/code` repo simply lists the nested repo as untracked. All Session 2 work is uncommitted and unpushed; committing/pushing is the owner's call.
+
+
+## 2026-09-08 - User-designated authoritative Citelock design
+
+### Source and decision D-011
+The user explicitly stated that the Citelock design in this shared conversation is
+correct and must be added as context:
+https://chatgpt.com/s/cx_6aa073de7eb88191bbc73d94906c4da9
+
+Treat the design in that user-designated source as authoritative product intent.
+The local working tree remains authoritative for what is actually implemented.
+Earlier assistant inferences and implementation shortcuts do not supersede this
+reference. The original repository audit, flagship social requirements, and
+verification requirements remain in scope. Do not infer that the user approved
+all current code or that the current code fully implements the linked design.
+
+### Retrieval and verification status
+- Web reader: cache-miss failure for the supplied URL.
+- Direct HTTP retrieval: ChatGPT/Cloudflare JavaScript-and-cookies verification
+  page, not conversation content.
+- Browser automation: initialization failed repeatedly (timeout/process exit).
+- Available task listing did not identify the shared conversation by its URL.
+The linked conversation has NOT been read. No paraphrase or requirements below
+are attributed to it. Reference authority is recorded from the user's instruction;
+content-level reconciliation remains open until the source is accessible.
+
+### Existing local intent, independently re-read
+`docs/CITELOCK-VISIBILITY-DESIGN.md` already describes client-fit discovery:
+source-supported expertise and client-experience evidence -> fixed unbranded
+questions -> grounded recommendation/citation observations -> justified exact
+content improvements -> approval/publish or handoff -> live verification ->
+comparable re-observation. Readiness diagnostics support this outcome. This is
+local-document evidence, not confirmation that the shared thread is identical.
+
+### A-030 - Verified implementation differences from the local design
+Source inspected: `src/lib/aieo/visibility/report.ts`.
+- `discovery` uses unbranded `run.mentioned`; the local design specifies a primary
+  recommendation rate and a separate mention rate. A mention is not necessarily
+  a favorable recommendation.
+- Opportunity factors are gap/reach/actionability/fit, with fit fixed at 1 in the
+  inspected branches. The local design specifies supported fit/evidence_strength/
+  observed_gap/actionability and abstention when evidence is insufficient.
+These are implementation gaps, not reasons to redefine the intended product.
+Other acceptance gates (evidence extraction, intervention grounding, social
+linkage, comparable experiments) still require a source-to-code compliance review;
+this context update does not claim to have completed that review.
+
+### Repository continuity and open items
+At inspection the project was clean on `local/2026-09-08-flagship-preservation`,
+HEAD `23dbf3f` (preserve local flagship MVP work before PR integration). The earlier
+uncommitted status in this ledger is historical, not current. No remote push was
+verified, and no commit, push, merge, or application-code edit was performed for
+this context update. Another active task, 'Integrate PRs and finish MVP', exists;
+keep this shared ledger as the handoff record and avoid competing code edits.
+
+O-014: Retrieve the shared conversation and record its exact design requirements
+and provenance; reconcile against the local design and code before claiming full
+Citelock conformance. Do not silently fill inaccessible source content from memory.
+O-015: Correct the measured-discovery semantics and evidence-backed opportunity
+ranking against the authoritative requirements; retain evidence of failing cases
+and verify the final behavior. No new product tests were run for this notes-only
+update. Documentation diff/read-back is the verification for this update.
+
+## Session 3 - Superseding direction and implementation (2026-09-08)
+
+D-012: The user supplied the full corrected requirements in an attachment, retained
+verbatim in CITELOCK-APPROVED-DIRECTION-2026-09-08.md. This supersedes conflicting
+historical release criteria. O-014's inaccessible shared link no longer blocks
+implementation: the supplied text gives explicit operational acceptance.
+Promise: "Get discovered for the work you do best." Assessment alone is insufficient.
+Implement the evidence -> discovery -> concrete intervention -> social distribution
+-> approval/handoff -> live confirmation -> comparable follow-up loop.
+RapidAPI is the approved live-data workaround; manual social handoff is accepted.
+Neither substitutes for MLS rights, verified production or publication confirmation.
+Preserve existing functionality and history; no branch replacement/remote merge.
+
+Current-tree checks personally run: git status/log and affected source inspection.
+Historical 198-test/build results are historical, not current verification.
+Another active task works in separate PR integration checkouts; this task changes
+only /home/ttroj/code/realestate-ai and references geo-aeo-platform selectively.
+
+Implementation sequence:
+1. Add durable source/permission/entity-bound expertise and public-page observations,
+   review/contradiction handling, missing-evidence abstention, evidence-linked gaps.
+2. Correct recommendation/negative/ambiguous semantics, stable configuration history,
+   leased paid execution and current-source limits; retain old results explicitly.
+3. Produce constrained exact content artifacts, revision-safe approval and live
+   content verification; link approved interventions to social drafts with rights review.
+4. Verify RapidAPI exposed paths and remaining critical auth/durability/false-success
+   findings, then type/lint/unit/DB/build/browser and bounded authorized live checks.
+
+Classifications: implement now = connected expertise workflow and critical defects;
+accepted workaround = RapidAPI + manual social handoff; deferred external =
+licensed MLS/RealTrends, unavailable social authorization, native signing;
+release-critical = any false evidence/approval/publication, tenant escape or data loss.
+
+### Session 3 implementation and current checks (14:28 local)
+Added 0011 evidence/page observations/intervention revisions+events/tenant FKs;
+0012 social dispatch states. Expertise source fields enforce exact excerpts,
+entity scope, permission basis, publication permission, dates and duplicate handling.
+Public-page inspection is DNS-pinned/bounded and fails without context matching.
+v2 basket adds supported expertise questions and removes default luxury bias.
+Reports now separate recommendations, mentions, citations, negative/ambiguous
+identities and failures; opportunities need expertise+page+matching observations.
+Interventions assemble permitted exact passages with attribution and placement/
+interview/test instructions; no unsupported AI prose is inserted.
+Revision-aware approval, all-substantive-passage verification and atomic social
+draft linkage implemented. Repeat uses exact saved prompts/provider models; history
+partitions returned model/prompt/area/surface/method/extraction configuration.
+Source/expertise UI, explicit rights review and linked Social Desk navigation added.
+
+A-031: previous verification treated empty signatures as success and accepted one
+of three sentences. Fixed to require matched subject + every substantive passage.
+A-032: social dispatch could duplicate or publish a stale revision. Reserve/freeze
+before remote calls; retain unknown outcomes, block edit/replay until reconciled.
+A-033: local PGLite restart loss fixed with ignored disk storage; tests remain in
+memory. Build no longer applies production migrations; explicit migrator serialized
+by Postgres advisory lock.
+
+Personally run: affected type-check PASS before final dispatch edits; affected lint
+PASS; 31 tests in 3 files PASS (visibility report, DB lifecycle, social desk).
+Earlier intermediate run failed 9 legacy assertions: version, false name matching,
+generic directory advice, timeout retries, empty checklist, and uncoded provider
+failure. Replaced those behavior contracts with adversarial tests of corrected
+requirements; no failures suppressed. Current full verification still pending.
+The other local task installed missing Linux Chromium dependencies; browser checks
+are now feasible and must be attempted, not declared blocked from old notes.
+
+### Session 3 verification and fixes (14:50 local)
+Current gates before the last transaction/withdrawal edits: typecheck PASS,
+lint 0 warnings/errors, 28 unit/DB files / 203 tests PASS, production build PASS.
+After transaction changes: typecheck PASS and 18 critical DB tests PASS.
+Browser suite with current Chromium: 12/16 PASS; three mobile failures came from
+the access helper requiring a desktop-only link, and one from a removed MLS label.
+Fixes use the actual server-entitled app root and current label; all assertions
+on mobile layout, source persistence and receipt flow remain.
+
+Bounded live checks personally run: RapidAPI San Diego search 41 observations,
+39 importable; agent lookup valid empty response; grounded xAI grok-4.6 returned
+five provider citations, six searches, reported $0.118466. No Postiz/social
+publication performed. Live results are not a demonstrated discovery lift.
+
+Dependency audit initially found js-yaml/nanoid/postcss plus xcode's uuid; patched
+within ranges and constrained xcode to uuid11 (v4 API compatibility to verify).
+Full npm audit now 0 vulnerabilities. Chromium was reinstalled for the new
+Playwright version. Local disk PGLite was verified across two separate processes.
+Production PostgreSQL and signed native builds remain unverified.
+
+A-034: beta redemption/checkout consumption preceded the grant in separate writes.
+Fixed with atomic SQL CTEs; injected grant failure tests prove nothing consumed.
+Production demo grants now disabled independently of flags; demo token parser
+handles underscores in base64url. Discounts disabled because purchase verification
+requires the exact configured price.
+A-035: market route fabricated AVM confidence/comps/forecasts. Replaced with exposed
+RapidAPI lookup and explicit user-assumption arithmetic; removed unused fake AVM.
+A-036: batch creation used multiple commits and could race starts. Added dedicated
+SQL transaction support, workspace row lock, atomic quota+batch+planned runs.
+A-037: current contradictions/withdrawn permissions could be missed by old batch
+snapshots. Reports now keep raw observations immutable while re-evaluating current
+opportunities with current sources; approval/social linkage recheck source support.
+Withdrawal retains history and excludes the source from current public drafts.
+Migration 0013 initially guessed a truncated constraint name and failed correctly;
+replaced with exact catalog identification. New full validation still pending.
+
+### Session 3 final implementation decisions and audit (15:07 local)
+D-013: Organizations require a separate exact name and HTTPS website. The
+individual's name/license/website cannot silently become a team/brokerage identity.
+History loads are abortable and keyed so old results cannot replace a newly
+selected subject. Targeted organization/source browser regression passed.
+D-014: Source withdrawal must reach linked social approval/handoff/dispatch.
+The immutable creation event and database link retain source obligations even
+when editable origin text is changed. Existing public/scheduled material still
+requires action in the authorized publishing account.
+D-015: Keep the MVP claim bounded: implemented improvement workflow, not proven
+lift or a verified production deployment. CRM/profile/calendar remain browser-local;
+organization identity fields currently need re-entry after leaving Citelock.
+
+Final current-code gate run: TypeScript PASS; ESLint 0 warnings/errors; Vitest
+4.1.11, 28 files/207 tests PASS; npm12 production build PASS. Production missing-DB
+and missing-secret guard checks executed and PASS. Two-process app getSql restart
+PASS with 12 migrations. Native xcode compatibility smoke PASS using the supplied
+Capacitor template; no native project/archive/signing verification claimed.
+Visual inspection completed for desktop 1440x1100 and mobile390x844; no horizontal
+overflow. Dedicated image tool failed sandbox setup; the local screenshot was
+loaded through an authorized read-only shell path for inspection.
+
+Final audit surfaced Vitest GHSA-82fw-gwwq-j7x9 (GitHub advisory published/updated
+Sep8; unlike the earlier audit response). Patched to 4.1.11. npm12 audit then
+reported zero known vulnerabilities. Earlier zero-vulnerability result was a
+point-in-time report, not evidence that the newly surfaced advisory was absent.
+Authoritative source: https://github.com/advisories/GHSA-82fw-gwwq-j7x9
+
+Full desktop/mobile browser run:17 PASS. Separate auth-enabled account isolation
+suite:1 PASS. After final linked-source permission guard, both are being rerun;
+outcomes must be appended before delivery. Tests use isolated in-memory databases
+and synthetic material, with paid provider keys blank. Live xAI/RapidAPI probes
+are separate evidence; none establishes a real agent's visibility lift.
+
+Updated README, USER_GUIDE, env example, CI and delivery report. Preserved per-file
+line endings (including the lockfile) to keep the patch reviewable. No commit,
+push, merge, external publication or deployment performed.
+Open: target PostgreSQL/restore/deployed smoke; actual customer publication and
+follow-up measurements; Stripe money/refund operations; live Postiz/other-provider
+authorization; native signing; real calendar/device sync; supported closed-sale
+context and referral attribution. These do not block the implemented RapidAPI
+and manual-social alternatives. See delivery report for classifications.
+
+### Final verification correction — A-038 (2026-09-08)
+The auth-enabled final rerun exposed a real shell defect inherited from Session2:
+pending/error access checks could trust hasAppAccess(browserBilling). A forged
+browser billing object unlocked the shell when its server check failed. Paid
+provider endpoints still required entitlement, but the shell claim was incorrect.
+
+Fixed: identity-bound server-only access state; no optimistic local grant;
+explicit pending/error/retry UI; stable approval callback and complete effect
+dependencies (removed the old exhaustive-deps suppression). Generated browser
+trace HTML is ignored by development watchers to prevent spurious page reloads.
+
+Regression now deliberately aborts all server-function requests after forging
+billing, verifies the locked error state, restores requests and retries, verifies
+the inactive paywall, rejects a bad code, grants a valid server code, persists
+a social draft, isolates a second account and returns to login after clearing
+cookies. Auth-enabled browser suite PASS (1 test,13.5s). Type/lint PASS.
+Full17-browser rerun and final production rebuild are running after this fix.
+
+Patch whitespace checked with cr-at-eol so existing CRLF conventions are recognized;
+all ordinary trailing-space/blank-line and indentation checks remain active.
+Persistent memory index already contains the correct forward-slash repo path;
+no rewrite was needed for the earlier malformed-path concern.
+
+### Delivery gate closure
+Final full desktop/mobile Playwright:17/17 PASS (1.1m) after A-038 fix.
+Final auth-enabled Playwright:1/1 PASS, including deliberate outage, retry and
+forged-billing rejection. Final production rebuild exit0, Nitro/Vercel output.
+Typecheck and lint remain PASS after A-038; full Vitest4.1.11 run207/207 PASS.
+No failing check is waived. Native PostgreSQL/deployed environment and external
+publishing/payment/signing validation remain explicitly unverified, as reported.
+
+Git status at delivery: 40 modified tracked files; 12 untracked files; 0 staged.
+HEAD23dbf3f on local/2026-09-08-flagship-preservation, no configured upstream.
+None of this session's edits are committed or pushed. Other tasks' branches/
+worktrees were not merged, staged, reset or overwritten.
+
+Closure recorded at 2026-09-08 22:13:52 UTC (15:13:52 America/Los_Angeles). Task-owned test server stopped after verification; no user data or other task server was removed.
+
+## Session 4 — 2026-09-19: release completion
+
+### Current working tree and intent
+Re-read the approved direction and unresolved delivery items rather than repeating the audit. HEAD23dbf3f, branch local/2026-09-08-flagship-preservation, 40 modified tracked and12 untracked files, zero staged; September8 results are historical. Preserve this work and other tasks' worktrees. Approved purpose remains supported expertise -> unbranded discovery -> source-linked improvement -> approval/publication confirmation -> comparable observations. RapidAPI and manual social remain accepted alternatives.
+
+### Repo map / new environment evidence
+Docker29.7.2 is now available in WSL; existing LaunchOps containers are unrelated and will not be touched. PostgreSQL16 client tools exist; server binaries do not. Use a new isolated loopback-only PostgreSQL container for migration/concurrency/restore validation and add reproducible CI coverage.
+
+### Findings and decisions
+A-039: Citelock entity settings are page-local; organization fields disappear after navigation, and a new device depends on browser profile setup even though evidence exists server-side.
+D-016: Store explicitly saved subject identities per workspace and entity kind, with revision checks, role validation and cross-account isolation. Keep individual/team/brokerage evidence separate. Loading/error/conflict behavior must prevent a failed load or stale save from replacing a newer identity.
+D-017: Verify native PostgreSQL as well as PGLite, including transaction races and backup/restore. Do not call a local container a production deployment.
+Applying engineering:deploy-checklist skill as a release verification framework; it introduces no new permission requirement.
+
+### Verification / open items
+Fresh checks pending. Next: subject persistence, PostgreSQL integration/CI, fresh build/type/lint/unit/browser/audit; inspect any failures and remaining correctness gaps. Provider/account operations remain distinct from code verification; no fabricated publication, payment or lift.
+
+### Session4 implementation and initial verification
+Implemented migration0014 and authenticated subject APIs/editor: explicit per-entity saves, revisions, initial load/error/retry, validation, cross-device restoration without a browser CRM profile. Critical subject tests3/3 PASS on PGLite.
+Native PostgreSQL16: all13 migrations applied, rerun idempotent; critical suites7 files/41 tests PASS, including real concurrent subject/batch writes, grant rollback, evidence-to-improvement-to-social lifecycle and dispatch reservations. Added independent PostgreSQL CI job and guarded test:postgres command.
+A-040: Citation matching previously treated any unknown website host as wholly owned, including an agent's page on a small brokerage site. It also removed identity query parameters and lowercased case-sensitive profile paths. Fixed: preserve exact website URL/path/query and exact profiles, root-host ownership only for non-directory websites; new observation method expertise-v2.1, separate comparison series. Old baselines require a new baseline for this method.
+A-041: Social image download checked actual size only after arrayBuffer allocation. Fixed using shared bounded binary streaming; chunked overflow cancels the stream. Added byte/UTF-8 and citation boundary regressions.
+Initial lint caught a now-unused Label import after editor extraction; removed it. Fresh complete checks pending.
+
+### Session4 completed fresh checks
+Typecheck PASS; ESLint0warnings PASS; Vitest30files/214tests PASS.
+Auth-enabled PGLite browser PASS, including new independent browser context with only session cookies (no profile/localStorage) restoring the saved brokerage, plus another account seeing no saved identity.
+npm12 dependency audit:0 known vulnerabilities as of this session.
+Native PostgreSQL logical backup/restore PASS:49 public tables,245 rows,13 migrations; every table count and sorted row-content digest identical after restoring into a fresh database. Added guarded reusable restore script. This does not verify deployed backup schedules, external roles or provider disaster recovery.
+
+### Production runtime verification, not only compilation
+Full desktop/mobile browser17/17 PASS. Auth browser against native PostgreSQL1/1 PASS. Fresh live probe:RapidAPI41 observations/38 importable, agent query valid empty; xAI grok4.6,6provider citations,7searches,$0.138556. No other configured provider was called.
+A-042: npm preview used Vite/TanStack's default preview loader, which tried missing dist/server/server.js after Nitro relocated the entry. Actual browser test returned HTTP500 despite build PASS. Installed Nitro supports root-based nitro preview, which loads the recorded Vercel artifact and static files. Replaced preview script accordingly. The compiled app then PASSED the same real-session/entitlement/draft/subject/cross-account test against native PostgreSQL. CI now includes this production-artifact browser test.
+Also completed provider-configuration error/retry UI, restored saved subject jurisdiction in readiness, guarded late batch selection, and throttled empty lease polls. Final browser regression additionally simulates saved-identity/provider-load outage and recovery.
+
+### Session4 final gates and limits
+Final native PostgreSQL suites41/41 PASS after citation-method changes on a fresh database.
+Final desktop/mobile browser17/17 PASS after compact saved-subject UI.
+Final production artifact + native PostgreSQL real-session browser1/1 PASS using the repository test configuration mode PLAYWRIGHT_PRODUCTION=1; deliberately failed identity/provider reads show errors and recover through retry. Cross-device restored identity and account isolation pass.
+Final typecheck/lint0warnings/build PASS. Client asset check:70 text assets, no configured server-secret value found. Missing-production-DB and missing-auth-secret checks PASS.
+Observed Better Auth warning in local Nitro preview: no forwarded client IP, so auth rate limiting uses one shared per-path bucket. Fail-closed behavior preserved; target deploy must validate its trusted proxy/IP headers without accepting spoofed arbitrary headers.
+Current external access: xAI,Gemini,RapidAPI keys present; DATABASE_URL,Stripe,Stripe webhook andPostiz keys absent in existing local app env. A separate random-secret test env backed only task-owned PostgreSQL. No secret values were printed or copied into tracked files.
+Remaining: target hosting/publicHTTPS/managedbackups verification; real customer publication and comparable observations; live Postiz/Stripe authorization/money/refund operations; other providers; native signing; browser-local CRM/calendar sync; closed-sale/traffic attribution where data unavailable. Approved RapidAPI and manual publishing alternatives are complete and exposed.
+
+### Final Git handoff — September19
+{"branch": "local/2026-09-08-flagship-preservation", "head": "23dbf3f", "modifiedTracked": 42, "untrackedFiles": 21, "stagedFiles": 0, "upstream": null}
+No commit/push/merge/deployment or external publication was performed. All current work remains in this working tree. Prior content, other worktrees and the parent repository were preserved. Final populated Citelock/Social Desk desktop/mobile screenshots captured; no horizontal overflow. Task-owned development/preview servers and the labeled PostgreSQL container were stopped successfully; diagnostics/backup data remain ignored under tmp/session4 and tmp/postgres-restore-*.
+
+## Session 5 — 2026-09-20: Perplexity Agent API integration
+
+### Scope / repo map
+User chose the web-grounded Agent API. Existing TypeScript/TanStack server pipeline lives in visibility/providers.server.ts; engine.server.ts owns entitlement, quotas, durable leases and paid-call retries. Keep current working-tree changes; no scaffold, commit, push or deployment. PERPLEXITY_API_KEY presence checked privately: present, value never output.
+
+### Findings and decisions
+A-043: Existing Perplexity adapter calls legacy Sonar chat completions and counts every search result as a citation. Existing rate-limit retry can run immediately without respecting Retry-After.
+D-018: Replace that adapter with the official @perplexity-ai/perplexity_ai SDK. Agent API is the correct fit for independent grounded discovery; Router has no grounding, Search has no answer. Pin an explicit model/configuration, not a changing preset, for comparable observations. Keep retrieved source metadata distinct from URL-citation annotations. Persist Agent API surface separately from legacy observations. Disable SDK automatic retries; durable engine retry respects provider cooldown, and uncertain paid outcomes remain visible failures.
+Read official docs index, quickstart, presets, tools overview/web-search, output-control, Agent OpenAPI, SDK overview/configuration/error-handling, pricing and rate limits before code. Documentation snapshots retained under ignored tmp/perplexity-docs. Presets change configuration without explicit versioning. Agent response text comes from output_text; search_results contains source metadata, content annotations contain URL citations. Model/tool charges are separate; costs must come from returned usage, not estimates.
+
+### Verification / open items
+Pending implementation, real minimal request, adapter/error tests, durable cooldown/persistence tests, full type/lint/unit/build checks. API consumer-app visibility and ranking lift remain unclaimed.
+
+### Session5 implementation and live verification
+Installed official SDK0.38.5 (one package, npm12 audit0). SDK uses documented Agent alias /v1/responses; no hand-built guessed endpoint. Default explicit model openai/gpt-5.6-luna, web_search (6000 context tokens/1200 per page), max_steps2, max_output_tokens2000, storefalse, no previous_response_id. Fixed official base URL, SDK logLeveloff, maxRetries0, 55-second timeout and bounded4MB response. Typed errors never retain reflected upstream text.
+Migration0015 stores sources separately and adds deployment-wide provider cooldown. Both Retry-After seconds and HTTP-date forms supported; a missing/invalid header defaults to60seconds. New Agent surface perplexity_agent_web_v1 prevents old Sonar baseline replay/comparison. Existing entitlement, authorization and quota gates retained. Evidence UI shows retrieved sources separately and explains absent URL annotations.
+LIVE minimal smoke PASS:HTTP200, answer string,15retrieved sources,1search,0URL-citation annotations,returned model string,usage object,reported cost present. No key or answer content output. This verifies one default-model Agent request, not every model/production quota or consumer-app visibility. Zero citation credit is deliberate when annotations are absent; no prose-link inference.
+Focused tests22/22 PASS, typecheck PASS, ESLint0warnings PASS. Full suite/build/nativePG/browser pending.
+
+### Session5 final verification and delivery
+Full Vitest31files/227tests PASS; native PostgreSQL7files/43tests PASS, including persisted sources, baseline surface guard, cross-workspace Retry-After and two-attempt limit. Migration0015 applied; repeat migration no-op. Docker restart reassigned the test port32768->32769; fixed ignored test configuration, not application logic.
+Final TypeScript PASS, ESLint0warnings PASS, production build PASS, whitespace check PASS. Existing desktop/mobile Playwright17/17 PASS. Auth browser against compiled artifact + native PostgreSQL1/1 PASS (real signups, server entitlement, persistence, cross-device identity, tenant isolation). Live API request count for this integration:1, HTTP200. 401/429/malformed/oversized/network paths tested with deterministic SDK transport fixtures, not live induced failures.
+Browser asset secret scan70files, zero configured server-secret values; .env.local remains gitignored. Installation added only official SDK0.38.5; npm audit0 known vulnerabilities. Existing proxy/IP warning in local Nitro preview persists, as already documented.
+Open items: deployment-specific configuration/migration and provider limits; optional other Agent models; Perplexity-specific competitor extractor; no consumer-app coverage/causal lift claim. No required integration work remains; README, blocker register and delivery addendum carry exact run instructions and boundaries.
+Current Git status: {"branch": "local/2026-09-08-flagship-preservation", "head": "23dbf3f", "modifiedTracked": 43, "untrackedFiles": 24, "stagedFiles": 0}
+No commit, push, merge or deployment performed. Existing unrelated changes preserved.
+Cleanup complete: task-owned PostgreSQL container stopped; identified temporary browser-test server terminated. Production browser harness had already stopped its preview. No external/user services touched.
+
+## Session 6 — 2026-09-20: renewed full-scope audit and release hardening
+
+### Repo map and conventions
+Opened existing ledger, approved direction, blocker register and delivery report first. Current authoritative tree remains HEAD23dbf3f on local/2026-09-08-flagship-preservation, with prior uncommitted work preserved. TypeScript/TanStack Start, npm12, PostgreSQL/PGLite, authenticated server functions, Vercel/Nitro and Capacitor web shell. Existing all-source reading evidence is in Session1/2; current audit verifies changed files and unresolved gaps rather than claiming every historical file was newly read. Generated/dependency/binary/secret material is inventoried separately. Engineering code-review skill read; scope is the user-named repository, so its generic clarification step does not apply.
+
+### Citelock/GEO intent
+Retain the approved, stronger discovery-and-improvement loop: supported expertise -> independent grounded discovery -> source-linked opportunity -> usable reviewed artifact -> authorized publication/handoff -> comparable observations. The repeated broad prompt permits a minimum assessment, but does not require discarding the implemented stronger loop. No causal lift or consumer-app coverage claim.
+
+### Audit findings / blocker register
+Existing A001-A043 and scenarios remain the starting audit trail. Current unresolved candidates: account recovery/verification; paid-launch reconciliation; Citelock evidence attribution and source relevance; model-assisted extraction gaps; social revision/publication state; local supporting-module claims; deployment migrations and hosted operational checks.
+
+### Decisions made and why
+D-019: Re-audit critical boundaries and complete affordable release-hardening work in the current tree. Preserve approved RapidAPI/manual social alternatives and independent measurement. Do not expand into unavailable MLS/native signing or deploy/publish as a side effect. The successful September20 Agent checks remain historical baseline evidence until relevant changed code is retested.
+
+### Verification results / open items
+Current Git status verified. Inventory includes all current first-party paths; original coverage claims and unresolved findings consulted. Next: inspect source boundaries, refresh MLS/RESO research, add concrete blocker scenarios, fix confirmed defects, rerun strongest relevant checks, then refresh delivery report.
+
+### Session6 confirmed findings and changes
+A-044: Calendar still exposed local demo provider connections, a fabricated dead event generator and an empty-state instruction to sync, but no appointment creation UI. Removed fake connect/sync actions and generator; added validated manual appointments, explicit local timezone/device-only storage, retained completed/far-future records, rule-based preparation notes and safe RFC5545 export. Vendor directory preserved. No OAuth, invitations or background notifications claimed.
+A-045: Concurrent Postiz refreshes could overwrite terminal publication with a stale pending status, and publication/draft/history updates were separate transactions. Provider call now remains outside the DB transaction; row-locked reconciliation preserves the first terminal result and commits draft/history atomically. Untrusted provider release URLs pass the same platform validation as manual receipts.
+A-046: Citelock report page evidence still used host-only attribution despite strict citation profiles. Applied exact profile/declared owned-root matching to inspected pages; report algorithm visibility-2.2. Publication packages retain exact website URL and reject other profiles on shared hosts. Publication verification rechecks source permissions before and after page fetch. Observation measurement remains expertise-v2.1 because recommendation/citation counts did not change.
+A-047: Property search seeded fictitious query history, described local matching as AI/MLS syncing and toasted a nonexistent client packet. Removed fake history/delay/claims; added downloadable factual local-record summary with missing values and provenance limitations.
+A-048: Production auth inherited loopback trusted origins and shared preview OAuth credentials, allowed implicit linking to unverified email accounts, and popup listener accepted same-origin messages from any window. Production now requires explicit BETTER_AUTH_URL, trusts only that configured origin, uses explicit OAuth credentials only, disables account linking and requires the exact popup window as message source.
+
+D-020: Keep supporting calendar local and useful via explicit create/export rather than implementing multiple OAuth providers outside the flagship scope. Keep source ownership conservative and permission-aware. Fix concurrency at the durable state boundary rather than hiding stale statuses in UI. Auth origin/linking restrictions take precedence over dead preview convenience.
+
+### Session6 intermediate verification
+TypeScript PASS; ESLint0warnings PASS after calendar/social/Citelock/search edits (before final auth edits).
+Focused calendar/export and concurrent social suites7/7 PASS. Citelock report/lifecycle26/26 PASS, including shared-site exclusion and revoked permission before verification. New browser calendar and production-origin tests pending.
+Refreshed primary RESO, MLS Grid onboarding/API/resources and RealTrends download research. RESO grants no data; MLS/provider issues access after license approval. MLS Grid now lists an AI Use Addendum; linked PDF fetch failed in browsing, so its detailed terms are not asserted. API docs specify signed one-use one-hour media URLs effective September8; future connector must replicate permitted media rather than hotlink. RealTrends2026 agent/team download remains $599, non-commercial license. Current MLS fees/approval SLA require direct quote; historical examples must not be represented as current offers.
+
+### Session6 verification, failures and root causes
+Full unit suite233/233 PASS, nativePG45/45 PASS, production build PASS. Compiled production browser2/2 PASS: prior real-session/tenant workflow plus unrelated localhost-origin rejection403.
+Full desktop/mobile browser initially17/18: new calendar test used getByLabel("Preparation notes"), which matched both the textarea and the tabpanel's accessible label. Replaced with the precise textbox role/name; no assertion removed. Rerun pending. Final audit also removed remaining dashboard/priority copy instructing users to sync an unconnected calendar.
+Final edge cases: all-day exports reject same-day exclusive ends; generated contact links retain exact subject website paths; regression covers permission withdrawal during an in-flight public-page fetch. These final changes require focused/nativePG checks and rebuilt artifact.
+
+Native PostgreSQL rerun exposed test isolation failure: the persistent test database retained global:runs quota consumption from earlier successful runs. Seven scenarios correctly hit the production budget guard; no application limit was raised. Added per-scenario reset of only that global quota fixture, guarded to reject non-_test/_tests database URLs. Existing quota assertions remain intact. Fresh and repeated native runs pending.
+Calendar browser rerun PASS, including invalid interval, save/reload, real .ics contents, completed retention, delete and mobile no-overflow. Visual screenshots captured; inspection pending. Final build PASS;71 emitted text assets contain none of the configured server-secret values. npm12 audit:0 known vulnerabilities.
+
+A-049: Revisited the original CMA finding (ledger line243) after locating a surviving MLS-synced UI claim. generateCmaReport still guessed condition from relative price and produced a suggested list value from unsourced local records. Replaced it with bounded same-city/type reference notes, explicit positive price/area checks, no inferred condition/list-price output, supplied-status labels and empty states. Fixed copy failure falsely recording an export. Regression covers other markets/types, zero values and abstention. This is usable comparison preparation, not a completed professional valuation product.
+
+CMA dependency check: TypeScript correctly found two command-pack consumers still using suggestedList. Updated both to reference counts and the same evidence limitations; no compatibility field or dummy valuation was retained. Focused/type checks rerunning.
+
+### Session6 final results (before cleanup)
+Final typecheck/lint0warnings PASS. Complete Vitest33files/236tests PASS; CMA2/2 focused regression and dependent consumer typecheck PASS. Final build PASS. Full desktop/mobile browser18/18 PASS on fresh isolated workspace, including real calendar download/persistence, source rights, onboarding failures and manual social workflow.
+Native PostgreSQL46/46 PASS twice consecutively after fixture isolation. No production quota changes. Logical backup/restore50tables/1,676rows/14migrations PASS with complete content digests; this includes migration0015. Hosted backup policy/roles/ACLs are not validated by this local restore.
+Manual visual: desktop1280px/mobile390px calendar screenshots inspected. Native view_image failed due Windows sandbox setup; escalated read-only screenshot access displayed the same files successfully. No unresolved approval rejection.
+Delivery report rewritten from current ledger to replace obsolete totals. Final compiled-artifact auth rerun and cleanup pending.
+
+Final rebuilt production artifact + native PostgreSQL authentication2/2 PASS (real sessions, grant enforcement, cross-device identity, account isolation, unrelated-origin403). Existing missing trusted-client-IP warning remains an explicit hosting configuration gate. No broker OAuth login or password recovery delivery was claimed tested.
+Current Git snapshot:52 modified tracked files,29 untracked files,0 staged; preservation branch local/2026-09-08-flagship-preservation, HEAD23dbf3f, no configured upstream. No commit/push/deploy or external publication. Delivery report contains exact commands and release gates.
+
+### Session6 cleanup and open items
+Stopped the identified temporary browser-server processes22627/22848 and task-owned PostgreSQL container realestate-ai-release-20260919. Production auth harness stopped its own preview. Other projects/services/worktrees untouched. Ignored test evidence and backups remain available.
+Open gates are accurately classified in the delivery report/blocker register: actual hosted configuration and smoke/backup operations; customer publication and comparable later observations; optional real Postiz authorization and reconciliation; recovery/email and paid money-flow operations; unverified provider configurations/extraction; licensed MLS, native signing, calendar sync and unsupported transaction analytics. Working alternatives are implemented and documented. No required source fix from this bounded release-hardening pass remains unverified.
+
+## Session 7 — 2026-09-20: source-backed instructional guide and authorized release
+### Repo map and conventions
+Reopened the existing ledger and current Git status. Same preservation branch and working tree; existing changes remain uncommitted. New work reuses authenticated server functions, safe outbound fetch, durable workspace data and server entitlement.
+### Citelock/GEO intent
+Latest user direction explicitly prioritizes a formatted, manual, step-by-step visibility guide: useful basic free output and thorough paid output. MLS is not a prerequisite or exclusive authority. Existing optional measurement and publication workflows remain available; no automatic client publication is requested.
+### Audit findings / blocker register
+RealTrends public Julie Pierce Casey profile currently reports city sides rank1,20sides,$33.61M volume based on2025sales data. Personal site claims over$44M in2025: these figures conflict or have different scope and must not be merged. Brokerage corroboration still being checked. Public source analysis is distinct from purchasing/licensing bulk ranking data.
+### Decisions made and why
+D-021: Derive conservative, attributable claims and practical instructions from public personal, broker and independent sources, keeping publisher/category/year/scope explicit. A transaction-side ranking does not establish trust or every agent's performance. Free analysis must work without a paid provider run; paid content must be gated on the server.
+D-022: User now expressly authorizes adding required local secrets to the correct Vercel project, correcting production settings, then committing all intended repository changes and pushing after verification. This supersedes prior no-push instructions. Secret values must never appear in output or Git; unrelated projects and parent repository remain out of scope.
+### Verification results / open items
+Current status read:52 modified tracked paths,29 untracked file entries in prior precise count,0 staged,HEAD23dbf3f; no upstream. Vercel team resolved; two candidate projects require Git linkage verification. No release mutation performed yet. Next: guide implementation/tests, exact Vercel linkage and secure configuration, checks, commit/push and delivery evidence.
+
+### Session7 implementation and findings
+A-050: The global paywall prevented any useful free Citelock output. Added an authenticated free /aieo entry and guide-first navigation; advanced measurement remains entitlement-gated. The new server guide API returns three steps for basic accounts, nine for entitled accounts, and rechecks access on every read/update. Upgrade and expiration tests verify response/export boundaries.
+A-051: MLS authority was being conflated with all public-source evidence. Guide now inspects up to four safe public URLs, binds textual identity/locale, extracts only a tightly scoped official RealTrends agent city-sides ranking, preserves year/category/population and flags conflicting annual volume. No listings authority, license verification, or causal visibility lift is inferred.
+D-023: Keep this instructional assessment deterministic and available without model spend. Persist source hashes, observation dates, claims, unresolved conflicts and manual progress under workspace ownership. Nine prioritized steps include owners, effort, concrete instructions, success criteria and source links. Paid content is constructed server-side only.
+Verification: live safe-fetch of Julie's actual personal biography and RealTrends profile matched both sources, extracted2025/citySidesRank1/20sides/$33.61M, and flagged personal$44M. No model requests or MLS calls. Official brokerage profile not independently located; no fabricated corroboration.
+Initial tests exposed URL refinement throwing on empty optional URLs; fixed with URL.canParse before URL construction. All6 guide tests now pass; full34files/242tests pass; nativePG8files/52tests pass with migration0016. Typecheck and lint0warnings pass. Build/browser checks in progress.
+Release discovery: cloud-realtor(project prj_iTHheNQygwNcQGy20gfWS5uAKOUj) is linked to Gnoscenti/realestate-ai; realestate-ai-workspace is a different repo. Latest observed production is main@2cd3cb1, not this preservation working tree. Never overwrite production/main to bypass divergence.
+Release blocker: Vercel get_project connector schema mismatch persists; environment writes are not exposed. CUA browser startup fails at Windows sandbox/kernel initialization, including one reset/retry. Known official CLI auth locations and VERCEL_TOKEN have no credentials. Deployment metadata is readable, but settings/secrets cannot yet be changed. No auto-review rejection occurred.
+Prepared a production-only allowlist configuration script against documented Vercel REST endpoints. It refuses wrong Git linkage, missing required configuration, local/test DBs and test Stripe keys; preserves existing DB/auth secrets and prints only key names/settings. It requires an authenticated Vercel CLI session or privately supplied VERCEL_TOKEN. Production keys currently present locally: XAI_API_KEY,OPENAI_API_KEY,PERPLEXITY_API_KEY,GEMINI_API_KEY,RAPIDAPI_KEY. Legacy CITELOCK_MLS_ENABLED must not be copied.
+
+Production browser check found a real interaction defect: the controlled completion checkbox did not visually change until the server replied. Added optimistic checked state, explicit Saving progress status, disabled concurrent edits and rollback on failure. Browser regression now also aborts a save and asserts restoration of prior state. Prior242unit/52PG/18browser checks passed; rebuilt auth check pending this change.
+Broker research: Pacific Sotheby's domain redirects to sothebysrealty.com/pacificsir and presents a JavaScript/anti-bot challenge. No bypass attempted; broker profile corroboration remains unverified. Personal and RealTrends evidence remain sufficient for the qualified ranking guide.
+
+### Session7 final local verification and authorized configuration
+Final typecheck/lint0warnings PASS; full34files/242tests PASS; focused6guide tests PASS after server-export read was added. NativePG8files/52tests PASS; migration0016 included (15 files total). Full existing desktop/mobile18/18 PASS; final rebuilt production artifact + PostgreSQL auth3/3 PASS, covering real free guide, upgrade, durable checklist, failed-save rollback, server-gated download, tenant isolation and forbidden origin.
+Fresh logical restore PASS:51tables/2,065rows/15migration records with full data digests. Live Julie flow verified via actual public fetch and real browser; desktop1440px/mobile390px JPEG screenshots visually inspected. Initial PNG rendering exceeded tool constraints; smaller original browser captures displayed successfully. No390px horizontal overflow. Browser asset scan71files clean; intended Git scan256files clean; only.env.example is tracked. Production dependency audit0 vulnerabilities.
+Export now fetches a fresh server view before preparing Markdown, so access expiry while a page is open cannot obtain a newly generated full export from a stale client view.
+Vercel blocker RESOLVED: CLI59.23.2 normal device login completed. Read-only preflight confirmed exact Git linkage. Applied five local provider keys to Production, compared values privately (all equal), then marked them Sensitive. VITE_AUTH_ENABLED=true. Read-back:Node22.x;framework/rootDirectory/outputDirectory null;npm12ci and npm12build. Existing DATABASE_URL,BETTER_AUTH_SECRET,BETTER_AUTH_URL,STRIPE_SECRET_KEY are Sensitive and cannot be read through the API; no attempt to bypass that protection. Database/auth/Stripe runtime validity and migration state remain unverified. Existing secrets preserved, legacyMLS flag excluded. Region sfo1 remains explicit in vercel.json; project default iad1 is overridden by that repository deployment config.
+GitHub authentication verified; remote main2cd3cb1. Preservation branch is not on remote yet. Local HEAD has2 commits unique vs47 on main; no force push, main replacement or production promotion will be performed. Commit/push of all intended project changes is next, after successful configuration as instructed.

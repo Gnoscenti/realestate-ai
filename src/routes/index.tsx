@@ -375,7 +375,7 @@ function DashboardPage() {
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
                     {isFreshWorkspace
                       ? "Add one real lead, listing, or appointment above. Your ranked next action will appear here."
-                      : "Queue clear — great work. Reset done items or sync calendars for new prep tasks."}
+                      : "Queue clear. Reset done items or add an appointment for new preparation tasks."}
                   </CardContent>
                 </Card>
               )}

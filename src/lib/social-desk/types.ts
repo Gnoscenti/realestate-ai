@@ -64,6 +64,7 @@ export type SocialDraftState =
   | "approved"
   | "handed_off"
   | "reported_posted"
+  | "publishing"
   | "scheduled"
   | "published"
   | "failed";
@@ -89,7 +90,7 @@ export type SocialPublication = {
   channelName: string | null;
   channelPlatform: string | null;
   providerPostId: string | null;
-  status: "scheduled" | "published" | "failed";
+  status: "scheduled" | "published" | "failed" | "unknown";
   scheduledFor: string | null;
   releaseUrl: string | null;
   createdAt: string;

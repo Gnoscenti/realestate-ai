@@ -78,6 +78,7 @@ function emptyContent(platform: SocialPlatform, origin = ""): SocialContent {
 const STATE_LABEL: Record<SocialDraft["state"], string> = {
   draft: "Draft",
   approved: "Approved",
+  publishing: "Awaiting scheduler confirmation",
   handed_off: "Handed off",
   reported_posted: "Posted (reported)",
   scheduled: "Scheduled",
@@ -102,6 +103,7 @@ function SocialDeskPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composer, setComposer] = useState<SocialContent>(() => emptyContent("instagram", originParam || ""));
   const [composerDirty, setComposerDirty] = useState(false);
+  const [rightsReviewed,setRightsReviewed]=useState(false);
   const [saving, setSaving] = useState(false);
   const [goal, setGoal] = useState<ContentGoal>(originParam?.startsWith("citelock:") ? "citelock_intervention" : "just_listed");
   const [voice, setVoice] = useState<string>(VOICE_PRESETS[0]);
@@ -134,6 +136,7 @@ function SocialDeskPage() {
   }, [load]);
 
   const selected = useMemo(() => desk?.drafts.find((draft) => draft.id === selectedId) || null, [desk, selectedId]);
+  useEffect(()=>{setRightsReviewed(false);},[selected?.id,selected?.revision,composerDirty]);
   const property = properties.find((item) => item.id === propertyId);
   const suggestion = useMemo(() => suggestContentGap(properties), [properties]);
 
@@ -160,6 +163,7 @@ function SocialDeskPage() {
   }, [selected]);
 
   const openDraft = (draft: SocialDraft) => {
+    setRightsReviewed(false);
     setSelectedId(draft.id);
     setComposer(draft.content);
     setComposerDirty(false);
@@ -168,11 +172,18 @@ function SocialDeskPage() {
   };
 
   const newDraft = () => {
+    setRightsReviewed(false);
     setSelectedId(null);
     setComposer(emptyContent(composer.platform, originParam || ""));
     setComposerDirty(false);
     setLastDraft(null);
   };
+
+  useEffect(()=>{
+    if(!originParam || !desk || selectedId) return;
+    const linked=desk.drafts.find(d=>d.content.origin.startsWith(originParam+":revision:"));
+    if(linked) {setSelectedId(linked.id);setComposer(linked.content);setComposerDirty(false);}
+  },[originParam,desk,selectedId]);
 
   const review = useMemo(() => reviewCaption(composer.caption), [composer.caption]);
   const blocking = hasBlockingFinding(review);
@@ -690,13 +701,17 @@ function SocialDeskPage() {
                 ) : null}
                 <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">Aggregator or MLS photos require reuse rights you hold. Postiz re-hosts media before publishing.</p>
               </div>
+              {selected?.state==="draft" && !composerDirty && <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={rightsReviewed} onChange={e=>setRightsReviewed(e.target.checked)}/>
+                I reviewed the facts, source attribution, and rights for this text and any media in this revision.
+              </label>}
               <div className="flex flex-wrap gap-2">
                 <Button onClick={save} disabled={saving || !composerDirty || !composer.title.trim() || !composer.caption.trim() || !composer.facts.trim() || captionLength > limit}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   {selected ? "Save new revision" : "Save draft"}
                 </Button>
                 {selected?.state === "draft" && !composerDirty && (
-                  <Button variant="accent" onClick={() => command("approve")} disabled={busy === "approve" || blocking}>
+                  <Button variant="accent" onClick={() => command("approve")} disabled={busy === "approve" || blocking || !rightsReviewed}>
                     <CheckCircle2 className="h-4 w-4" /> Approve facts, rights, and text
                   </Button>
                 )}
@@ -705,6 +720,7 @@ function SocialDeskPage() {
             </CardContent>
           </Card>
 
+          {selected?.state==="publishing" && <p role="status" className="rounded-lg border p-3 text-sm">A publishing request is reserved for this revision. Its outcome needs scheduler confirmation. Check Postiz before any manual publication; this request will not be replayed automatically.</p>}
           {selected && selected.state !== "draft" && (
             <Card>
               <CardHeader className="pb-3">

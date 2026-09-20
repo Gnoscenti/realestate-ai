@@ -1,3 +1,5 @@
+import { downloadTextFile } from "@/lib/calendar-export";
+import { propertySummary } from "@/lib/property-summary";
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Filter, Search, Sparkles } from "lucide-react";
@@ -53,11 +55,7 @@ function SearchPage() {
   const [query, setQuery] = useState(initialQ ?? "");
   const [committed, setCommitted] = useState(initialQ ?? "");
   const [searching, setSearching] = useState(false);
-  const [history, setHistory] = useState<string[]>([
-    "Luxury condos downtown",
-    "Family homes near schools",
-    "Investment properties under $1.5M",
-  ]);
+  const [history, setHistory] = useState<string[]>([]);
   const [detail, setDetail] = useState<Property | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -69,12 +67,11 @@ function SearchPage() {
     if (q && !history.includes(q)) {
       setHistory((h) => [q, ...h].slice(0, 8));
     }
-    await new Promise((r) => setTimeout(r, 600));
     setSearching(false);
     if (q) {
       pushActivity({
         type: "chat",
-        title: "AI property search",
+        title: "Property search",
         description: `Natural language query: “${q.slice(0, 80)}${q.length > 80 ? "…" : ""}”`,
         badge: "Search",
       });
@@ -101,7 +98,7 @@ function SearchPage() {
             Smart property search
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            AI ranks listings in your book—manually added, imported, website-loaded, or MLS-synced.
+            Search your saved listings using keyword, budget and property filters. Results use local matching rules.
           </p>
         </div>
       </div>
@@ -138,7 +135,7 @@ function SearchPage() {
               ) : (
                 <Search className="h-4 w-4" />
               )}
-              {searching ? "Searching…" : "AI search"}
+              {searching ? "Searching…" : "Search listings"}
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -318,11 +315,12 @@ function SearchPage() {
                 <Button
                   className="w-full"
                   onClick={() => {
-                    toast.success("Client packet prepared (demo)");
+                    downloadTextFile("property-summary.txt", propertySummary(detail));
+                    toast.success("Property summary downloaded");
                     setDetail(null);
                   }}
                 >
-                  Prepare client packet
+                  Download property summary
                 </Button>
               </div>
             </>

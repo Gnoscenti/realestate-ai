@@ -59,7 +59,7 @@ function RapidDataSearch({enabled}:{enabled:boolean}) {
   return <Card>
     <CardHeader>
       <CardTitle>Live real estate data</CardTitle>
-      <CardDescription>Zillow via RapidAPI. Use real market observations while MLS verification is deferred. Agent identity, listing representation, and display permission remain unverified.</CardDescription>
+      <CardDescription>Third-party property data via RapidAPI (Zillow source). Agent identity, listing representation, and display permission remain unverified.</CardDescription>
     </CardHeader>
     <CardContent className="space-y-4">
       <form className="space-y-3" onSubmit={e=>{e.preventDefault();void run();}}>

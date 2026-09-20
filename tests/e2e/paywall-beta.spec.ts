@@ -16,7 +16,7 @@ test("the access gate is decided by the server, not by browser storage", async (
     page.getByRole("heading", { name: "Finish your profile" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /Set up profile \/ MLS/i }).first(),
+    page.getByRole("button", { name: /Set up profile/i }).first(),
   ).toBeVisible();
 
   const state = await readWorkspaceState(page);
@@ -25,12 +25,17 @@ test("the access gate is decided by the server, not by browser storage", async (
   expect(state?.access).toBe("code");
 });
 
-test("a forged browser billing object does not survive the server check", async ({ page }) => {
+test("the server grant restores the browser mirror after local billing tampering", async ({ page }) => {
   await resetApp(page);
   await grantTestAccess(page);
-  await expect(page.getByText(/Command Center|Action Desk/i).first()).toBeVisible({ timeout: 15_000 });
-
-  // Wrong code is rejected by the server with a visible error.
-  const state = await readWorkspaceState(page);
-  expect(state?.access).toBe("code");
+  const initial=await readWorkspaceState(page);
+  expect(initial?.access).toBe("code");
+  await page.evaluate(key=>{
+    const stored=JSON.parse(localStorage.getItem(key) || "{}");
+    stored.state.billing={status:"inactive",plan:null};
+    localStorage.setItem(key,JSON.stringify(stored));
+  },initial!.key);
+  await page.reload({waitUntil:"networkidle"});
+  await grantTestAccess(page);
+  expect((await readWorkspaceState(page))?.access).toBe("code");
 });

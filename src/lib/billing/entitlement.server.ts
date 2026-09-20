@@ -98,30 +98,6 @@ export async function requireEntitlement(
   return entitlement;
 }
 
-async function upsertGrant(
-  sql: Sql,
-  workspaceId: string,
-  marker: "code" | "demo" | string,
-  days: number,
-): Promise<void> {
-  const end = new Date(Date.now() + days * 86_400_000).toISOString();
-  await sql.query(
-    `insert into workspace_entitlements (
-       workspace_id, product, status, stripe_customer_id, current_period_start, current_period_end
-     ) values ($1, $2, 'trialing', $3, now(), $4)
-     on conflict (workspace_id, product) do update set
-       status = 'trialing',
-       stripe_customer_id = excluded.stripe_customer_id,
-       current_period_start = now(),
-       current_period_end = greatest(
-         coalesce(workspace_entitlements.current_period_end, excluded.current_period_end),
-         excluded.current_period_end
-       ),
-       updated_at = now()`,
-    [workspaceId, ENTITLEMENT_PRODUCT, marker, end],
-  );
-}
-
 /** Redeem a beta code once per workspace; returns the entitlement or throws. */
 export async function redeemAccessCode(
   userId: string,
@@ -133,15 +109,25 @@ export async function redeemAccessCode(
   const workspace = await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
   const code = normalizeCode(rawCode);
   if (!code || !serverCodes().includes(code)) throw new Error("Invalid code. Check spelling and try again.");
-  const inserted = await sql.query<{ code_hash: string }>(
-    `insert into access_code_redemptions (workspace_id, code_hash, redeemed_by_user_id)
-     values ($1, $2, $3)
-     on conflict (workspace_id, code_hash) do nothing
-     returning code_hash`,
-    [workspace.id, hashCode(code), userId],
+  const inserted = await sql.query<{ workspace_id: string }>(
+    `with redeemed as (
+       insert into access_code_redemptions (workspace_id, code_hash, redeemed_by_user_id)
+       values ($1, $2, $3)
+       on conflict (workspace_id, code_hash) do nothing returning workspace_id
+     )
+     insert into workspace_entitlements (
+       workspace_id, product, status, stripe_customer_id, current_period_start, current_period_end
+     ) select workspace_id, $4, 'active', 'code', now(), $5::timestamptz from redeemed
+     on conflict (workspace_id, product) do update set
+       status = 'active', stripe_customer_id = excluded.stripe_customer_id,
+       current_period_start = now(),
+       current_period_end = greatest(workspace_entitlements.current_period_end, excluded.current_period_end),
+       updated_at = now()
+     returning workspace_id`,
+    [workspace.id, hashCode(code), userId, ENTITLEMENT_PRODUCT,
+      new Date(Date.now() + CODE_ACCESS_DAYS * 86_400_000).toISOString()],
   );
   if (!inserted.length) throw new Error("This code is already active on this workspace.");
-  await upsertGrant(sql, workspace.id, "code", CODE_ACCESS_DAYS);
   return { entitlement: await getEntitlement(userId, workspace.id, sql), code };
 }
 
@@ -158,15 +144,26 @@ export async function grantVerifiedCheckout(
   const sql = sqlOverride || (await getSql());
   const workspace = await requireWorkspaceAccess(userId, workspaceId, ["owner", "admin"], sql);
   if (!session.paid && !session.demo) return getEntitlement(userId, workspace.id, sql);
-  const inserted = await sql.query<{ session_id: string }>(
-    `insert into checkout_grants (session_id, workspace_id, granted_to_user_id, demo)
-     values ($1, $2, $3, $4)
-     on conflict (session_id) do nothing
-     returning session_id`,
-    [session.sessionId, workspace.id, userId, session.demo],
-  );
-  if (inserted.length) {
-    await upsertGrant(sql, workspace.id, session.demo ? "demo" : `stripe:${session.sessionId}`, INTRO_DAYS);
+  if (session.demo && process.env.NODE_ENV === "production") {
+    throw new Error("Demo checkout is disabled in production.");
   }
+  await sql.query(
+    `with redeemed as (
+       insert into checkout_grants (session_id, workspace_id, granted_to_user_id, demo)
+       values ($1, $2, $3, $4)
+       on conflict (session_id) do nothing returning workspace_id
+     )
+     insert into workspace_entitlements (
+       workspace_id, product, status, stripe_customer_id, current_period_start, current_period_end
+     ) select workspace_id, $5, 'active', $6, now(), $7::timestamptz from redeemed
+     on conflict (workspace_id, product) do update set
+       status = 'active', stripe_customer_id = excluded.stripe_customer_id,
+       current_period_start = now(),
+       current_period_end = greatest(workspace_entitlements.current_period_end, excluded.current_period_end),
+       updated_at = now()`,
+    [session.sessionId, workspace.id, userId, session.demo, ENTITLEMENT_PRODUCT,
+      session.demo ? "demo" : `stripe:${session.sessionId}`,
+      new Date(Date.now() + INTRO_DAYS * 86_400_000).toISOString()],
+  );
   return getEntitlement(userId, workspace.id, sql);
 }
