@@ -3,5 +3,11 @@
   "framework": null,
   "installCommand": "npm install",
   "buildCommand": "npm run build",
-  "regions": ["sfo1"]
+  "regions": ["sfo1"],
+  "crons": [
+    {
+      "path": "/api/internal/voice/process-webhooks",
+      "schedule": "17 7 * * *"
+    }
+  ]
 }

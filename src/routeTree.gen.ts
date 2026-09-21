@@ -8,450 +8,551 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as AieoRouteImport } from "./routes/aieo";
-import { Route as AlertsRouteImport } from "./routes/alerts";
-import { Route as BillingRouteImport } from "./routes/billing";
-import { Route as CalendarRouteImport } from "./routes/calendar";
-import { Route as CmaRouteImport } from "./routes/cma";
-import { Route as EdgeRouteImport } from "./routes/edge";
-import { Route as FeedbackRouteImport } from "./routes/feedback";
-import { Route as KnowledgeRouteImport } from "./routes/knowledge";
-import { Route as LeadsRouteImport } from "./routes/leads";
-import { Route as LoginRouteImport } from "./routes/login";
-import { Route as MarketRouteImport } from "./routes/market";
-import { Route as MarketingRouteImport } from "./routes/marketing";
-import { Route as MlsRouteImport } from "./routes/mls";
-import { Route as OutreachRouteImport } from "./routes/outreach";
-import { Route as PropertiesRouteImport } from "./routes/properties";
-import { Route as SearchRouteImport } from "./routes/search";
-import { Route as TransactionsRouteImport } from "./routes/transactions";
-import { Route as ApiAuthSplatRouteImport } from "./routes/api/auth/$";
-import { Route as ApiListingMediaIdRouteImport } from "./routes/api/listing-media/$id";
-import { Route as ApiWebhooksSocialStripeRouteImport } from "./routes/api/webhooks/social-stripe";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as AieoRouteImport } from './routes/aieo'
+import { Route as AlertsRouteImport } from './routes/alerts'
+import { Route as BillingRouteImport } from './routes/billing'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as CmaRouteImport } from './routes/cma'
+import { Route as EdgeRouteImport } from './routes/edge'
+import { Route as FeedbackRouteImport } from './routes/feedback'
+import { Route as KnowledgeRouteImport } from './routes/knowledge'
+import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MarketRouteImport } from './routes/market'
+import { Route as MarketingRouteImport } from './routes/marketing'
+import { Route as MlsRouteImport } from './routes/mls'
+import { Route as OutreachRouteImport } from './routes/outreach'
+import { Route as PropertiesRouteImport } from './routes/properties'
+import { Route as SearchRouteImport } from './routes/search'
+import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as VoiceRouteImport } from './routes/voice'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiListingMediaIdRouteImport } from './routes/api/listing-media/$id'
+import { Route as ApiVoiceCallsRouteImport } from './routes/api/voice/calls'
+import { Route as ApiWebhooksRetellRouteImport } from './routes/api/webhooks/retell'
+import { Route as ApiWebhooksSocialStripeRouteImport } from './routes/api/webhooks/social-stripe'
+import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
+import { Route as ApiInternalVoiceProcessWebhooksRouteImport } from './routes/api/internal/voice/process-webhooks'
 
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AieoRoute = AieoRouteImport.update({
-  id: "/aieo",
-  path: "/aieo",
+  id: '/aieo',
+  path: '/aieo',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AlertsRoute = AlertsRouteImport.update({
-  id: "/alerts",
-  path: "/alerts",
+  id: '/alerts',
+  path: '/alerts',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const BillingRoute = BillingRouteImport.update({
-  id: "/billing",
-  path: "/billing",
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const CalendarRoute = CalendarRouteImport.update({
-  id: "/calendar",
-  path: "/calendar",
+  id: '/calendar',
+  path: '/calendar',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const CmaRoute = CmaRouteImport.update({
-  id: "/cma",
-  path: "/cma",
+  id: '/cma',
+  path: '/cma',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const EdgeRoute = EdgeRouteImport.update({
-  id: "/edge",
-  path: "/edge",
+  id: '/edge',
+  path: '/edge',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const FeedbackRoute = FeedbackRouteImport.update({
-  id: "/feedback",
-  path: "/feedback",
+  id: '/feedback',
+  path: '/feedback',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const KnowledgeRoute = KnowledgeRouteImport.update({
-  id: "/knowledge",
-  path: "/knowledge",
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const LeadsRoute = LeadsRouteImport.update({
-  id: "/leads",
-  path: "/leads",
+  id: '/leads',
+  path: '/leads',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const LoginRoute = LoginRouteImport.update({
-  id: "/login",
-  path: "/login",
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const MarketRoute = MarketRouteImport.update({
-  id: "/market",
-  path: "/market",
+  id: '/market',
+  path: '/market',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const MarketingRoute = MarketingRouteImport.update({
-  id: "/marketing",
-  path: "/marketing",
+  id: '/marketing',
+  path: '/marketing',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const MlsRoute = MlsRouteImport.update({
-  id: "/mls",
-  path: "/mls",
+  id: '/mls',
+  path: '/mls',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const OutreachRoute = OutreachRouteImport.update({
-  id: "/outreach",
-  path: "/outreach",
+  id: '/outreach',
+  path: '/outreach',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const PropertiesRoute = PropertiesRouteImport.update({
-  id: "/properties",
-  path: "/properties",
+  id: '/properties',
+  path: '/properties',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const SearchRoute = SearchRouteImport.update({
-  id: "/search",
-  path: "/search",
+  id: '/search',
+  path: '/search',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const TransactionsRoute = TransactionsRouteImport.update({
-  id: "/transactions",
-  path: "/transactions",
+  id: '/transactions',
+  path: '/transactions',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
+const VoiceRoute = VoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: "/api/auth/$",
-  path: "/api/auth/$",
+  id: '/api/auth/$',
+  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const ApiListingMediaIdRoute = ApiListingMediaIdRouteImport.update({
-  id: "/api/listing-media/$id",
-  path: "/api/listing-media/$id",
+  id: '/api/listing-media/$id',
+  path: '/api/listing-media/$id',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
+const ApiVoiceCallsRoute = ApiVoiceCallsRouteImport.update({
+  id: '/api/voice/calls',
+  path: '/api/voice/calls',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksRetellRoute = ApiWebhooksRetellRouteImport.update({
+  id: '/api/webhooks/retell',
+  path: '/api/webhooks/retell',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksSocialStripeRoute = ApiWebhooksSocialStripeRouteImport.update({
-  id: "/api/webhooks/social-stripe",
-  path: "/api/webhooks/social-stripe",
+  id: '/api/webhooks/social-stripe',
+  path: '/api/webhooks/social-stripe',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
+const ApiWebhooksStripeRoute = ApiWebhooksStripeRouteImport.update({
+  id: '/api/webhooks/stripe',
+  path: '/api/webhooks/stripe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalVoiceProcessWebhooksRoute =
+  ApiInternalVoiceProcessWebhooksRouteImport.update({
+    id: '/api/internal/voice/process-webhooks',
+    path: '/api/internal/voice/process-webhooks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/aieo": typeof AieoRoute;
-  "/alerts": typeof AlertsRoute;
-  "/billing": typeof BillingRoute;
-  "/calendar": typeof CalendarRoute;
-  "/cma": typeof CmaRoute;
-  "/edge": typeof EdgeRoute;
-  "/feedback": typeof FeedbackRoute;
-  "/knowledge": typeof KnowledgeRoute;
-  "/leads": typeof LeadsRoute;
-  "/login": typeof LoginRoute;
-  "/market": typeof MarketRoute;
-  "/marketing": typeof MarketingRoute;
-  "/mls": typeof MlsRoute;
-  "/outreach": typeof OutreachRoute;
-  "/properties": typeof PropertiesRoute;
-  "/search": typeof SearchRoute;
-  "/transactions": typeof TransactionsRoute;
-  "/api/auth/$": typeof ApiAuthSplatRoute;
-  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
-  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
+  '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
+  '/alerts': typeof AlertsRoute
+  '/billing': typeof BillingRoute
+  '/calendar': typeof CalendarRoute
+  '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
+  '/feedback': typeof FeedbackRoute
+  '/knowledge': typeof KnowledgeRoute
+  '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/market': typeof MarketRoute
+  '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
+  '/outreach': typeof OutreachRoute
+  '/properties': typeof PropertiesRoute
+  '/search': typeof SearchRoute
+  '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/aieo": typeof AieoRoute;
-  "/alerts": typeof AlertsRoute;
-  "/billing": typeof BillingRoute;
-  "/calendar": typeof CalendarRoute;
-  "/cma": typeof CmaRoute;
-  "/edge": typeof EdgeRoute;
-  "/feedback": typeof FeedbackRoute;
-  "/knowledge": typeof KnowledgeRoute;
-  "/leads": typeof LeadsRoute;
-  "/login": typeof LoginRoute;
-  "/market": typeof MarketRoute;
-  "/marketing": typeof MarketingRoute;
-  "/mls": typeof MlsRoute;
-  "/outreach": typeof OutreachRoute;
-  "/properties": typeof PropertiesRoute;
-  "/search": typeof SearchRoute;
-  "/transactions": typeof TransactionsRoute;
-  "/api/auth/$": typeof ApiAuthSplatRoute;
-  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
-  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
+  '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
+  '/alerts': typeof AlertsRoute
+  '/billing': typeof BillingRoute
+  '/calendar': typeof CalendarRoute
+  '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
+  '/feedback': typeof FeedbackRoute
+  '/knowledge': typeof KnowledgeRoute
+  '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/market': typeof MarketRoute
+  '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
+  '/outreach': typeof OutreachRoute
+  '/properties': typeof PropertiesRoute
+  '/search': typeof SearchRoute
+  '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/aieo": typeof AieoRoute;
-  "/alerts": typeof AlertsRoute;
-  "/billing": typeof BillingRoute;
-  "/calendar": typeof CalendarRoute;
-  "/cma": typeof CmaRoute;
-  "/edge": typeof EdgeRoute;
-  "/feedback": typeof FeedbackRoute;
-  "/knowledge": typeof KnowledgeRoute;
-  "/leads": typeof LeadsRoute;
-  "/login": typeof LoginRoute;
-  "/market": typeof MarketRoute;
-  "/marketing": typeof MarketingRoute;
-  "/mls": typeof MlsRoute;
-  "/outreach": typeof OutreachRoute;
-  "/properties": typeof PropertiesRoute;
-  "/search": typeof SearchRoute;
-  "/transactions": typeof TransactionsRoute;
-  "/api/auth/$": typeof ApiAuthSplatRoute;
-  "/api/listing-media/$id": typeof ApiListingMediaIdRoute;
-  "/api/webhooks/social-stripe": typeof ApiWebhooksSocialStripeRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/aieo': typeof AieoRoute
+  '/alerts': typeof AlertsRoute
+  '/billing': typeof BillingRoute
+  '/calendar': typeof CalendarRoute
+  '/cma': typeof CmaRoute
+  '/edge': typeof EdgeRoute
+  '/feedback': typeof FeedbackRoute
+  '/knowledge': typeof KnowledgeRoute
+  '/leads': typeof LeadsRoute
+  '/login': typeof LoginRoute
+  '/market': typeof MarketRoute
+  '/marketing': typeof MarketingRoute
+  '/mls': typeof MlsRoute
+  '/outreach': typeof OutreachRoute
+  '/properties': typeof PropertiesRoute
+  '/search': typeof SearchRoute
+  '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | "/"
-    | "/aieo"
-    | "/alerts"
-    | "/billing"
-    | "/calendar"
-    | "/cma"
-    | "/edge"
-    | "/feedback"
-    | "/knowledge"
-    | "/leads"
-    | "/login"
-    | "/market"
-    | "/marketing"
-    | "/mls"
-    | "/outreach"
-    | "/properties"
-    | "/search"
-    | "/transactions"
-    | "/api/auth/$"
-    | "/api/listing-media/$id"
-    | "/api/webhooks/social-stripe";
-  fileRoutesByTo: FileRoutesByTo;
+    | '/'
+    | '/aieo'
+    | '/alerts'
+    | '/billing'
+    | '/calendar'
+    | '/cma'
+    | '/edge'
+    | '/feedback'
+    | '/knowledge'
+    | '/leads'
+    | '/login'
+    | '/market'
+    | '/marketing'
+    | '/mls'
+    | '/outreach'
+    | '/properties'
+    | '/search'
+    | '/transactions'
+    | '/voice'
+    | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/social-stripe'
+    | '/api/webhooks/stripe'
+    | '/api/internal/voice/process-webhooks'
+  fileRoutesByTo: FileRoutesByTo
   to:
-    | "/"
-    | "/aieo"
-    | "/alerts"
-    | "/billing"
-    | "/calendar"
-    | "/cma"
-    | "/edge"
-    | "/feedback"
-    | "/knowledge"
-    | "/leads"
-    | "/login"
-    | "/market"
-    | "/marketing"
-    | "/mls"
-    | "/outreach"
-    | "/properties"
-    | "/search"
-    | "/transactions"
-    | "/api/auth/$"
-    | "/api/listing-media/$id"
-    | "/api/webhooks/social-stripe";
+    | '/'
+    | '/aieo'
+    | '/alerts'
+    | '/billing'
+    | '/calendar'
+    | '/cma'
+    | '/edge'
+    | '/feedback'
+    | '/knowledge'
+    | '/leads'
+    | '/login'
+    | '/market'
+    | '/marketing'
+    | '/mls'
+    | '/outreach'
+    | '/properties'
+    | '/search'
+    | '/transactions'
+    | '/voice'
+    | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/social-stripe'
+    | '/api/webhooks/stripe'
+    | '/api/internal/voice/process-webhooks'
   id:
-    | "__root__"
-    | "/"
-    | "/aieo"
-    | "/alerts"
-    | "/billing"
-    | "/calendar"
-    | "/cma"
-    | "/edge"
-    | "/feedback"
-    | "/knowledge"
-    | "/leads"
-    | "/login"
-    | "/market"
-    | "/marketing"
-    | "/mls"
-    | "/outreach"
-    | "/properties"
-    | "/search"
-    | "/transactions"
-    | "/api/auth/$"
-    | "/api/listing-media/$id"
-    | "/api/webhooks/social-stripe";
-  fileRoutesById: FileRoutesById;
+    | '__root__'
+    | '/'
+    | '/aieo'
+    | '/alerts'
+    | '/billing'
+    | '/calendar'
+    | '/cma'
+    | '/edge'
+    | '/feedback'
+    | '/knowledge'
+    | '/leads'
+    | '/login'
+    | '/market'
+    | '/marketing'
+    | '/mls'
+    | '/outreach'
+    | '/properties'
+    | '/search'
+    | '/transactions'
+    | '/voice'
+    | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
+    | '/api/webhooks/social-stripe'
+    | '/api/webhooks/stripe'
+    | '/api/internal/voice/process-webhooks'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  AieoRoute: typeof AieoRoute;
-  AlertsRoute: typeof AlertsRoute;
-  BillingRoute: typeof BillingRoute;
-  CalendarRoute: typeof CalendarRoute;
-  CmaRoute: typeof CmaRoute;
-  EdgeRoute: typeof EdgeRoute;
-  FeedbackRoute: typeof FeedbackRoute;
-  KnowledgeRoute: typeof KnowledgeRoute;
-  LeadsRoute: typeof LeadsRoute;
-  LoginRoute: typeof LoginRoute;
-  MarketRoute: typeof MarketRoute;
-  MarketingRoute: typeof MarketingRoute;
-  MlsRoute: typeof MlsRoute;
-  OutreachRoute: typeof OutreachRoute;
-  PropertiesRoute: typeof PropertiesRoute;
-  SearchRoute: typeof SearchRoute;
-  TransactionsRoute: typeof TransactionsRoute;
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
-  ApiListingMediaIdRoute: typeof ApiListingMediaIdRoute;
-  ApiWebhooksSocialStripeRoute: typeof ApiWebhooksSocialStripeRoute;
+  IndexRoute: typeof IndexRoute
+  AieoRoute: typeof AieoRoute
+  AlertsRoute: typeof AlertsRoute
+  BillingRoute: typeof BillingRoute
+  CalendarRoute: typeof CalendarRoute
+  CmaRoute: typeof CmaRoute
+  EdgeRoute: typeof EdgeRoute
+  FeedbackRoute: typeof FeedbackRoute
+  KnowledgeRoute: typeof KnowledgeRoute
+  LeadsRoute: typeof LeadsRoute
+  LoginRoute: typeof LoginRoute
+  MarketRoute: typeof MarketRoute
+  MarketingRoute: typeof MarketingRoute
+  MlsRoute: typeof MlsRoute
+  OutreachRoute: typeof OutreachRoute
+  PropertiesRoute: typeof PropertiesRoute
+  SearchRoute: typeof SearchRoute
+  TransactionsRoute: typeof TransactionsRoute
+  VoiceRoute: typeof VoiceRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiListingMediaIdRoute: typeof ApiListingMediaIdRoute
+  ApiVoiceCallsRoute: typeof ApiVoiceCallsRoute
+  ApiWebhooksRetellRoute: typeof ApiWebhooksRetellRoute
+  ApiWebhooksSocialStripeRoute: typeof ApiWebhooksSocialStripeRoute
+  ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
+  ApiInternalVoiceProcessWebhooksRoute: typeof ApiInternalVoiceProcessWebhooksRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/aieo": {
-      id: "/aieo";
-      path: "/aieo";
-      fullPath: "/aieo";
-      preLoaderRoute: typeof AieoRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/alerts": {
-      id: "/alerts";
-      path: "/alerts";
-      fullPath: "/alerts";
-      preLoaderRoute: typeof AlertsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/billing": {
-      id: "/billing";
-      path: "/billing";
-      fullPath: "/billing";
-      preLoaderRoute: typeof BillingRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/calendar": {
-      id: "/calendar";
-      path: "/calendar";
-      fullPath: "/calendar";
-      preLoaderRoute: typeof CalendarRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/cma": {
-      id: "/cma";
-      path: "/cma";
-      fullPath: "/cma";
-      preLoaderRoute: typeof CmaRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/edge": {
-      id: "/edge";
-      path: "/edge";
-      fullPath: "/edge";
-      preLoaderRoute: typeof EdgeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/feedback": {
-      id: "/feedback";
-      path: "/feedback";
-      fullPath: "/feedback";
-      preLoaderRoute: typeof FeedbackRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/knowledge": {
-      id: "/knowledge";
-      path: "/knowledge";
-      fullPath: "/knowledge";
-      preLoaderRoute: typeof KnowledgeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/leads": {
-      id: "/leads";
-      path: "/leads";
-      fullPath: "/leads";
-      preLoaderRoute: typeof LeadsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/login": {
-      id: "/login";
-      path: "/login";
-      fullPath: "/login";
-      preLoaderRoute: typeof LoginRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/market": {
-      id: "/market";
-      path: "/market";
-      fullPath: "/market";
-      preLoaderRoute: typeof MarketRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/marketing": {
-      id: "/marketing";
-      path: "/marketing";
-      fullPath: "/marketing";
-      preLoaderRoute: typeof MarketingRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/mls": {
-      id: "/mls";
-      path: "/mls";
-      fullPath: "/mls";
-      preLoaderRoute: typeof MlsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/outreach": {
-      id: "/outreach";
-      path: "/outreach";
-      fullPath: "/outreach";
-      preLoaderRoute: typeof OutreachRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/properties": {
-      id: "/properties";
-      path: "/properties";
-      fullPath: "/properties";
-      preLoaderRoute: typeof PropertiesRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/search": {
-      id: "/search";
-      path: "/search";
-      fullPath: "/search";
-      preLoaderRoute: typeof SearchRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/transactions": {
-      id: "/transactions";
-      path: "/transactions";
-      fullPath: "/transactions";
-      preLoaderRoute: typeof TransactionsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/auth/$": {
-      id: "/api/auth/$";
-      path: "/api/auth/$";
-      fullPath: "/api/auth/$";
-      preLoaderRoute: typeof ApiAuthSplatRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/listing-media/$id": {
-      id: "/api/listing-media/$id";
-      path: "/api/listing-media/$id";
-      fullPath: "/api/listing-media/$id";
-      preLoaderRoute: typeof ApiListingMediaIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/api/webhooks/social-stripe": {
-      id: "/api/webhooks/social-stripe";
-      path: "/api/webhooks/social-stripe";
-      fullPath: "/api/webhooks/social-stripe";
-      preLoaderRoute: typeof ApiWebhooksSocialStripeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aieo': {
+      id: '/aieo'
+      path: '/aieo'
+      fullPath: '/aieo'
+      preLoaderRoute: typeof AieoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts': {
+      id: '/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AlertsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cma': {
+      id: '/cma'
+      path: '/cma'
+      fullPath: '/cma'
+      preLoaderRoute: typeof CmaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/edge': {
+      id: '/edge'
+      path: '/edge'
+      fullPath: '/edge'
+      preLoaderRoute: typeof EdgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feedback': {
+      id: '/feedback'
+      path: '/feedback'
+      fullPath: '/feedback'
+      preLoaderRoute: typeof FeedbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/knowledge': {
+      id: '/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof KnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leads': {
+      id: '/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/market': {
+      id: '/market'
+      path: '/market'
+      fullPath: '/market'
+      preLoaderRoute: typeof MarketRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mls': {
+      id: '/mls'
+      path: '/mls'
+      fullPath: '/mls'
+      preLoaderRoute: typeof MlsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/outreach': {
+      id: '/outreach'
+      path: '/outreach'
+      fullPath: '/outreach'
+      preLoaderRoute: typeof OutreachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/properties': {
+      id: '/properties'
+      path: '/properties'
+      fullPath: '/properties'
+      preLoaderRoute: typeof PropertiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/transactions': {
+      id: '/transactions'
+      path: '/transactions'
+      fullPath: '/transactions'
+      preLoaderRoute: typeof TransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/voice': {
+      id: '/voice'
+      path: '/voice'
+      fullPath: '/voice'
+      preLoaderRoute: typeof VoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/listing-media/$id': {
+      id: '/api/listing-media/$id'
+      path: '/api/listing-media/$id'
+      fullPath: '/api/listing-media/$id'
+      preLoaderRoute: typeof ApiListingMediaIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/voice/calls': {
+      id: '/api/voice/calls'
+      path: '/api/voice/calls'
+      fullPath: '/api/voice/calls'
+      preLoaderRoute: typeof ApiVoiceCallsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/retell': {
+      id: '/api/webhooks/retell'
+      path: '/api/webhooks/retell'
+      fullPath: '/api/webhooks/retell'
+      preLoaderRoute: typeof ApiWebhooksRetellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/social-stripe': {
+      id: '/api/webhooks/social-stripe'
+      path: '/api/webhooks/social-stripe'
+      fullPath: '/api/webhooks/social-stripe'
+      preLoaderRoute: typeof ApiWebhooksSocialStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/stripe': {
+      id: '/api/webhooks/stripe'
+      path: '/api/webhooks/stripe'
+      fullPath: '/api/webhooks/stripe'
+      preLoaderRoute: typeof ApiWebhooksStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/voice/process-webhooks': {
+      id: '/api/internal/voice/process-webhooks'
+      path: '/api/internal/voice/process-webhooks'
+      fullPath: '/api/internal/voice/process-webhooks'
+      preLoaderRoute: typeof ApiInternalVoiceProcessWebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -474,19 +575,24 @@ const rootRouteChildren: RootRouteChildren = {
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
+  VoiceRoute: VoiceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiListingMediaIdRoute: ApiListingMediaIdRoute,
+  ApiVoiceCallsRoute: ApiVoiceCallsRoute,
+  ApiWebhooksRetellRoute: ApiWebhooksRetellRoute,
   ApiWebhooksSocialStripeRoute: ApiWebhooksSocialStripeRoute,
-};
+  ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
+  ApiInternalVoiceProcessWebhooksRoute: ApiInternalVoiceProcessWebhooksRoute,
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
 
-import type { getRouter } from "./router.tsx";
-import type { createStart } from "@tanstack/react-start";
-declare module "@tanstack/react-start" {
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
   interface Register {
-    ssr: true;
-    router: Awaited<ReturnType<typeof getRouter>>;
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
   }
 }

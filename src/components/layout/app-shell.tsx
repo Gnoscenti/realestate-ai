@@ -25,6 +25,7 @@ import {
   Link2,
   Swords,
   Bell,
+  PhoneCall,
   type LucideIcon,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -71,6 +72,7 @@ const NAV_HINTS: Record<string, string> = {
   "/billing": "Trial, plan & access codes",
   "/edge": "How we beat FUB, kvCORE, Ylopo & portals",
   "/alerts": "DocuSign, client & deal emails",
+  "/voice": "Inbound missed-call assistant and call logs",
 };
 
 type NavItem = {
@@ -99,6 +101,7 @@ const NAV: NavItem[] = [
   { to: "/billing", label: "Billing & Access", icon: CreditCard },
   { to: "/edge", label: "Edge Playbook", icon: Swords },
   { to: "/alerts", label: "Email Alerts", icon: Bell },
+  { to: "/voice", label: "Missed-call Assistant", icon: PhoneCall },
 ];
 
 function NavItems({
