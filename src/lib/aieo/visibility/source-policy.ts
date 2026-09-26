@@ -16,8 +16,7 @@ export const NON_LISTING_INSTRUCTION = "Use only non-property sources: professio
 export function canonicalSourceUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
-    url.protocol = "https:";
+    if (url.protocol !== "https:" || url.username || url.password) return null;
     url.hostname = url.hostname.toLowerCase().replace(/^www\./, "");
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {

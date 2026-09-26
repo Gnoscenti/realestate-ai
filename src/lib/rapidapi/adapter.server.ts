@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
+import { requireEntitlement } from "@/lib/billing/entitlement.server";
 import { readResponseText, safeFetch } from "@/lib/safe-outbound-url.server";
 import { RAPIDAPI_ENDPOINTS, rapidQuerySchema, type RapidQuery, type RapidResult } from "./types";
 import { normalizeRapidResponse } from "./normalize";
@@ -39,6 +40,7 @@ export async function queryRapidApi(userId: string, workspaceId: string, input: 
   const query = rapidQuerySchema.parse(input);
   const sql=deps.sql || await getSql();
   await requireWorkspaceAccess(userId,workspaceId,["owner","admin"],sql);
+  await requireEntitlement(userId,workspaceId,sql);
   const failed = (error:string):RapidResult => ({ok:false,operation:query.operation,page:query.page,observedAt:new Date().toISOString(),cached:false,listings:[],agents:[],hasMore:false,warnings:[],error});
   const key = deps.key ?? process.env.RAPIDAPI_KEY?.trim();
   if (!key) return failed("RapidAPI is not configured on this server.");

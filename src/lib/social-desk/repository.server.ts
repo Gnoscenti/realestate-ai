@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getSql, type Sql } from "@/lib/db";
+import { requireEntitlement } from "@/lib/billing/entitlement.server";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import {
   socialContentSchema,
@@ -264,6 +265,7 @@ export async function publishSocialDraft(
 ): Promise<{ draft: SocialDraft; publication: SocialPublication }> {
   const input = publishRequestSchema.parse(request);
   const sql = await access(userId, workspaceId, dependencies.sql, ["owner", "admin"]);
+  await requireEntitlement(userId, workspaceId, sql);
   const rows = await sql.query<Row>("select * from social_drafts where workspace_id = $1 and id = $2", [workspaceId, input.id]);
   const current = rows[0];
   if (!current) throw new Error("Draft not found");
@@ -319,6 +321,8 @@ export async function publishSocialDraft(
     }
     await requireLinkedSocialSupport(userId, workspaceId, input.id, sql);
     await resolveManagedAttachments(userId, workspaceId, content.managedMediaIds, sql);
+    // Access may expire or be revoked while channel/media requests are in flight.
+    await requireEntitlement(userId, workspaceId, sql);
     const create = dependencies.create || createPostizPost;
     dispatched=true;
     const result = await create(connection, {

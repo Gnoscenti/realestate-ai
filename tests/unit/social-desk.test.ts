@@ -37,9 +37,10 @@ const content = {
   origin: "",
 };
 
-async function workspaceFor() {
+async function workspaceFor(entitled = false) {
   const userId = `social-${randomUUID()}`;
   const workspace = await ensurePersonalWorkspace(userId);
+  if (entitled) await redeemAccessCode(userId, workspace.id, "RSF-BETA-01");
   return { userId, workspace };
 }
 
@@ -155,7 +156,7 @@ describe("Postiz publishing", () => {
   });
 
   it("publishes an approved revision through the connection, then reflects provider status", async () => {
-    const { userId, workspace } = await workspaceFor();
+    const { userId, workspace } = await workspaceFor(true);
     const channels: PostizChannel[] = [
       { id: "ig-1", name: "Jordan IG", identifier: "instagram", platform: "instagram", disabled: false },
       { id: "li-1", name: "Jordan LI", identifier: "linkedin", platform: "linkedin", disabled: false },
@@ -205,7 +206,7 @@ describe("Postiz publishing", () => {
   });
 
   it("records a failed provider call without losing the approved draft", async () => {
-    const { userId, workspace } = await workspaceFor();
+    const { userId, workspace } = await workspaceFor(true);
     const channels: PostizChannel[] = [{ id: "ig-1", name: "IG", identifier: "instagram", platform: "instagram", disabled: false }];
     const fetchImpl = vi.fn(async (url: string | URL) => ({ response: new Response(JSON.stringify(channels), { status: 200 }), finalUrl: new URL(String(url)) }));
     await savePostizConnection(userId, workspace.id, { apiKey: "postiz-key-12345" }, { fetchImpl: fetchImpl as never });

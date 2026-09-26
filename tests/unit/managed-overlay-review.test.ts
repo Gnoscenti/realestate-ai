@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { getSql } from "@/lib/db";
+import { redeemAccessCode } from "@/lib/billing/entitlement.server";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 import { generateBuiltinImage } from "@/lib/social-media/builtin.server";
 import { uploadManagedPhoto, storeManagedImage, listManagedImages, readManagedImage } from "@/lib/social-media/managed-media.server";
@@ -44,6 +45,7 @@ describe("known generated image labels are reviewed independently of captions", 
 
   it.each([null, "Adults only\n100 Test Road"])("blocks retained unreviewed or unsafe renders during approval, handoff and dispatch despite a neutral caption (%s)", async overlayText => {
     const f = await fixture(), id = randomUUID(), source = await readManagedImage(f.userId, f.photo.id, f.sql);
+    await redeemAccessCode(f.userId, f.workspace.id, "RSF-BETA-01", f.sql);
     // Historical server-owned artifact fixture: public text cannot be repaired by editing its listing label.
     await storeManagedImage(f.sql, { id, userId: f.userId, workspaceId: f.workspace.id, listingId: f.listingId,
       kind: "render", bytes: source.bytes, contentType: "image/jpeg", width: 80, height: 60,

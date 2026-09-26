@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import { getSql } from "@/lib/db";
+import { redeemAccessCode } from "@/lib/billing/entitlement.server";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 import { uploadManagedPhoto, listManagedImages, readManagedImage } from "@/lib/social-media/managed-media.server";
 import { generateBuiltinImage } from "@/lib/social-media/builtin.server";
@@ -13,6 +14,7 @@ async function fixture() {
   const userId = "photo-handoff-" + randomUUID();
   const sql = await getSql();
   const workspace = await ensurePersonalWorkspace(userId, sql);
+  await redeemAccessCode(userId, workspace.id, "RSF-BETA-01", sql);
   const listingId = randomUUID();
   await sql.query("insert into listings(id,workspace_id,title,address_line1,provenance,created_by_user_id) values($1,$2,'Actual photo test','Supplied address','test',$3)", [listingId, workspace.id, userId]);
   const bytes = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#356878" } }).jpeg().toBuffer();

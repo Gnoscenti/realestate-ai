@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { redeemAccessCode } from "@/lib/billing/entitlement.server";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 import { createSocialDraft,changeSocialDraft,publishSocialDraft,getSocialDraft,listPublications,refreshPublication,socialDraftHistory } from "@/lib/social-desk/repository.server";
 import { savePostizConnection,PostizError,type PostizChannel } from "@/lib/social-desk/postiz.server";
 const channels:PostizChannel[]=[{id:"channel",name:"Test",identifier:"linkedin",platform:"linkedin",disabled:false}];
 async function setup() {
   const userId="dispatch-"+randomUUID();const workspace=await ensurePersonalWorkspace(userId);
+  await redeemAccessCode(userId,workspace.id,"RSF-BETA-01");
   await savePostizConnection(userId,workspace.id,{apiKey:"synthetic-test-key"},{
     fetchImpl:async(url)=>({response:new Response(JSON.stringify(channels),{status:200}),finalUrl:new URL(url)}),
   });

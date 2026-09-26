@@ -4,6 +4,7 @@ import { rapidQuerySchema, type RapidQuery } from "@/lib/rapidapi/types";
 import { normalizeRapidResponse } from "@/lib/rapidapi/normalize";
 import { queryRapidApi, rapidRequestUrl, RAPIDAPI_HOST } from "@/lib/rapidapi/adapter.server";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
+import { EntitlementRequiredError, grantVerifiedCheckout } from "@/lib/billing/entitlement.server";
 import { getSql } from "@/lib/db";
 import { scoreAieo } from "@/lib/aieo/score";
 
@@ -83,11 +84,33 @@ describe("Aggregator provenance",()=>{
   });
 });
 describe("Authenticated cache and quota",()=>{
-  async function setup() {
+  async function setup(entitled = true) {
     const user="rapid-test-"+randomUUID(), ws=await ensurePersonalWorkspace(user);
+    if (entitled) await grantVerifiedCheckout(user,ws.id,{sessionId:"cs_rapid_"+randomUUID(),paid:true,demo:false});
     const fetch=vi.fn(async ()=>({response:new Response(JSON.stringify(payload),{status:200}),finalUrl:new URL("https://"+RAPIDAPI_HOST)}));
     return {user,ws,fetch};
   }
+  it("rejects an inactive workspace before creating a cache lease or consuming any provider quota",async()=>{
+    const {user,ws,fetch}=await setup(false), sql=await getSql();
+    const before=await sql.query("select scope,window_started_at,request_count from rapidapi_quota_buckets order by scope,window_started_at");
+    await expect(queryRapidApi(user,ws.id,query(),{key:"test-secret",fetch,sql})).rejects.toBeInstanceOf(EntitlementRequiredError);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await sql.query("select cache_key from rapidapi_observation_cache where workspace_id=$1",[ws.id])).toHaveLength(0);
+    expect(await sql.query("select scope,window_started_at,request_count from rapidapi_quota_buckets order by scope,window_started_at")).toEqual(before);
+  });
+  it.each(["expired","canceled"])("rejects %s access before serving cached observations or fetching a new query",async(state)=>{
+    const {user,ws,fetch}=await setup(), sql=await getSql();
+    expect((await queryRapidApi(user,ws.id,query(),{key:"test-secret",fetch,sql})).ok).toBe(true);
+    await sql.query("update workspace_entitlements set status=$2,current_period_end=$3::timestamptz where workspace_id=$1",
+      [ws.id,state==="canceled"?"canceled":"active",new Date(Date.now()+(state==="expired"?-1:1)*86400000).toISOString()]);
+    const before=await sql.query("select scope,window_started_at,request_count from rapidapi_quota_buckets order by scope,window_started_at");
+    for (const request of [query(),query({query:"Los Angeles, CA"})]) {
+      await expect(queryRapidApi(user,ws.id,request,{key:"test-secret",fetch,sql})).rejects.toBeInstanceOf(EntitlementRequiredError);
+    }
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await sql.query("select cache_key from rapidapi_observation_cache where workspace_id=$1",[ws.id])).toHaveLength(1);
+    expect(await sql.query("select scope,window_started_at,request_count from rapidapi_quota_buckets order by scope,window_started_at")).toEqual(before);
+  });
   it("caches for a workspace without refreshing the original observation time",async()=>{
     const {user,ws,fetch}=await setup();
     const first=await queryRapidApi(user,ws.id,query(),{key:"test-secret",fetch});

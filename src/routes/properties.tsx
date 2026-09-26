@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/lib/store";
 import { formatCurrency } from "@/lib/utils";
+import { parseLocalCalendarDate } from "@/lib/calendar-date";
 
 export const Route = createFileRoute("/properties")({
   component: PropertiesPage,
@@ -249,15 +250,16 @@ function PropertiesPage() {
                             return;
                           }
                           const end = window.prompt("Lease end date (YYYY-MM-DD):", "");
-                          if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
-                            toast.error("Enter the lease end date");
+                          const leaseEnd = parseLocalCalendarDate(end);
+                          if (!leaseEnd) {
+                            toast.error("Enter a valid lease end date (YYYY-MM-DD)");
                             return;
                           }
                           updateRental(unit.id, {
                             occupancy: "occupied",
                             tenant: tenant.trim(),
                             rent,
-                            leaseEnd: new Date(`${end}T00:00:00`).toISOString(),
+                            leaseEnd: leaseEnd.toISOString(),
                           });
                           toast.success(`Recorded lease for ${tenant.trim()} (your entry)`);
                         }}
