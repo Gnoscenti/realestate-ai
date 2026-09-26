@@ -12,7 +12,7 @@ type Workspace = {
   listings: Array<{ id: string; title: string; address: string }>;
   images: ManagedPhotoView[];
 };
-export function ActualPhotoStudio() {
+export function ActualPhotoStudio({ onUseImage }: { onUseImage?: (image: ManagedPhotoView) => void } = {}) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -319,6 +319,11 @@ export function ActualPhotoStudio() {
                   alt="Actual-photo image export"
                   className="w-full max-w-md rounded border"
                 />
+                {onUseImage && workspace.images.find(image => image.url === job.asset?.contentUrl) && (
+                  <Button onClick={() => onUseImage(workspace.images.find(image => image.url === job.asset?.contentUrl)!)}>
+                    Attach export to draft
+                  </Button>
+                )}
                 <Button asChild>
                   <a href={job.asset.contentUrl} download="property-social.png">
                     Download PNG
@@ -382,6 +387,7 @@ export function ActualPhotoStudio() {
                         >
                           Download {i.title}
                         </a>
+                        {onUseImage && <Button size="sm" variant="outline" onClick={() => onUseImage(i)}>Attach {i.title} to draft</Button>}
                         <p className="break-all text-[10px] text-muted-foreground">
                           SHA-256: {i.sha256}
                         </p>
@@ -395,7 +401,7 @@ export function ActualPhotoStudio() {
         <p className="text-xs text-muted-foreground">
           The built-in template keeps the whole uploaded photo and adds only your title and address.
           It does not verify ownership, pricing, listing status, or brokerage claims. Video: Setup
-          required. Direct publishing: Planned.
+          required. Use the reviewed draft for manual handoff or your own scheduler connection.
         </p>
       </CardContent>
     </Card>

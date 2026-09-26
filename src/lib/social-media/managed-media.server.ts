@@ -18,13 +18,15 @@ export async function storeManagedImage(
     width: number;
     height: number;
     originalHash: string;
+    /** Exact server-rendered labels; null for source photos and older renders. */
+    overlayText?: string;
   },
 ) {
   await requireWorkspaceAccess(input.userId, input.workspaceId, ["owner", "admin"], sql);
   await sql.query(
     "insert into managed_listing_media(id,workspace_id,listing_id,kind,content_type,byte_size," +
-      "sha256,original_sha256,width,height,bytes,created_by_user_id) " +
-      "values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,decode($11,'hex'),$12)",
+      "sha256,original_sha256,width,height,bytes,created_by_user_id,overlay_text) " +
+      "values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,decode($11,'hex'),$12,$13)",
     [
       input.id,
       input.workspaceId,
@@ -38,6 +40,7 @@ export async function storeManagedImage(
       input.height,
       input.bytes.toString("hex"),
       input.userId,
+      input.kind === "render" ? input.overlayText ?? null : null,
     ],
   );
 }

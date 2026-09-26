@@ -212,6 +212,138 @@ describe("CiteLock verified scan", () => {
     );
   });
 
+  it("does not attest production from an unbound RealTrends URL, even when its adapter would return verified figures", async () => {
+    const fetchProduction = vi.fn(async () => ({
+      evidence: [
+        {
+          id: "realtrends:sales-volume:2025:full-year",
+          subject: "agent" as const,
+          field: "transaction_volume",
+          value: "$33,614,777 in 2025",
+          claimScope: "sales-volume:2025:full-year",
+          sourceLabel: "RealTrends Verified",
+          sourceTier: "independent" as const,
+          status: "verified" as const,
+          sourceUrl:
+            "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+          observedAt: NOW,
+        },
+      ],
+      outcomes: [
+        {
+          source: "production" as const,
+          status: "verified" as const,
+          label: "RealTrends Verified production figures fetched and cached",
+        },
+      ],
+    }));
+    const scan = await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+        realTrendsUrl:
+          "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+      },
+      {
+        now: () => NOW,
+        scanWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.evidence.some(item => ["transaction_volume", "transaction_sides"].includes(item.field))).toBe(false);
+    expect(scan.sourceOutcomes).toContainEqual(expect.objectContaining({ code: "production_source_subject_unverified", status: "unavailable" }));
+  });
+
+
+  it("rejects wrong-person production URLs as attestation while retaining the submitted source for review", async () => {
+    const fetchProduction = vi.fn(async () => ({ evidence: [{ field: "transaction_volume", value: "$90M in 2025" }], outcomes: [] }));
+    const scan = await executeCiteLockScan({ website: "https://agent.example", agentName: "San Diego Pilot Agent",
+      jurisdiction: "US-CA", realTrendsUrl: "https://www.realtrends.com/agent-profile/someone-else/" },
+    { now: () => NOW, scanWebsite, fetchProduction: fetchProduction as never,
+      verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })) });
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.evidence.some(item => item.field === "transaction_volume")).toBe(false);
+    expect(scan.sourceOutcomes).toContainEqual(expect.objectContaining({
+      code: "production_source_subject_unverified", url: "https://www.realtrends.com/agent-profile/someone-else/",
+    }));
+  });
+
+  it("reports the production source as unlinked when none is discoverable", async () => {
+    const fetchProduction = vi.fn();
+    const scan = await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+      },
+      {
+        now: () => NOW,
+        scanWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.sourceOutcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "production",
+          status: "unavailable",
+          code: "production_source_unlinked",
+        }),
+      ]),
+    );
+  });
+
+  it("does not turn a person-bound sameAs link into verified production", async () => {
+    const sameAsWebsite = vi.fn(async () => ({
+      ...(await scanWebsite()),
+      profileObservations: [
+        {
+          sourceUrl: "https://agent.example/",
+          profile: {
+            name: "San Diego Pilot Agent",
+            sameAs: [
+              "https://www.realtrends.com/agent-profile/san-diego-pilot/",
+            ],
+          },
+        },
+      ],
+    }));
+    const fetchProduction = vi.fn(async () => ({
+      evidence: [],
+      outcomes: [
+        {
+          source: "production" as const,
+          status: "unavailable" as const,
+          label: "RealTrends Verified production verification was unavailable",
+          code: "production_source_unavailable",
+        },
+      ],
+    }));
+    await executeCiteLockScan(
+      {
+        website: "https://agent.example",
+        agentName: "San Diego Pilot Agent",
+        license: "01234567",
+        jurisdiction: "US-CA",
+      },
+      {
+        now: () => NOW,
+        scanWebsite: sameAsWebsite,
+        verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })),
+        fetchProduction,
+      },
+    );
+    expect(fetchProduction).not.toHaveBeenCalled();
+  });
+
   it("never applies merged fields that lack a person-bound page observation", async () => {
     const mixedWebsite = vi.fn(async () => ({
       ...(await scanWebsite()),

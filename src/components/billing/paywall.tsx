@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Check,
@@ -24,12 +25,14 @@ import { openExternalUrl } from "@/lib/native";
 
 type Props = {
   agentName?: string;
+  /** Called after the SERVER confirmed a grant (checkout or code). */
+  onAccessGranted?: () => void;
 };
 
-export function Paywall({ agentName }: Props) {
+export function Paywall({ agentName, onAccessGranted }: Props) {
   const completeDemoCheckout = useAppStore((s) => s.completeDemoCheckout);
   const completePaidCheckout = useAppStore((s) => s.completePaidCheckout);
-  const redeemAccessCode = useAppStore((s) => s.redeemAccessCode);
+  const activateBilling = useAppStore((s) => s.activateBilling);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
@@ -71,13 +74,15 @@ export function Paywall({ agentName }: Props) {
           definitive = true;
         if (cancelled) return;
         if (verified.paid) {
-          // A verified purchase, recorded as a real payment — not a demo.
+          // A verified purchase, recorded server-side and mirrored here.
           completePaidCheckout(verified.sessionId);
+          onAccessGranted?.();
           toast.success(
             `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
           );
         } else if (verified.demo) {
           completeDemoCheckout(verified.sessionId);
+          onAccessGranted?.();
           toast.warning(
             `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
           );
@@ -102,7 +107,7 @@ export function Paywall({ agentName }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [completeDemoCheckout, completePaidCheckout]);
+  }, [completeDemoCheckout, completePaidCheckout, onAccessGranted]);
 
   const onCheckout = async () => {
     setBusy(true);
@@ -117,8 +122,12 @@ export function Paywall({ agentName }: Props) {
       });
       if (result.mode === "demo") {
         // Demo sessions are only issued when ALLOW_DEMO_CHECKOUT=1 is set on
-        // the server. Say plainly that no money changed hands.
+        // the server. The server records the grant on confirmation; the
+        // mirror is updated here so the UI opens immediately.
+        const confirmed = await confirmCheckout({ data: { sessionId: result.sessionId } });
+        if (!confirmed.demo) throw new Error("Demo session could not be confirmed");
         completeDemoCheckout(result.sessionId);
+        onAccessGranted?.();
         toast.warning(
           `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
         );
@@ -138,16 +147,30 @@ export function Paywall({ agentName }: Props) {
     }
   };
 
-  const onRedeem = () => {
+  const onRedeem = async () => {
     setCodeBusy(true);
     try {
-      const res = redeemAccessCode(code);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
+      // The server validates the code and records the grant; the browser
+      // never holds the code list.
+      const { redeemMyAccessCode } = await import("@/lib/billing/api");
+      const res = await redeemMyAccessCode({ data: { code } });
+      activateBilling({
+        status: "code",
+        source: "free_code",
+        introEndsAt: null,
+        currentPeriodEnd: res.entitlement.currentPeriodEnd,
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        lastCheckoutSessionId: null,
+        redeemedCode: res.code,
+        activatedAt: new Date().toISOString(),
+        isDemo: false,
+      });
+      onAccessGranted?.();
       toast.success(`Code ${res.code} unlocked — feedback board open`);
       setCode("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid code");
     } finally {
       setCodeBusy(false);
     }
@@ -173,6 +196,9 @@ export function Paywall({ agentName }: Props) {
           </p>
         </div>
 
+        <Link to="/aieo" className="mb-4 block rounded-xl border border-[var(--color-primary)] bg-[var(--color-primary-soft)] p-4 text-center text-sm font-semibold text-[var(--color-primary)]">
+          Try the free Citelock visibility guide
+        </Link>
         <div className="surface-card overflow-hidden shadow-[var(--shadow-lg)]">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-primary-soft)] px-5 py-4">
             <div className="flex items-end justify-between gap-3">
@@ -244,12 +270,12 @@ export function Paywall({ agentName }: Props) {
                 id="access-code"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="e.g. RSF-BETA-01"
+                placeholder="Your beta code"
                 className="h-11 font-mono text-base tracking-wide"
                 autoCapitalize="characters"
                 autoCorrect="off"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") onRedeem();
+                  if (e.key === "Enter") void onRedeem();
                 }}
               />
             </div>
@@ -257,7 +283,7 @@ export function Paywall({ agentName }: Props) {
               variant="secondary"
               className="min-h-[44px] sm:min-w-[120px]"
               disabled={codeBusy || !code.trim()}
-              onClick={onRedeem}
+              onClick={() => void onRedeem()}
             >
               <Gift className="h-4 w-4" />
               Redeem

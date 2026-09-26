@@ -126,6 +126,7 @@ function authPopupPlugin(): Plugin {
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command }) => ({
   server: {
+    watch: { ignored: ["**/tmp/**", "**/test-results/**", "**/playwright-report/**"] },
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,

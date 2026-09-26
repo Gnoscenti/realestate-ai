@@ -109,7 +109,7 @@ const indexHtml = `<!DOCTYPE html>
   </div>
   <script>
     (function () {
-      var SERVER = ${JSON.stringify(serverUrl)};
+      var SERVER = ${JSON.stringify(serverUrl).replace(/</g, "\\u003c")};
       var msg = document.getElementById("msg");
       var hint = document.getElementById("hint");
       var spin = document.getElementById("spin");

@@ -81,7 +81,10 @@ function modificationsAreApproved(
     return (
       typeof value === "string" &&
       value.length <= 500 &&
-      !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)
+      !Array.from(value).some(char => {
+        const code = char.charCodeAt(0);
+        return code <= 31 && code !== 9 && code !== 10 && code !== 13;
+      })
     );
   });
 }
