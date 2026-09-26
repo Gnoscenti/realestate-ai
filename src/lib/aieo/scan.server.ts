@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { WebsiteScrapeResult } from "@/lib/website-scrape";
 import { scrapeRealtorWebsite } from "@/lib/scrape-site.server";
 import { verifyCaDreIdentity } from "./ca-dre.server";
+import type { fetchRealTrendsProduction } from "./realtrends.server";
 import { listingClaimKeys, listingPriceClaimScope } from "./provenance";
 import type { CiteEvidence } from "./types";
 import type {
@@ -9,12 +10,16 @@ import type {
   CiteLockScanRecord,
   CiteSourceOutcome,
 } from "./scan-types";
-import { sanitizeCiteLockPublicUrl } from "./scan-types";
+import {
+  isRealTrendsProfileUrl,
+  sanitizeCiteLockPublicUrl,
+} from "./scan-types";
 
 type ScanDependencies = {
   now?: () => string;
   scanWebsite?: typeof scrapeRealtorWebsite;
   verifyCalifornia?: typeof verifyCaDreIdentity;
+  fetchProduction?: typeof fetchRealTrendsProduction;
 };
 
 export function citeLockSubjectFingerprint(input: CiteLockScanInput): string {
@@ -311,6 +316,24 @@ export async function executeCiteLockScan(
       code: "jurisdiction_unsupported",
     });
   }
+
+  // The legacy numeric adapter is keyed only by profile URL and does not bind
+  // the page's identity to this subject. Preserve the verified-scan boundary:
+  // a user-supplied or sameAs URL cannot attest another person's production.
+  // The instructional guide has its own heading-and-locale-bound public parser.
+  const discoveredRealTrendsUrl = (personBoundProfile.sameAs || [])
+    .map(sanitizeCiteLockPublicUrl)
+    .find((url) => url && isRealTrendsProfileUrl(url));
+  const realTrendsUrl = input.realTrendsUrl || discoveredRealTrendsUrl;
+  sourceOutcomes.push({
+    source: "production",
+    status: "unavailable",
+    label: realTrendsUrl
+      ? "Production attestation requires independent verification of the exact subject and reporting period. Use the source-backed guide for attributed public-source instructions."
+      : "No independent production source is linked; quantified production claims remain suppressed",
+    code: realTrendsUrl ? "production_source_subject_unverified" : "production_source_unlinked",
+    ...(realTrendsUrl ? { url: realTrendsUrl } : {}),
+  });
 
   return {
     subjectFingerprint: citeLockSubjectFingerprint(input),

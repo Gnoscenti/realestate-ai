@@ -227,14 +227,8 @@ function PropertiesPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          updateRental(unit.id, {
-                            issues: [],
-                            maintenanceScore: Math.min(
-                              98,
-                              unit.maintenanceScore + 8,
-                            ),
-                          });
-                          toast.success("Maintenance items cleared");
+                          updateRental(unit.id, { issues: [] });
+                          toast.message("Issue list cleared on your record. The score is unchanged; it is your own rating, not a measurement.");
                         }}
                       >
                         <CheckCircle2 className="h-4 w-4" />
@@ -246,18 +240,29 @@ function PropertiesPage() {
                         size="sm"
                         variant="secondary"
                         onClick={() => {
+                          const tenant = window.prompt("Tenant name (as on the lease):", "");
+                          if (!tenant?.trim()) return;
+                          const rentInput = window.prompt("Monthly rent on the lease ($):", String(unit.rent || unit.marketRent));
+                          const rent = Number((rentInput || "").replace(/[^\d.]/g, ""));
+                          if (!Number.isFinite(rent) || rent <= 0) {
+                            toast.error("Enter the rent from the lease");
+                            return;
+                          }
+                          const end = window.prompt("Lease end date (YYYY-MM-DD):", "");
+                          if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+                            toast.error("Enter the lease end date");
+                            return;
+                          }
                           updateRental(unit.id, {
                             occupancy: "occupied",
-                            tenant: "New tenant",
-                            rent: unit.marketRent,
-                            leaseEnd: new Date(
-                              Date.now() + 365 * 86400000,
-                            ).toISOString(),
+                            tenant: tenant.trim(),
+                            rent,
+                            leaseEnd: new Date(`${end}T00:00:00`).toISOString(),
                           });
-                          toast.success("Lease started at market rent");
+                          toast.success(`Recorded lease for ${tenant.trim()} (your entry)`);
                         }}
                       >
-                        Mark leased
+                        Record lease
                       </Button>
                     )}
                   </div>

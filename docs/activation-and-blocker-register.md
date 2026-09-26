@@ -1,6 +1,6 @@
 # Flagship activation and blocker decisions
 
-As of September 8, 2026. This register separates working product paths from external activation. Timelines below are engineering planning estimates after the prerequisite owner has access; they are not provider approval promises. Prices are published USD examples, exclude tax and additional services, and require confirmation at purchase. No service was purchased and no vendor/broker was contacted during this integration.
+September 8, 2026 register, with social implementation/gate corrections added September 26. Earlier provider prices, timelines, environment observations and non-social sections remain dated planning evidence; they were not reverified by this documentation update. See [INTEGRATION-2026-09-26.md](INTEGRATION-2026-09-26.md) for the current integrated tree and release evidence. This register separates working product paths from external activation. Timelines below are engineering planning estimates after the prerequisite owner has access; they are not provider approval promises. Prices are published USD examples, exclude tax and additional services, and require confirmation at purchase. No service was purchased and no vendor/broker was contacted during this integration.
 
 ## Ranked scenario framework
 
@@ -70,7 +70,7 @@ Ranks apply to value for the development team, not to a requirement to enable ev
 
 ## Actual-photo social images, Blob and Orshot
 
-**Status:** Built-in square image export works now using real uploaded photo bytes retained privately in PostgreSQL: authenticated rights-confirmed upload, decoded/re-encoded images, metadata removal, server checksum/dimensions, workspace storage/usage quotas, retained output, deletion and private delivery. Optional Blob and Orshot code is implemented but not verified against live accounts or a real audited template.
+**Status (September 26):** Built-in square image export uses real uploaded photo bytes retained privately in PostgreSQL: authenticated rights-confirmed upload, decoded/re-encoded images, metadata removal, server checksum/dimensions, workspace storage/usage quotas, retained output, deletion and private delivery. New and retained exports can be attached by server-owned ID to a durable Social Desk draft, reviewed/approved, downloaded and handed off with a user-reported platform receipt. Tenant checks reject foreign/deleted assets; changing attachments requires a new revision approval. This full manual workflow passed local browser acceptance. Optional Blob and Orshot code remains unverified against live accounts or a real audited template.
 
 **Decision/ranking:** built-in actual-photo export (1), direct audited Orshot+Blob activation (2), another deterministic renderer behind the same boundary (3), agent-supplied template/photos subject to server audit (4), external rendering flag off until acceptance (5). A supplied template ID or `allImageLayersUseListingPhotos` configuration assertion is not evidence that its layers were actually audited.
 
@@ -100,13 +100,17 @@ Ranks apply to value for the development team, not to a requirement to enable ev
 
 **Working alternative:** downloadable 1080×1080 PNG with the full actual photo and agent-supplied title/address; post it manually.
 
-## Direct social publishing / OAuth
+## Reviewed manual distribution and optional Postiz publishing
 
-**Status:** Planned. The preserved local SocialDesk/Postiz work is not proof of token storage, account authorization, revocation or actual publishing on integrated main. No post was sent.
+**Status (September 26):** Server-persisted drafts, fact/rights approval, edit invalidation, fair-housing/claims review, history, manual image/caption handoff and platform-validated user-reported receipts are integrated. The current export endpoint rechecks revision, linked source permissions and managed assets. The browser upload-to-image-to-reviewed-manual-receipt flow passed locally. No live social post was sent.
 
-**Decision/ranking:** download and manual posting (1), direct or approved aggregator OAuth in a separate audited delivery (2), customer-supplied captions/media without account claims (3), no-integration copy (4), publishing feature flag off (5).
+Postiz implementation is also integrated: the customer's Postiz workspace holds the underlying platform authorizations; this app stores the workspace API credential encrypted at rest, lists channels, disconnects, uploads authorized images, schedules/dispatches, and refreshes publication status. Private managed images upload as bytes without public Blob delivery. The approved revision is reserved before dispatch, duplicate/stale requests are blocked, uncertain outcomes remain frozen, and a delayed pending response cannot reverse a confirmed terminal status. No live Postiz authorization, revocation or publication has been verified.
 
-**Fastest path, estimated 3–10 engineering days after app/platform approvals; platform review may take longer:** (1) select channels and permitted scopes; (2) register the app and redirect URLs; (3) obtain any required business/app review; (4) encrypt tenant-bound tokens in durable storage with refresh/revocation; (5) validate media/account ownership before enqueue; (6) retain provider request/result/post ID with idempotent retry; (7) exercise token expiry, revoked consent, failed/partial post, deletion and account switching; (8) make one explicitly authorized test post and independently read it back. An aggregator may reduce platform work but does not remove OAuth/rights/audit requirements. Cost depends on provider and connected accounts; choose only after the target channels and account terms are known.
+**Decision/ranking:** reviewed private image/caption download and manual posting (1), activate the implemented Postiz adapter using an expressly authorized account and channel (2), direct platform OAuth only as a separate necessary integration (3), keep the provider gate visible while using manual handoff (4). Video/fictional property imagery is outside this publication path. Historical client-only campaign statuses do not establish external publication.
+
+**Activation sequence:** (1) configure a stable SOCIAL_CONNECTION_SECRET or BETTER_AUTH_SECRET; (2) connect an authorized Postiz workspace and verify exactly the intended platform/channel; (3) approve rights-cleared factual content and its actual image; (4) test channel disable/revocation/disconnect and cross-workspace denial; (5) make one explicitly authorized test post or scheduled post, inspect the exact media/caption and independently read it back; (6) verify failure, timeout, duplicate request and status recovery; (7) inspect Postiz manually for uncertain outcomes with no remote post ID rather than replaying them. No automatic no-ID reconciliation is implemented. Platform review, provider plan, authorization scope and costs depend on the customer's setup and remain to be confirmed; no fresh timing or price claim is made here.
+
+**Legacy saved content:** Browser campaign data is preserved and a populated-only Saved browser campaigns panel exports each campaign as Markdown, including original JSON fields/media references for recovery. Local approval/schedule/post statuses are labeled unverified. No automatic import or publication occurs; any future import must enter as a new unapproved draft with explicit facts/rights review.
 
 ## Deferred #29 voice: Stripe, Retell, Twilio, counsel, broker and worker
 

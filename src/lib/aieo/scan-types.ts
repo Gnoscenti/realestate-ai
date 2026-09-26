@@ -99,6 +99,20 @@ const citeLockWebsiteSchema = z
     }
   });
 
+export function isRealTrendsProfileUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      /(?:^|\.)realtrends\.com$/i.test(url.hostname) &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const citeLockScanInputSchema = z.object({
   website: citeLockWebsiteSchema,
   agentName: z.string().trim().min(2).max(120),
@@ -109,12 +123,24 @@ export const citeLockScanInputSchema = z.object({
     .regex(/^\d{6,12}$/)
     .optional(),
   jurisdiction: z.enum(US_JURISDICTIONS),
+  /**
+   * Optional independent production-source profile (RealTrends Verified).
+   * Not part of the subject fingerprint — it corroborates, never identifies.
+   */
+  realTrendsUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine(isRealTrendsProfileUrl, {
+      message: "Must be an https RealTrends profile URL",
+    })
+    .optional(),
 });
 
 export type CiteLockScanInput = z.infer<typeof citeLockScanInputSchema>;
 
 export type CiteSourceOutcome = {
-  source: "website" | "regulator" | "independent_production";
+  source: "website" | "regulator" | "independent_production" | "production" | "provider" | "recognition";
   status: "verified" | "observed" | "unsupported" | "unavailable" | "mismatch";
   label: string;
   url?: string;

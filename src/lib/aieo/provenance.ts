@@ -7,7 +7,7 @@ export type PropertyEvidenceLevel =
   | "inferred";
 
 export type PropertySource = {
-  kind: "mls" | "website" | "csv" | "manual";
+  kind: "mls" | "website" | "csv" | "manual" | "aggregator";
   provider?: string;
   url?: string;
   observedAt: string;

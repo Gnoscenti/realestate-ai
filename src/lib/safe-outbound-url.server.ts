@@ -190,10 +190,10 @@ export async function safeFetch(
 }
 
 /** Read a response body with a hard byte limit, including chunked responses. */
-export async function readResponseText(
+export async function readResponseBytes(
   response: Response,
   maxBytes: number,
-): Promise<string> {
+): Promise<Uint8Array<ArrayBuffer>> {
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
     throw new Error("Invalid response size limit");
   }
@@ -202,12 +202,11 @@ export async function readResponseText(
     await response.body?.cancel();
     throw new Error("Remote response is too large");
   }
-  if (!response.body) return "";
+  if (!response.body) return new Uint8Array();
 
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
   let total = 0;
-  let text = "";
+  const chunks: Uint8Array[] = [];
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -217,11 +216,18 @@ export async function readResponseText(
         await reader.cancel();
         throw new Error("Remote response is too large");
       }
-      text += decoder.decode(value, { stream: true });
+      chunks.push(value);
     }
-    text += decoder.decode();
-    return text;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
   } finally {
     reader.releaseLock();
   }
+}
+
+/** Decode only after the entire body has passed the streaming byte limit. */
+export async function readResponseText(response: Response, maxBytes: number): Promise<string> {
+  return new TextDecoder().decode(await readResponseBytes(response, maxBytes));
 }

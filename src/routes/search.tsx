@@ -1,13 +1,10 @@
+import { downloadTextFile } from "@/lib/calendar-export";
+import { propertySummary } from "@/lib/property-summary";
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Filter, Search } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -80,8 +77,7 @@ function SearchPage() {
 
   const filtered = useMemo(() => {
     if (typeFilter === "all") return results;
-    if (typeFilter === "favorites")
-      return results.filter((p) => favorites.includes(p.id));
+    if (typeFilter === "favorites") return results.filter((p) => favorites.includes(p.id));
     return results.filter((p) => p.type === typeFilter);
   }, [results, typeFilter, favorites]);
 
@@ -93,8 +89,8 @@ function SearchPage() {
             Listing search
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Matches words, property facts, features, and budget against listings
-            saved in this browser workspace.
+            Matches words, property facts, features, and budget against listings saved in this
+            browser workspace.
           </p>
         </div>
       </div>
@@ -108,8 +104,7 @@ function SearchPage() {
             </h3>
           </div>
           <p className="text-sm text-[var(--color-fg-muted)]">
-            Example: “3-bed Spanish revival near dog parks with ADU potential
-            under $800K”
+            Example: “3-bed Spanish revival near dog parks with ADU potential under $800K”
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
@@ -121,10 +116,7 @@ function SearchPage() {
                 if (e.key === "Enter") runSearch();
               }}
             />
-            <Button
-              onClick={() => runSearch()}
-              className="min-h-11 sm:w-auto"
-            >
+            <Button onClick={() => runSearch()} className="min-h-11 sm:w-auto">
               <Search className="h-4 w-4" />
               Search listings
             </Button>
@@ -181,26 +173,18 @@ function SearchPage() {
               <PropertyCard
                 key={property.id}
                 property={property}
-                matchScore={
-                  committed
-                    ? propertyMatchScore(property, committed)
-                    : undefined
-                }
+                matchScore={committed ? propertyMatchScore(property, committed) : undefined}
                 favorited={favorites.includes(property.id)}
                 onToggleFavorite={() => {
                   toggleFavorite(property.id);
                   toast.message(
-                    favorites.includes(property.id)
-                      ? "Removed from saved"
-                      : "Saved to favorites",
+                    favorites.includes(property.id) ? "Removed from saved" : "Saved to favorites",
                   );
                 }}
                 onView={() => setDetail(property)}
                 tourLabel="Plan tour"
                 onTour={() => {
-                  toast.message(
-                    "Tour follow-up noted locally — no request was sent",
-                  );
+                  toast.message("Tour follow-up noted locally — no request was sent");
                   pushActivity({
                     type: "deal",
                     title: "Tour follow-up noted",
@@ -214,7 +198,8 @@ function SearchPage() {
           {filtered.length === 0 && (
             <Card>
               <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                No listings in your book match. Add or import listings, try a broader query, or clear filters.
+                No listings in your book match. Add or import listings, try a broader query, or
+                clear filters.
               </CardContent>
             </Card>
           )}
@@ -265,9 +250,7 @@ function SearchPage() {
                     {formatCurrency(detail.price)}
                   </span>
                 </div>
-                <p className="text-[var(--color-fg-muted)] leading-relaxed">
-                  {detail.description}
-                </p>
+                <p className="text-[var(--color-fg-muted)] leading-relaxed">{detail.description}</p>
                 <div className="grid grid-cols-2 gap-2 text-[var(--color-fg-muted)]">
                   <span>{detail.beds} beds</span>
                   <span>{detail.baths} baths</span>
@@ -284,14 +267,12 @@ function SearchPage() {
                   ))}
                 </div>
                 {detail.capRate != null && (
-                  <p className="text-[var(--color-accent)]">
-                    Cap rate ~{detail.capRate}%
-                  </p>
+                  <p className="text-[var(--color-accent)]">Cap rate ~{detail.capRate}%</p>
                 )}
                 <Button
                   className="min-h-11 w-full"
                   onClick={async () => {
-                    const summary = `${detail.title}\n${detail.address}, ${detail.city}\n${formatCurrency(detail.price)} · ${detail.beds} bd · ${detail.baths} ba · ${formatNumber(detail.sqft)} sqft`;
+                    const summary = propertySummary(detail);
                     try {
                       await navigator.clipboard.writeText(summary);
                       toast.success("Listing details copied");
@@ -301,6 +282,16 @@ function SearchPage() {
                   }}
                 >
                   Copy listing details
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="min-h-11 w-full"
+                  onClick={() => {
+                    downloadTextFile("property-summary.txt", propertySummary(detail));
+                    toast.success("Property summary download started");
+                  }}
+                >
+                  Download property summary
                 </Button>
               </div>
             </>

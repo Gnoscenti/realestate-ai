@@ -1,492 +1,528 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  Bot,
-  Calendar,
-  Check,
+  AlertTriangle,
+  CalendarClock,
   CheckCircle2,
-  Circle,
   Copy,
   Download,
+  History,
+  ImageIcon,
+  Link2,
   Loader2,
   Megaphone,
-  Play,
+  RefreshCw,
+  Send,
   Share2,
   Sparkles,
-  Wand2,
+  Unplug,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useAppStore } from "@/lib/store";
-import {
-  GOAL_OPTIONS,
-  PLATFORM_META,
-  VOICE_PRESETS,
-  composeFullCaption,
-  exportCampaignMarkdown,
-  getAgentPipeline,
-  runSocialContentAgent,
-  type AgentStep,
-  type CampaignGoal,
-  type CampaignPlan,
-  type SocialPlatform,
-  type SocialPost,
-} from "@/lib/social-agent";
-import { myListings } from "@/lib/mls";
-import { cn } from "@/lib/utils";
-import { attachMediaToPosts, listingPhotoUrls, pickListingMedia } from "@/lib/imagine-media";
-import { SOCIAL_NETWORKS } from "@/lib/social-accounts";
-import { Image as ImageIcon, Link2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  connectPostiz,
+  disconnectPostiz,
+  draftSocialCaption,
+  getSocialDesk,
+  getSocialHistory,
+  getSocialHandoff,
+  publishSocial,
+  refreshSocialPublication,
+  saveNewSocialDraft,
+  updateSocialDraft,
+} from "@/lib/social-desk/api";
+import { hasBlockingFinding, reviewCaption } from "@/lib/social-desk/fair-housing";
+import { GOAL_OPTIONS, VOICE_PRESETS, listingFacts, suggestContentGap, type ContentGoal } from "@/lib/social-desk/suggest";
+import {
+  PLATFORM_LABEL,
+  PLATFORM_LIMITS,
+  exportSocialDraft,
+  type SocialContent,
+  type SocialDraft,
+  type SocialPlatform,
+  type SocialPublication,
+} from "@/lib/social-desk/types";
+import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
+import { describeAiError } from "@/lib/ai-errors";
 import { ActualPhotoStudio } from "@/components/marketing/actual-photo-studio";
+import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
 import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
+import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
+import { exportCampaignMarkdown, type CampaignPlan } from "@/lib/social-agent";
 
 const searchSchema = z.object({
-  goal: z.string().optional(),
-  property: z.string().optional(),
+  origin: z.string().max(200).optional(),
+  property: z.string().max(200).optional(),
 });
 
 export const Route = createFileRoute("/marketing")({
   validateSearch: searchSchema,
-  component: MarketingPage,
+  component: SocialDeskPage,
 });
 
-const ALL_PLATFORMS = Object.keys(PLATFORM_META) as SocialPlatform[];
+type Desk = Awaited<ReturnType<typeof getSocialDesk>>;
+type DraftResult = Awaited<ReturnType<typeof draftSocialCaption>>;
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success("Copied");
-  } catch {
-    toast.message("Select text to copy");
-  }
+const PLATFORMS = Object.keys(PLATFORM_LABEL) as SocialPlatform[];
+
+function errorMessage(error: unknown, fallback: string): string {
+  return describeAiError(error, fallback);
 }
 
-function MarketingPage() {
-  const { goal: goalParam, property: propertyParam } = Route.useSearch();
-  const properties = useAppStore((s) => s.properties);
-  const profile = useAppStore((s) => s.agentProfile);
-  const memory = useAppStore((s) => s.agentMemory);
-  const campaigns = useAppStore((s) => s.campaigns);
-  const saveCampaign = useAppStore((s) => s.saveCampaign);
-  const setCampaignPostStatus = useAppStore((s) => s.setCampaignPostStatus);
-  const deleteCampaign = useAppStore((s) => s.deleteCampaign);
-  const socialAccounts = useAppStore((s) => s.socialAccounts);
-  const connectSocialAccount = useAppStore((s) => s.connectSocialAccount);
-  const disconnectSocialAccount = useAppStore((s) => s.disconnectSocialAccount);
-  const [handleDrafts, setHandleDrafts] = useState<Record<string, string>>({});
+function emptyContent(platform: SocialPlatform, origin = ""): SocialContent {
+  return { title: "", platform, caption: "", facts: "", sourceUrl: "", attribution: "", mediaUrls: [], origin };
+}
 
-  const book = useMemo(() => {
-    const mine = myListings(properties);
-    return mine.length ? mine : properties.filter((p) => p.status === "active");
-  }, [properties]);
+const STATE_LABEL: Record<SocialDraft["state"], string> = {
+  draft: "Draft",
+  approved: "Approved",
+  publishing: "Awaiting scheduler confirmation",
+  handed_off: "Handed off",
+  reported_posted: "Posted (reported)",
+  scheduled: "Scheduled",
+  published: "Published",
+  failed: "Publish failed",
+};
 
-  const validGoals = GOAL_OPTIONS.map((g) => g.value);
-  const initialGoal = (
-    goalParam && validGoals.includes(goalParam as CampaignGoal) ? goalParam : "just_listed"
-  ) as CampaignGoal;
+function stateVariant(state: SocialDraft["state"]) {
+  if (state === "published" || state === "reported_posted") return "success" as const;
+  if (state === "failed") return "danger" as const;
+  if (state === "approved" || state === "scheduled" || state === "handed_off") return "accent" as const;
+  return "secondary" as const;
+}
 
-  const [goal, setGoal] = useState<CampaignGoal>(initialGoal);
-  const [propertyId, setPropertyId] = useState(
-    propertyParam && properties.some((p) => p.id === propertyParam)
-      ? propertyParam
-      : (book[0]?.id ?? properties[0]?.id ?? ""),
-  );
+function SocialDeskPage() {
+  const { origin: originParam, property: propertyParam } = Route.useSearch();
+  const properties = useAppStore((state) => state.properties);
+  const profile = useAppStore((state) => state.agentProfile);
+  const savedBrowserCampaigns = useAppStore((state) => state.campaigns);
+  const [desk, setDesk] = useState<Desk | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composer, setComposer] = useState<SocialContent>(() => emptyContent("instagram", originParam || ""));
+  const [composerDirty, setComposerDirty] = useState(false);
+  const [rightsReviewed,setRightsReviewed]=useState(false);
+  const [saving, setSaving] = useState(false);
+  const [goal, setGoal] = useState<ContentGoal>(originParam?.startsWith("citelock:") ? "citelock_intervention" : "just_listed");
   const [voice, setVoice] = useState<string>(VOICE_PRESETS[0]);
-  // hydrate preferred voice after memory loads
-  useEffect(() => {
-    if (
-      memory?.preferredVoice &&
-      VOICE_PRESETS.includes(memory.preferredVoice as (typeof VOICE_PRESETS)[number])
-    ) {
-      setVoice(memory.preferredVoice);
-    } else if (memory?.preferredVoice) {
-      setVoice(memory.preferredVoice);
-    }
-  }, [memory?.preferredVoice]);
-  const [platforms, setPlatforms] = useState<SocialPlatform[]>([
-    "instagram",
-    "facebook",
-    "linkedin",
-    "stories",
-  ]);
-  const [running, setRunning] = useState(false);
-  const [openHouseWhen, setOpenHouseWhen] = useState("");
-  const [steps, setSteps] = useState<AgentStep[]>(() => getAgentPipeline(initialGoal));
-  const [activePlan, setActivePlan] = useState<CampaignPlan | null>(null);
-  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
-  const [tab, setTab] = useState("agent");
+  const [propertyId, setPropertyId] = useState<string>(propertyParam || "");
+  const [drafting, setDrafting] = useState(false);
+  const [lastDraft, setLastDraft] = useState<DraftResult | null>(null);
+  const [history, setHistory] = useState<{ revision: number; action: string; createdAt: string }[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [channelId, setChannelId] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [receiptUrl, setReceiptUrl] = useState("");
+  const [postizKey, setPostizKey] = useState("");
+  const [postizUrl, setPostizUrl] = useState("");
 
-  useEffect(() => {
-    if (goalParam && validGoals.includes(goalParam as CampaignGoal)) {
-      setGoal(goalParam as CampaignGoal);
-      setSteps(getAgentPipeline(goalParam as CampaignGoal));
-    }
-    if (propertyParam && properties.some((p) => p.id === propertyParam)) {
-      setPropertyId(propertyParam);
-    }
-  }, [goalParam, propertyParam, properties]);
-
-  useEffect(() => {
-    if (campaigns[0] && !activePlan) {
-      setActivePlan(campaigns[0]);
-      setSelectedPostId(campaigns[0].posts[0]?.id ?? null);
-    }
-  }, [campaigns, activePlan]);
-
-  useEffect(() => {
-    if (
-      activePlan?.propertyId &&
-      properties.some((candidate) => candidate.id === activePlan.propertyId)
-    ) {
-      setPropertyId(activePlan.propertyId);
-    }
-  }, [activePlan?.id, activePlan?.propertyId, properties]);
-
-  const property = properties.find((p) => p.id === propertyId);
-  const campaignProperty = activePlan?.propertyId
-    ? properties.find((candidate) => candidate.id === activePlan.propertyId)
-    : undefined;
-  const campaignPhotoUrls = listingPhotoUrls(campaignProperty);
-  const postUsesCampaignPhoto = (post: SocialPost): boolean =>
-    Boolean(
-      activePlan?.propertyId &&
-      campaignProperty?.id === activePlan.propertyId &&
-      post.imageUrl &&
-      post.mediaSource === "listing_record" &&
-      campaignPhotoUrls.includes(post.imageUrl),
-    );
-
-  const selectedPost = useMemo(() => {
-    if (!activePlan || !selectedPostId) return activePlan?.posts[0] ?? null;
-    return activePlan.posts.find((p) => p.id === selectedPostId) ?? activePlan.posts[0] ?? null;
-  }, [activePlan, selectedPostId]);
-
-  const togglePlatform = (p: SocialPlatform) => {
-    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
-  };
-
-  const runAgent = async () => {
-    if (platforms.filter((p) => p !== "stories").length === 0 && !platforms.includes("instagram")) {
-      toast.error("Select at least one platform");
-      return;
-    }
-    if (goal === "open_house" && !openHouseWhen.trim()) {
-      toast.error("Enter the confirmed open-house date, time and time zone.");
-      return;
-    }
-    setRunning(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const agentName = profile?.name || "your local agent";
-      const site = profile?.website ? profile.website.replace(/^https?:\/\//, "") : undefined;
-      const area = profile?.areaOfOperations || property?.city || "your market";
-
-      let plan = runSocialContentAgent({
-        goal,
-        platforms,
-        voice,
-        property,
-        agentName,
-        marketNote: `Add a broker-reviewed ${area} market note with its data source and as-of date before publishing.${site ? ` More at ${site}.` : ""}`,
-        openHouseWhen: openHouseWhen.trim(),
-      });
-
-      // Attach actual listing / website photos only (no generated property media).
-      plan = {
-        ...plan,
-        posts: attachMediaToPosts(plan.posts, property, profile?.photoUrl),
-      };
-
-      // Inject website into CTAs where useful — never "000 view listing" junk
-      if (site) {
-        plan.posts = plan.posts.map((p) => ({
-          ...p,
-          cta: /view listing|000 view/i.test(p.cta)
-            ? `Message for details · ${site}`
-            : p.cta.includes("link in bio")
-              ? p.cta
-              : `${p.cta}${p.platform === "x" ? ` ${site}` : `\n${site}`}`,
-        }));
-      }
-      plan.posts = plan.posts.map((p) => ({
-        ...p,
-        hook: p.hook.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-        body: p.body.replace(/\b000\s*view\s*listing\b/gi, "").trim(),
-        cta: p.cta.replace(/\b000\s*view\s*listing\b/gi, "Message for details").trim(),
-        visualBrief: p.visualBrief
-          .replace(/JUST LISTED/gi, "New to market")
-          .replace(/view count|000 views|fake engagement/gi, "")
-          .trim(),
-      }));
-
-      saveCampaign(plan);
-      setActivePlan(plan);
-      setSelectedPostId(plan.posts[0]?.id ?? null);
-      setSteps(
-        getAgentPipeline(goal).map((step) => ({
-          ...step,
-          status: step.id === "qa" ? "pending" : "done",
-        })),
-      );
-      setTab("pack");
-      toast.success("Campaign draft saved. Review every claim and proposed posting time.");
+      const next = await getSocialDesk();
+      setDesk(next);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Campaign could not be saved. Retry.");
+      setLoadError(errorMessage(error, "Could not load the social desk"));
     } finally {
-      setRunning(false);
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selected = useMemo(() => desk?.drafts.find((draft) => draft.id === selectedId) || null, [desk, selectedId]);
+  useEffect(()=>{setRightsReviewed(false);},[selected?.id,selected?.revision,composerDirty]);
+  const property = properties.find((item) => item.id === propertyId);
+  const suggestion = useMemo(() => suggestContentGap(properties), [properties]);
+
+  useEffect(() => {
+    if (!propertyId && suggestion.property) setPropertyId(suggestion.property.id);
+  }, [propertyId, suggestion.property]);
+
+  useEffect(() => {
+    if (!selected) {
+      setHistory([]);
+      return;
+    }
+    let active = true;
+    void getSocialHistory({ data: { id: selected.id } })
+      .then((rows) => {
+        if (active) setHistory(rows);
+      })
+      .catch(() => {
+        if (active) setHistory([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected]);
+
+  const openDraft = (draft: SocialDraft) => {
+    setRightsReviewed(false);
+    setSelectedId(draft.id);
+    setComposer(draft.content);
+    setComposerDirty(false);
+    setLastDraft(null);
+    setReceiptUrl(draft.postUrl || "");
+  };
+
+  const newDraft = () => {
+    setRightsReviewed(false);
+    setSelectedId(null);
+    setComposer(emptyContent(composer.platform, originParam || ""));
+    setComposerDirty(false);
+    setLastDraft(null);
+  };
+
+  useEffect(()=>{
+    if(!originParam || !desk || selectedId) return;
+    const linked=desk.drafts.find(d=>d.content.origin.startsWith(originParam+":revision:"));
+    if(linked) {setSelectedId(linked.id);setComposer(linked.content);setComposerDirty(false);}
+  },[originParam,desk,selectedId]);
+
+  const review = useMemo(() => reviewCaption(composer.caption), [composer.caption]);
+  const blocking = hasBlockingFinding(review);
+  const captionLength = Array.from(composer.caption).length;
+  const limit = PLATFORM_LIMITS[composer.platform];
+
+  const facts = useMemo(() => {
+    const lines: string[] = [];
+    if (property) lines.push(...listingFacts(property));
+    if (profile?.name) lines.push(`Agent: ${profile.name}${profile.brokerage ? ` · ${profile.brokerage}` : ""}`);
+    if (profile?.areaOfOperations) lines.push(`Market: ${profile.areaOfOperations}`);
+    if (profile?.website) lines.push(`Website: ${profile.website}`);
+    return lines;
+  }, [property, profile]);
+
+  const runDraft = async () => {
+    const declared = composer.facts.split("\n").map((line) => line.trim()).filter(Boolean);
+    const allFacts = [...facts, ...declared];
+    if (!allFacts.length) {
+      toast.error("Add at least one fact before drafting");
+      return;
+    }
+    setDrafting(true);
+    try {
+      const result = await draftSocialCaption({
+        data: {
+          platform: composer.platform,
+          goal,
+          voice,
+          facts: allFacts.slice(0, 20),
+          audienceNote: originParam ? `Origin: ${originParam}` : "",
+          linkUrl: composer.sourceUrl || "",
+        },
+      });
+      setLastDraft(result);
+      const caption = [result.caption, result.hashtags.join(" ")].filter(Boolean).join("\n\n");
+      setComposer((current) => ({
+        ...current,
+        caption: Array.from(caption).slice(0, limit).join(""),
+        title: current.title || `${GOAL_OPTIONS.find((option) => option.value === goal)?.label} · ${property?.title || profile?.areaOfOperations || "post"}`,
+        facts: current.facts || facts.join("\n"),
+      }));
+      setComposerDirty(true);
+      toast.success(`Drafted with ${result.model} — review the facts it used`);
+    } catch (error) {
+      toast.error(errorMessage(error, "Drafting failed"));
+    } finally {
+      setDrafting(false);
     }
   };
 
-  const downloadPack = () => {
-    if (!activePlan) return;
-    const md = exportCampaignMarkdown(activePlan);
-    const blob = new Blob([md], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${activePlan.title.replace(/[^\w]+/g, "-").toLowerCase()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Campaign exported");
+  const save = async () => {
+    setSaving(true);
+    try {
+      if (selected) {
+        const updated = await updateSocialDraft({
+          data: { id: selected.id, revision: selected.revision, command: { action: "edit", content: composer } },
+        });
+        await load();
+        setSelectedId(updated.id);
+        setComposerDirty(false);
+        toast.success("Saved as a new revision");
+      } else {
+        const created = await saveNewSocialDraft({ data: composer });
+        await load();
+        setSelectedId(created.id);
+        setComposerDirty(false);
+        toast.success("Draft saved");
+      }
+    } catch (error) {
+      toast.error(errorMessage(error, "Save failed"));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const statusBadge = (status: SocialPost["status"]) => {
-    const v = status === "approved" ? "default" : "secondary";
-    const label =
-      status === "approved"
-        ? "Approved locally"
-        : status === "queued"
-          ? "Legacy queue mark"
-          : status === "published"
-            ? "Legacy publish mark"
-            : "Draft";
-    return <Badge variant={v}>{label}</Badge>;
+  const command = async (action: "approve" | "handoff" | "receipt") => {
+    if (!selected) return;
+    setBusy(action);
+    try {
+      if (action === "approve") {
+        await updateSocialDraft({ data: { id: selected.id, revision: selected.revision, command: { action: "approve", reviewedFactsAndRights: true } } });
+        toast.success("Approved — this exact text can now be published");
+      } else if (action === "handoff") {
+        await updateSocialDraft({ data: { id: selected.id, revision: selected.revision, command: { action: "handoff" } } });
+        toast.success("Handoff recorded — post it manually, then paste the URL");
+      } else {
+        await updateSocialDraft({ data: { id: selected.id, revision: selected.revision, command: { action: "receipt", postUrl: receiptUrl.trim() } } });
+        toast.success("Receipt recorded");
+      }
+      await load();
+    } catch (error) {
+      toast.error(errorMessage(error, "Update failed"));
+    } finally {
+      setBusy(null);
+    }
   };
+
+  const publish = async () => {
+    if (!selected) return;
+    if (!channelId) {
+      toast.error("Choose a connected channel");
+      return;
+    }
+    setBusy("publish");
+    try {
+      const scheduledFor = scheduleAt ? new Date(scheduleAt).toISOString() : undefined;
+      const result = await publishSocial({ data: { id: selected.id, revision: selected.revision, channelId, scheduledFor } });
+      toast.success(scheduledFor ? `Scheduled via Postiz for ${new Date(scheduledFor).toLocaleString()}` : "Sent to Postiz — it publishes as soon as its worker runs");
+      await load();
+      setSelectedId(result.draft.id);
+    } catch (error) {
+      toast.error(errorMessage(error, "Publish failed"));
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const refresh = async (publication: SocialPublication) => {
+    setBusy(publication.id);
+    try {
+      const result = await refreshSocialPublication({ data: { publicationId: publication.id } });
+      toast.message(`Postiz status: ${result.publication.status}`);
+      await load();
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not refresh"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const downloadBrowserCampaign = (campaign: CampaignPlan) => {
+    const text = [
+      "Historical browser campaign. Local approval/schedule/post statuses are unverified and do not establish external publication. Review facts and media rights before reuse.",
+      "",
+      exportCampaignMarkdown(campaign),
+      "",
+      "## Original saved campaign data",
+      "",
+      "The following JSON preserves the original saved fields for recovery, including image references and local status values.",
+      "",
+      "```json",
+      JSON.stringify(campaign, null, 2),
+      "```",
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${campaign.title.replace(/[^\w]+/g, "-").toLowerCase() || "saved-browser-campaign"}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const attachManagedImage = (image: ManagedPhotoView) => {
+    if (selected?.state === "publishing" || selected?.state === "scheduled") { toast.error("Start a new post to use this image while the current revision is with your scheduler."); return; }
+    const ids = composer.managedMediaIds || [];
+    if (ids.includes(image.id)) { toast.message("This image is already attached"); return; }
+    if (ids.length + composer.mediaUrls.length >= 4) { toast.error("Use at most four images per post"); return; }
+    setComposer({ ...composer, managedMediaIds: [...ids, image.id], title: composer.title || image.title,
+      facts: composer.facts || `Agent-supplied property title: ${image.title}. Actual uploaded property photo; marketing permission confirmed by uploader.` });
+    setComposerDirty(true);
+    setRightsReviewed(false);
+    toast.success("Image attached. Add your caption, save, and review this revision.");
+  };
+
+  const copyText = async () => {
+    if (!selected) return;
+    try {
+      const { draft } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      await navigator.clipboard.writeText(exportSocialDraft(draft));
+      toast.success("Approved caption copied");
+    } catch (error) {
+      toast.error(errorMessage(error, "Copy failed"));
+    }
+  };
+
+  const shareNative = async () => {
+    if (!selected) return;
+    try {
+      const { draft, images } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      const text = exportSocialDraft(draft);
+      const files = await Promise.all(images.map(async (image, index) => {
+        const response = await fetch(image.url);
+        if (!response.ok) throw new Error("A saved image is unavailable. Reload the draft before posting.");
+        return new File([await response.blob()], `property-social-${index + 1}.${image.contentType === "image/png" ? "png" : "jpg"}`, { type: image.contentType });
+      }));
+      if (typeof navigator.share === "function" && (!files.length || navigator.canShare?.({ files }))) {
+        await navigator.share(files.length ? { text, files } : { text, url: draft.content.mediaUrls[0] || undefined });
+      } else {
+        await navigator.clipboard.writeText(text);
+        toast.message(files.length ? "Caption copied. Download the approved images below to post them." : "Share sheet unavailable here — caption copied instead");
+      }
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") toast.error(errorMessage(error, "Share failed"));
+    }
+  };
+
+  const download = async () => {
+    if (!selected) return;
+    try {
+      const { draft, images } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      const text = [exportSocialDraft(draft), "", `Public media: ${draft.content.mediaUrls.join(", ") || "none"}`,
+        ...images.map(image => `Private image: ${image.title} · SHA-256 ${image.sha256} · download this image from the approved draft before posting.`)].join("\n");
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${selected.content.title.replace(/[^\w]+/g, "-").toLowerCase() || "post"}.txt`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(errorMessage(error, "Download failed"));
+    }
+  };
+
+  const connect = async () => {
+    setBusy("connect");
+    try {
+      const summary = await connectPostiz({ data: { apiKey: postizKey, apiUrl: postizUrl || undefined } });
+      toast.success(`Connected · ${summary.channels.length} channel(s) found`);
+      setPostizKey("");
+      await load();
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not connect Postiz"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy("disconnect");
+    try {
+      await disconnectPostiz();
+      toast.message("Postiz disconnected");
+      await load();
+    } catch (error) {
+      toast.error(errorMessage(error, "Could not disconnect"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const channels = (desk?.scheduler?.channels || []).filter((channel) => !channel.disabled);
+  const matchingChannels = channels.filter((channel) => !channel.platform || channel.platform === (selected?.content.platform ?? composer.platform));
+  const selectedPublications = desk?.publications.filter((publication) => publication.draftId === selected?.id) || [];
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="relative overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-90"
-          style={{
-            background:
-              "radial-gradient(ellipse 60% 80% at 10% 0%, color-mix(in oklab, var(--color-accent) 12%, transparent), transparent 50%), radial-gradient(ellipse 50% 60% at 100% 100%, color-mix(in oklab, var(--color-primary) 10%, transparent), transparent 55%)",
-          }}
-        />
-        <div className="relative flex flex-col gap-4 p-5 sm:p-7 sm:flex-row sm:items-end sm:justify-between">
+        <div className="relative flex flex-col gap-4 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
           <div className="max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="accent">
-                <Bot className="h-3 w-3" />
-                Campaign drafts
-              </Badge>
-              {profile && (
-                <Badge variant="secondary">
-                  {profile.name} · {profile.areaOfOperations}
-                </Badge>
-              )}
-            </div>
-            <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)] sm:text-3xl">
-              Social media marketing engine
+            <Badge variant="accent">
+              <Megaphone className="h-3 w-3" />
+              Social desk
+            </Badge>
+            <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+              Draft from facts, review for fair housing, approve, then publish or hand off
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Prepares editable drafts from saved property details. No live MLS connection or
-              automatic publishing. Drafts sign as {profile?.name ?? "you"}
-              {profile?.website ? ` · ${profile.website.replace(/^https?:\/\//, "")}` : ""}.
+              Every post starts from facts on record. AI drafts echo back which facts they used. Publishing goes through
+              your own scheduler connection or a manual handoff with a receipt — never a fake "published" badge.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void runAgent()} disabled={running}>
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Wand2 className="h-4 w-4" />
-              )}
-              {running ? "Preparing draft…" : "Prepare campaign draft"}
-            </Button>
-            {activePlan && (
-              <Button variant="secondary" onClick={downloadPack}>
-                <Download className="h-4 w-4" />
-                Export pack
-              </Button>
-            )}
-          </div>
+          <Button onClick={newDraft} variant="secondary">
+            <Sparkles className="h-4 w-4" /> New post
+          </Button>
         </div>
       </div>
 
-      <ActualPhotoStudio />
-      <SocialBillingControls />
-      <SocialMediaGenerator />
+      {savedBrowserCampaigns.length > 0 && <details className="rounded border p-4">
+        <summary className="cursor-pointer font-medium">Saved browser campaigns ({savedBrowserCampaigns.length})</summary>
+        <p className="mt-2 text-sm text-muted-foreground">Your earlier campaigns are still saved in this browser. Their local approval, schedule and post statuses are unverified. Download a copy to review the content and media rights before reuse.</p>
+        <ul className="mt-3 space-y-3">
+          {savedBrowserCampaigns.map(campaign => <li key={campaign.id} className="flex flex-wrap items-center justify-between gap-3 rounded border p-3">
+            <span className="min-w-0 break-words text-sm">{campaign.title} · {campaign.posts.length} saved posts</span>
+            <Button size="sm" variant="outline" onClick={() => downloadBrowserCampaign(campaign)}><Download className="h-3.5 w-3.5" /> Download {campaign.title}</Button>
+          </li>)}
+        </ul>
+      </details>}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <ActualPhotoStudio onUseImage={attachManagedImage} />
+      <details className="rounded border p-4">
+        <summary className="cursor-pointer font-medium">Optional paid image templates and billing</summary>
+        <div className="mt-4 space-y-4"><SocialBillingControls /><SocialMediaGenerator /></div>
+      </details>
+
+      {loadError && (
+        <Card>
+          <CardContent className="flex items-center justify-between gap-3 py-4 text-sm">
+            <span className="text-[var(--color-danger)]">{loadError}</span>
+            <Button size="sm" variant="outline" onClick={() => void load()}>
+              <RefreshCw className="h-3.5 w-3.5" /> Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="h-4 w-4 text-[var(--color-primary)]" />
-                Campaign brief
-              </CardTitle>
-              <CardDescription>
-                Use saved property details and review all claims before posting
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Goal</Label>
-                <Select
-                  value={goal}
-                  onValueChange={(v) => {
-                    setGoal(v as CampaignGoal);
-                    setSteps(getAgentPipeline(v as CampaignGoal));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GOAL_OPTIONS.map((g) => (
-                      <SelectItem key={g.value} value={g.value}>
-                        {g.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-[var(--color-fg-subtle)]">
-                  {GOAL_OPTIONS.find((g) => g.value === goal)?.blurb}
-                </p>
-              </div>
-
-              {goal === "open_house" && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="campaign-open-house-time">
-                    Confirmed open-house date, time and time zone
-                  </Label>
-                  <Input
-                    id="campaign-open-house-time"
-                    value={openHouseWhen}
-                    maxLength={160}
-                    onChange={(event) => setOpenHouseWhen(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Only use a schedule confirmed by the property representative.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <Label>Saved property</Label>
-                <Select value={propertyId} onValueChange={setPropertyId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select listing" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {properties.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.listingSide === "mine" ? "★ " : ""}
-                        {p.title}
-                        {p.mlsNumber ? ` · ${p.mlsNumber}` : ""} · {p.status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {property?.mlsNumber && (
-                  <p className="text-[11px] text-[var(--color-fg-subtle)]">
-                    MLS# {property.mlsNumber}
-                    {property.listingSide === "mine" ? " · Your listing" : ""}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Brand voice</Label>
-                <Select value={voice} onValueChange={setVoice}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VOICE_PRESETS.map((v) => (
-                      <SelectItem key={v} value={v}>
-                        {v}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Platforms</Label>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_PLATFORMS.map((p) => {
-                    const on = platforms.includes(p);
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => togglePlatform(p)}
-                        className={cn(
-                          "min-h-11 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                          on
-                            ? "border-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-border))] bg-[var(--color-primary-soft)] text-[var(--color-primary)]"
-                            : "border-[var(--color-border)] text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]",
-                        )}
-                      >
-                        {PLATFORM_META[p].label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => void runAgent()}
-                disabled={running}
-              >
-                {running ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                {running ? "Generating campaign…" : "Generate full campaign"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Your saved property book</CardTitle>
-              <CardDescription>Quick-start content from your listings</CardDescription>
+              <CardTitle className="text-base">Drafts</CardTitle>
+              <CardDescription>Stored on the server with a revision history.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {book.slice(0, 5).map((p) => (
+              {loading && !desk && (
+                <div className="flex items-center gap-2 text-sm text-[var(--color-fg-muted)]">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </div>
+              )}
+              {desk && desk.drafts.length === 0 && (
+                <p className="text-sm text-[var(--color-fg-muted)]">
+                  No drafts yet. {suggestion.reason}
+                </p>
+              )}
+              {desk?.drafts.map((draft) => (
                 <button
-                  key={p.id}
+                  key={draft.id}
                   type="button"
-                  onClick={() => {
-                    setPropertyId(p.id);
-                    setGoal("just_listed");
-                  }}
-                  className="min-h-11 w-full rounded-[var(--radius-md)] border border-[var(--color-border)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-bg-elevated)]"
+                  onClick={() => openDraft(draft)}
+                  className={cn(
+                    "w-full rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-colors",
+                    selectedId === draft.id ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/40" : "border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)]",
+                  )}
                 >
-                  <div className="font-medium text-[var(--color-fg)]">{p.title}</div>
-                  <div className="text-[var(--color-fg-subtle)]">
-                    {p.mlsNumber ?? "—"} · {p.status}
-                    {p.listingSide === "mine" ? " · Yours" : ""}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{draft.content.title}</span>
+                    <Badge variant={stateVariant(draft.state)}>{STATE_LABEL[draft.state]}</Badge>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
+                    {PLATFORM_LABEL[draft.content.platform]} · rev {draft.revision} · {new Date(draft.updatedAt).toLocaleString()}
                   </div>
                 </button>
               ))}
@@ -494,619 +530,372 @@ function MarketingPage() {
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Saved campaigns</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Link2 className="h-4 w-4 text-[var(--color-primary)]" /> Publishing
+              </CardTitle>
+              <CardDescription>
+                Connect your Postiz workspace (it holds the Instagram, LinkedIn, Facebook, and X authorizations). The API
+                key is encrypted on the server and never shown again.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {campaigns.length === 0 ? (
-                <p className="text-sm text-[var(--color-fg-muted)]">
-                  No campaigns yet. Prepare a draft from a saved property.
-                </p>
+            <CardContent className="space-y-3">
+              {desk?.scheduler ? (
+                <>
+                  <div className="text-xs text-[var(--color-fg-muted)]">
+                    Connected {new Date(desk.scheduler.connectedAt).toLocaleDateString()} · {desk.scheduler.apiUrl}
+                  </div>
+                  {desk.scheduler.error && (
+                    <p className="text-xs text-[var(--color-danger)]" role="alert">
+                      Postiz check failed: {desk.scheduler.error}
+                    </p>
+                  )}
+                  {desk.scheduler.channels.length ? (
+                    <ul className="space-y-1 text-xs">
+                      {desk.scheduler.channels.map((channel) => (
+                        <li key={channel.id} className="flex items-center justify-between">
+                          <span>
+                            {channel.name}
+                            <span className="text-[var(--color-fg-subtle)]"> · {channel.platform || channel.identifier}</span>
+                          </span>
+                          {channel.disabled && <Badge variant="danger">disabled</Badge>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    !desk.scheduler.error && <p className="text-xs text-[var(--color-fg-muted)]">No channels connected in Postiz yet. Add them there, then reload.</p>
+                  )}
+                  <Button size="sm" variant="outline" onClick={disconnect} disabled={busy === "disconnect"}>
+                    <Unplug className="h-3.5 w-3.5" /> Disconnect
+                  </Button>
+                </>
               ) : (
-                campaigns.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      setActivePlan(c);
-                      setSelectedPostId(c.posts[0]?.id ?? null);
-                      setTab("pack");
-                    }}
-                    className={cn(
-                      "w-full rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-colors",
-                      activePlan?.id === c.id
-                        ? "border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-soft)]/40"
-                        : "border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)]",
-                    )}
-                  >
-                    <div className="text-sm font-medium text-[var(--color-fg)]">{c.title}</div>
-                    <div className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
-                      {c.posts.length} posts · {c.durationDays}d
-                    </div>
-                  </button>
-                ))
+                <form
+                  className="space-y-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void connect();
+                  }}
+                >
+                  <Label htmlFor="postiz-key">Postiz API key</Label>
+                  <Input id="postiz-key" type="password" autoComplete="off" value={postizKey} onChange={(event) => setPostizKey(event.target.value)} placeholder="From Postiz → Settings → Public API" />
+                  <Label htmlFor="postiz-url">Self-hosted API URL (optional)</Label>
+                  <Input id="postiz-url" value={postizUrl} onChange={(event) => setPostizUrl(event.target.value)} placeholder="https://api.postiz.com" />
+                  <Button type="submit" size="sm" disabled={busy === "connect" || postizKey.trim().length < 8}>
+                    {busy === "connect" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                    Connect and list channels
+                  </Button>
+                  <p className="text-[11px] text-[var(--color-fg-subtle)]">
+                    No scheduler? Approve a post and use Hand off: copy, share, or download, then paste the live URL as your receipt.
+                  </p>
+                </form>
               )}
             </CardContent>
           </Card>
         </div>
 
-        <div className="lg:col-span-8 space-y-4">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="h-auto flex-wrap">
-              <TabsTrigger value="agent">Draft checklist</TabsTrigger>
-              <TabsTrigger value="pack">Content pack</TabsTrigger>
-              <TabsTrigger value="calendar">Calendar</TabsTrigger>
-              <TabsTrigger value="queue">Review status</TabsTrigger>
-              <TabsTrigger value="accounts">Handles & photos</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="agent" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Draft preparation and review</CardTitle>
+        <div className="space-y-4 lg:col-span-8">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">{selected ? `Editing rev ${selected.revision}` : "New post"}</CardTitle>
                   <CardDescription>
-                    Uses saved details for {profile?.areaOfOperations ?? "your market"}
+                    {selected && selected.state !== "draft"
+                      ? "Editing creates a new revision and returns it to draft; the approved text is kept in history."
+                      : "Facts first. The caption must fit the platform limit and pass the fair-housing review."}
                   </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {steps.map((step, i) => (
-                    <div
-                      key={step.id}
-                      className="flex gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3"
-                    >
-                      <div className="mt-0.5">
-                        {step.status === "done" ? (
-                          <CheckCircle2 className="h-5 w-5 text-[var(--color-success)]" />
-                        ) : step.status === "running" ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary)]" />
-                        ) : (
-                          <Circle className="h-5 w-5 text-[var(--color-fg-subtle)]" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-[var(--color-fg)]">
-                          {i + 1}. {step.label}
-                        </div>
-                        <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{step.detail}</p>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                </div>
+                {selected && <Badge variant={stateVariant(selected.state)}>{STATE_LABEL[selected.state]}</Badge>}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label>Platform</Label>
+                  <Select value={composer.platform} onValueChange={(value) => { setComposer({ ...composer, platform: value as SocialPlatform }); setComposerDirty(true); }}>
+                    <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PLATFORMS.map((platform) => (
+                        <SelectItem key={platform} value={platform}>{PLATFORM_LABEL[platform]} · {PLATFORM_LIMITS[platform]} chars</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Goal</Label>
+                  <Select value={goal} onValueChange={(value) => setGoal(value as ContentGoal)}>
+                    <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {GOAL_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Voice</Label>
+                  <Select value={voice} onValueChange={setVoice}>
+                    <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {VOICE_PRESETS.map((preset) => (
+                        <SelectItem key={preset} value={preset}>{preset}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-            <TabsContent value="pack" className="space-y-4">
-              {!activePlan ? (
-                <Card>
-                  <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Select a saved property and prepare a campaign draft.
-                  </CardContent>
-                </Card>
-              ) : (
-                <>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <CardTitle className="text-base">{activePlan.title}</CardTitle>
-                          <CardDescription className="mt-1">
-                            {activePlan.objective} · Voice: {activePlan.brandVoice}
-                          </CardDescription>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            deleteCampaign(activePlan.id);
-                            setActivePlan(null);
-                            toast.message("Campaign removed");
-                          }}
-                        >
-                          Delete
+              <div>
+                <Label>Listing on record (optional)</Label>
+                <Select value={propertyId || "none"} onValueChange={(value) => setPropertyId(value === "none" ? "" : value)}>
+                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="No listing" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No listing</SelectItem>
+                    {properties.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.title} · {item.status}{item.listingSide === "mine" ? " · yours" : " · observed"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {facts.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[var(--color-fg-muted)]">
+                    {facts.map((fact) => <li key={fact}>{fact}</li>)}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="social-facts">Your own facts and perspective (one per line) — required</Label>
+                <Textarea
+                  id="social-facts"
+                  className="mt-1.5"
+                  value={composer.facts}
+                  onChange={(event) => { setComposer({ ...composer, facts: event.target.value }); setComposerDirty(true); }}
+                  placeholder={"Open house Saturday 1–3 PM (I set this)\nBuyers loved the west-facing patio at last weekend's showings\nSeller completed a roof inspection in August"}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" onClick={runDraft} disabled={drafting || !desk?.draftingConfigured}>
+                  {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {drafting ? "Drafting…" : "Draft with AI from these facts"}
+                </Button>
+                {desk && !desk.draftingConfigured && (
+                  <span className="text-xs text-[var(--color-fg-muted)]">AI drafting is off on this server (no XAI_API_KEY). Write the caption below.</span>
+                )}
+              </div>
+              {lastDraft && (
+                <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3 text-xs">
+                  <div className="font-medium">Facts the model says it used ({lastDraft.model})</div>
+                  <ul className="mt-1 list-disc pl-5 text-[var(--color-fg-muted)]">
+                    {lastDraft.factsUsed.map((fact) => <li key={fact}>{fact}</li>)}
+                  </ul>
+                  {lastDraft.unsupportedClaimsAvoided.length > 0 && (
+                    <>
+                      <div className="mt-2 font-medium">Claims it deliberately did not make</div>
+                      <ul className="mt-1 list-disc pl-5 text-[var(--color-fg-muted)]">
+                        {lastDraft.unsupportedClaimsAvoided.map((claim) => <li key={claim}>{claim}</li>)}
+                      </ul>
+                    </>
+                  )}
+                  {lastDraft.altHooks.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {lastDraft.altHooks.map((hook) => (
+                        <Button key={hook} size="sm" variant="outline" onClick={() => { setComposer({ ...composer, caption: `${hook}\n\n${composer.caption}` }); setComposerDirty(true); }}>
+                          Use hook: {hook.slice(0, 40)}{hook.length > 40 ? "…" : ""}
                         </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        {activePlan.platforms.map((p) => (
-                          <Badge key={p} variant="secondary">
-                            {PLATFORM_META[p].label}
-                          </Badge>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <div className="grid gap-4 lg:grid-cols-5">
-                    <div className="space-y-2 lg:col-span-2">
-                      {activePlan.posts.map((post) => (
-                        <button
-                          key={post.id}
-                          type="button"
-                          onClick={() => setSelectedPostId(post.id)}
-                          className={cn(
-                            "w-full rounded-[var(--radius-lg)] border p-3 text-left transition-colors",
-                            selectedPost?.id === post.id
-                              ? "border-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-border))] bg-[var(--color-surface)]"
-                              : "border-[var(--color-border)] bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface-2)]/50",
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-[var(--color-primary)]">
-                              {PLATFORM_META[post.platform].label}
-                            </span>
-                            {statusBadge(post.status)}
-                          </div>
-                          <div className="mt-1 line-clamp-2 text-sm font-medium text-[var(--color-fg)]">
-                            {post.hook}
-                          </div>
-                          <div className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-                            Day {post.dayOffset} · {post.timeSlot}
-                          </div>
-                        </button>
                       ))}
                     </div>
-
-                    <div className="lg:col-span-3">
-                      {selectedPost && (
-                        <Card className="sticky top-24">
-                          <CardHeader className="flex-row items-start justify-between space-y-0 gap-3">
-                            <div>
-                              <CardTitle className="text-base">
-                                {PLATFORM_META[selectedPost.platform].label}
-                              </CardTitle>
-                              <CardDescription>
-                                Day {selectedPost.dayOffset} · {selectedPost.timeSlot}
-                              </CardDescription>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void copyText(composeFullCaption(selectedPost))}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                              Copy
-                            </Button>
-                          </CardHeader>
-                          <CardContent className="space-y-4">
-                            {selectedPost.mediaSource === "imagine" && (
-                              <div className="rounded-[var(--radius-md)] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-3 text-xs text-[var(--color-danger)]">
-                                Legacy generated media is hidden. Replace it with an actual property
-                                photo before publishing.
-                              </div>
-                            )}
-                            {selectedPost.imageUrl && selectedPost.mediaSource !== "imagine" && (
-                              <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
-                                <img
-                                  src={selectedPost.imageUrl}
-                                  alt={selectedPost.altText}
-                                  className="max-h-56 w-full object-cover"
-                                />
-                                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  Photo attached to listing record · source not independently
-                                  verified
-                                </div>
-                              </div>
-                            )}
-                            {!postUsesCampaignPhoto(selectedPost) && (
-                              <div className="rounded-[var(--radius-md)] border border-[var(--color-warning)]/40 bg-[var(--color-warning)]/10 p-3 text-xs text-[var(--color-fg-muted)]">
-                                Approval is locked until this post uses a photo from the campaign’s
-                                own listing record. Reapply photos under Handles &amp; photos.
-                              </div>
-                            )}
-                            <pre className="whitespace-pre-wrap rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm leading-relaxed text-[var(--color-fg)] font-sans">
-                              {composeFullCaption(selectedPost)}
-                            </pre>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
-                                <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  Visual brief
-                                </div>
-                                <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-                                  {selectedPost.visualBrief}
-                                </p>
-                              </div>
-                              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
-                                <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                                  Alt text
-                                </div>
-                                <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-                                  {selectedPost.altText}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {(["approved", "draft"] as const).map((st) => (
-                                <Button
-                                  key={st}
-                                  size="sm"
-                                  variant={selectedPost.status === st ? "default" : "outline"}
-                                  className="capitalize"
-                                  disabled={
-                                    st === "approved" && !postUsesCampaignPhoto(selectedPost)
-                                  }
-                                  onClick={() => {
-                                    if (st === "approved" && !postUsesCampaignPhoto(selectedPost)) {
-                                      toast.error(
-                                        "Apply this campaign’s actual listing photos first",
-                                      );
-                                      return;
-                                    }
-                                    setCampaignPostStatus(activePlan.id, selectedPost.id, st);
-                                    setActivePlan((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            posts: prev.posts.map((p) =>
-                                              p.id === selectedPost.id ? { ...p, status: st } : p,
-                                            ),
-                                          }
-                                        : prev,
-                                    );
-                                    toast.success(
-                                      st === "approved"
-                                        ? "Approved locally for review"
-                                        : "Returned to draft",
-                                    );
-                                  }}
-                                >
-                                  {st === "approved" && <Check className="h-3.5 w-3.5" />}
-                                  {st === "approved" ? "Approve locally" : "Draft"}
-                                </Button>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </TabsContent>
-
-            <TabsContent value="calendar" className="space-y-4">
-              {!activePlan ? (
-                <Card>
-                  <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Generate a campaign to see the posting calendar.
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Calendar className="h-4 w-4 text-[var(--color-primary)]" />
-                      {activePlan.durationDays}-day calendar
-                    </CardTitle>
-                    <CardDescription>{activePlan.calendarNote}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {Array.from({ length: activePlan.durationDays }, (_, day) => {
-                      const dayPosts = activePlan.posts.filter((p) => p.dayOffset === day);
-                      if (!dayPosts.length) return null;
-                      return (
-                        <div key={day}>
-                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                            Day {day}
-                          </div>
-                          <div className="space-y-2">
-                            {dayPosts.map((p) => (
-                              <div
-                                key={p.id}
-                                className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between"
-                              >
-                                <div className="min-w-0">
-                                  <Badge variant="secondary">
-                                    {PLATFORM_META[p.platform].label}
-                                  </Badge>
-                                  <div className="mt-1 truncate text-sm">{p.hook}</div>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedPostId(p.id);
-                                    setTab("pack");
-                                  }}
-                                >
-                                  Edit
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-
-            <TabsContent value="queue" className="space-y-4">
-              {!activePlan ? (
-                <Card>
-                  <CardContent className="py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                    Review campaign drafts here. Direct social publishing is not connected in this
-                    beta.
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-3">
-                  {(["queued", "approved", "published", "draft"] as const).map((bucket) => {
-                    const list = activePlan.posts.filter((p) => p.status === bucket);
-                    if (!list.length) return null;
-                    return (
-                      <Card key={bucket}>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="flex items-center gap-2 text-base capitalize">
-                            <Share2 className="h-4 w-4" />
-                            {bucket === "approved"
-                              ? "Approved locally"
-                              : bucket === "queued"
-                                ? "Legacy queue marks"
-                                : bucket === "published"
-                                  ? "Legacy publish marks"
-                                  : "Drafts"}{" "}
-                            ({list.length})
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                          {list.map((p) => (
-                            <div
-                              key={p.id}
-                              className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 sm:flex-row sm:items-center sm:justify-between"
-                            >
-                              <div>
-                                <div className="text-sm font-medium">
-                                  {PLATFORM_META[p.platform].label} · Day {p.dayOffset}
-                                </div>
-                                <div className="text-xs text-[var(--color-fg-muted)] line-clamp-1">
-                                  {p.hook}
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                {bucket !== "draft" && (
-                                  <Button
-                                    size="sm"
-                                    onClick={() => {
-                                      setCampaignPostStatus(activePlan.id, p.id, "draft");
-                                      setActivePlan((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              posts: prev.posts.map((x) =>
-                                                x.id === p.id ? { ...x, status: "draft" } : x,
-                                              ),
-                                            }
-                                          : prev,
-                                      );
-                                    }}
-                                  >
-                                    Return to draft
-                                  </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => void copyText(composeFullCaption(p))}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  )}
                 </div>
               )}
-            </TabsContent>
 
-            <TabsContent value="accounts" className="space-y-4">
-              <Card className="glass-card border-0">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Link2 className="h-4 w-4 text-[var(--color-primary)]" />
-                    Saved planning handles
-                  </CardTitle>
-                  <CardDescription>
-                    These handles are labels for planning and copy only. Social OAuth and direct
-                    publishing are not connected in this beta; nothing here posts to a network.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {socialAccounts.map((acct) => {
-                    const meta = SOCIAL_NETWORKS.find((n) => n.id === acct.id)!;
-                    return (
-                      <div
-                        key={acct.id}
-                        className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-medium text-[var(--color-fg)]">{acct.label}</div>
-                          {acct.connected ? (
-                            <div className="text-xs text-[var(--color-fg-muted)]">
-                              Saved as {acct.handle} · not authenticated with the network
-                            </div>
-                          ) : (
-                            <Input
-                              className="mt-1.5 h-10 max-w-xs"
-                              placeholder={meta.placeholder}
-                              value={handleDrafts[acct.id] ?? ""}
-                              onChange={(e) =>
-                                setHandleDrafts((d) => ({
-                                  ...d,
-                                  [acct.id]: e.target.value,
-                                }))
-                              }
-                            />
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {acct.connected ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                disconnectSocialAccount(acct.id);
-                                toast.message(`${acct.label} handle cleared`);
-                              }}
-                            >
-                              Disconnect
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                const h = (handleDrafts[acct.id] || "").trim();
-                                if (!h) {
-                                  toast.error("Enter a handle or page name");
-                                  return;
-                                }
-                                connectSocialAccount(acct.id, h);
-                                toast.success(
-                                  `${acct.label} handle saved locally — publishing is not connected`,
-                                );
-                              }}
-                            >
-                              Save handle
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-
-              <Card className="glass-card border-0">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ImageIcon className="h-4 w-4 text-[var(--color-primary)]" />
-                    Actual listing photos
-                  </CardTitle>
-                  <CardDescription>
-                    Use only photos attached to the active campaign’s own listing record. Generated
-                    or generatively altered property imagery is disabled.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {(() => {
-                    const pick = pickListingMedia(campaignProperty, profile?.photoUrl);
-                    const propertyMismatch = Boolean(
-                      activePlan?.propertyId && propertyId !== activePlan.propertyId,
-                    );
-                    return (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
-                          {pick.imageUrl ? (
-                            <img
-                              src={pick.imageUrl}
-                              alt={campaignProperty?.title || "Listing"}
-                              className="h-44 w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-44 items-center justify-center p-4 text-center text-xs text-[var(--color-fg-muted)]">
-                              No property photo yet. Add actual photos before creating social media.
-                            </div>
-                          )}
-                          <div className="p-3 text-xs text-[var(--color-fg-muted)]">
-                            Source:{" "}
-                            <strong className="text-[var(--color-fg)]">listing record</strong>
-                            {" · "}
-                            {pick.reason}
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                            Photo policy
-                          </div>
-                          <p className="rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3 text-xs text-[var(--color-fg-muted)]">
-                            {pick.reason}
-                          </p>
-                          <Button
-                            className="min-h-[44px] w-full"
-                            disabled={
-                              !activePlan ||
-                              !activePlan.propertyId ||
-                              !campaignProperty ||
-                              propertyMismatch ||
-                              !pick.imageUrl
-                            }
-                            onClick={() => {
-                              if (!activePlan) {
-                                toast.message("Run the Content Agent first");
-                                return;
-                              }
-                              if (!pick.imageUrl) {
-                                toast.error("Add actual property photos first");
-                                return;
-                              }
-                              if (
-                                !campaignProperty ||
-                                !activePlan.propertyId ||
-                                campaignProperty.id !== activePlan.propertyId ||
-                                propertyMismatch
-                              ) {
-                                toast.error("Select the property assigned to this campaign");
-                                return;
-                              }
-                              const next = {
-                                ...activePlan,
-                                posts: attachMediaToPosts(
-                                  activePlan.posts,
-                                  campaignProperty,
-                                  profile?.photoUrl,
-                                ),
-                              };
-                              saveCampaign(next);
-                              setActivePlan(next);
-                              toast.success("Actual listing photos applied");
-                            }}
-                          >
-                            <Sparkles className="h-4 w-4" />
-                            {pick.imageUrl
-                              ? "Apply actual listing photos"
-                              : "Add property photos first"}
-                          </Button>
-                          {campaignProperty?.photoUrls && campaignProperty.photoUrls.length > 1 && (
-                            <div className="flex gap-2 overflow-x-auto pt-1">
-                              {campaignProperty.photoUrls.slice(0, 6).map((url) => (
-                                <img
-                                  key={url}
-                                  src={url}
-                                  alt=""
-                                  className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-[var(--color-border)]"
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          <Card className="border-[color-mix(in_oklab,var(--color-accent)_20%,var(--color-border))]">
-            <CardContent className="flex gap-3 p-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
-                <Megaphone className="h-5 w-5" />
+              <div>
+                <Label htmlFor="social-title">Title (internal)</Label>
+                <Input id="social-title" className="mt-1.5" value={composer.title} onChange={(event) => { setComposer({ ...composer, title: event.target.value }); setComposerDirty(true); }} placeholder="Just listed · 1 Coastal Way" />
               </div>
               <div>
-                <div className="text-sm font-medium text-[var(--color-fg)]">
-                  Fair housing & brand QA
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="social-caption">Caption — exact text that will be published</Label>
+                  <span className={cn("text-xs tabular", captionLength > limit ? "text-[var(--color-danger)]" : "text-[var(--color-fg-subtle)]")}>{captionLength}/{limit}</span>
                 </div>
-                <p className="text-xs text-[var(--color-fg-muted)]">
-                  Agent avoids exclusionary language, keeps one CTA, respects platform length caps.
-                  Always review before publish.
-                </p>
+                <Textarea id="social-caption" rows={9} className="mt-1.5" value={composer.caption} onChange={(event) => { setComposer({ ...composer, caption: event.target.value }); setComposerDirty(true); }} />
+              </div>
+              {review.length > 0 && (
+                <div className={cn("rounded-[var(--radius-md)] border p-3 text-xs", blocking ? "border-[var(--color-danger)]/50 bg-[var(--color-danger-soft)]" : "border-[var(--color-warning)]/50 bg-[var(--color-warning-soft)]")}>
+                  <div className="flex items-center gap-2 font-medium">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Fair-housing and claims review · {blocking ? "blocking" : "needs a look"}
+                  </div>
+                  <ul className="mt-1 space-y-1">
+                    {review.map((finding) => (
+                      <li key={`${finding.phrase}:${finding.reason}`}>
+                        <Badge variant={finding.severity === "block" ? "danger" : "warning"} className="mr-1 capitalize">{finding.severity}</Badge>
+                        “{finding.phrase}” — {finding.reason} <span className="text-[var(--color-fg-muted)]">{finding.suggestion}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="social-source">Source link for review (optional, https)</Label>
+                  <Input id="social-source" className="mt-1.5" value={composer.sourceUrl} onChange={(event) => { setComposer({ ...composer, sourceUrl: event.target.value }); setComposerDirty(true); }} placeholder="https://your-site.com/page" />
+                </div>
+                <div>
+                  <Label htmlFor="social-attribution">Attribution notes (copy required disclosures into caption)</Label>
+                  <Input id="social-attribution" className="mt-1.5" value={composer.attribution} onChange={(event) => { setComposer({ ...composer, attribution: event.target.value }); setComposerDirty(true); }} placeholder="Photo: listing photographer · DRE #…" />
+                </div>
+              </div>
+              <div>
+                <Label className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" /> Media you have rights to (https image URLs, one per line, max 4)</Label>
+                <Textarea
+                  className="mt-1.5"
+                  rows={2}
+                  value={composer.mediaUrls.join("\n")}
+                  onChange={(event) => { setComposer({ ...composer, mediaUrls: event.target.value.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 4) }); setComposerDirty(true); }}
+                  placeholder={property?.photoUrls?.[0] || "https://…/photo.jpg"}
+                />
+                {property?.photoUrls?.length ? (
+                  <div className="mt-2 flex gap-2 overflow-x-auto">
+                    {property.photoUrls.slice(0, 6).map((url) => (
+                      <button key={url} type="button" className="shrink-0" onClick={() => { if (!composer.mediaUrls.includes(url) && composer.mediaUrls.length < 4) { setComposer({ ...composer, mediaUrls: [...composer.mediaUrls, url] }); setComposerDirty(true); } }} title="Add to post">
+                        <img src={url} alt="" className={cn("h-14 w-14 rounded-md object-cover ring-1", composer.mediaUrls.includes(url) ? "ring-[var(--color-primary)]" : "ring-[var(--color-border)]")} crossOrigin="anonymous" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">Aggregator or MLS photos require reuse rights you hold. Postiz re-hosts media before publishing.</p>
+              </div>
+              {!!composer.managedMediaIds?.length && <div className="space-y-2" aria-label="Saved images attached to draft">
+                <p className="text-sm font-medium">Saved actual-photo images</p>
+                <p className="text-xs text-muted-foreground">Private images stay in your workspace. Download them for manual posting; Postiz receives their bytes only when you publish.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {composer.managedMediaIds.map((id, index) => <div key={id} className="rounded border p-2">
+                    <img src={`/api/listing-media/${encodeURIComponent(id)}`} alt={`Attached actual-photo image ${index + 1}`} className="aspect-square w-full object-contain" />
+                    <Button size="sm" variant="outline" onClick={() => { setComposer({ ...composer, managedMediaIds: composer.managedMediaIds?.filter(value => value !== id) }); setComposerDirty(true); }}>Remove image {index + 1}</Button>
+                  </div>)}
+                </div>
+              </div>}
+              {selected?.state==="draft" && !composerDirty && <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={rightsReviewed} onChange={e=>setRightsReviewed(e.target.checked)}/>
+                I reviewed the facts, source attribution, and rights for this text and any media in this revision.
+              </label>}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={save} disabled={saving || !composerDirty || !composer.title.trim() || !composer.caption.trim() || !composer.facts.trim() || captionLength > limit}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {selected ? "Save new revision" : "Save draft"}
+                </Button>
+                {selected?.state === "draft" && !composerDirty && (
+                  <Button variant="accent" onClick={() => command("approve")} disabled={busy === "approve" || blocking || !rightsReviewed}>
+                    <CheckCircle2 className="h-4 w-4" /> Approve facts, rights, and text
+                  </Button>
+                )}
+                {blocking && <span className="self-center text-xs text-[var(--color-danger)]">Blocking findings must be fixed before approval.</span>}
               </div>
             </CardContent>
           </Card>
+
+          {selected?.state==="publishing" && <p role="status" className="rounded-lg border p-3 text-sm">A publishing request is reserved for this revision. Its outcome needs scheduler confirmation. Check Postiz before any manual publication; this request will not be replayed automatically.</p>}
+          {selected && selected.state !== "draft" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><Send className="h-4 w-4 text-[var(--color-primary)]" /> Publish rev {selected.revision}</CardTitle>
+                <CardDescription>The approved text goes out verbatim. Choose a channel in your scheduler, or hand it off manually and record the receipt.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {desk?.scheduler && (selected.state === "approved" || selected.state === "handed_off") && (
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                    <div>
+                      <Label>Channel</Label>
+                      <Select value={channelId} onValueChange={setChannelId}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder={matchingChannels.length ? "Choose a channel" : `No ${PLATFORM_LABEL[selected.content.platform]} channel connected`} /></SelectTrigger>
+                        <SelectContent>
+                          {matchingChannels.map((channel) => (
+                            <SelectItem key={channel.id} value={channel.id}>{channel.name} · {channel.platform || channel.identifier}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="social-when"><CalendarClock className="mr-1 inline h-3.5 w-3.5" />Schedule (blank = now)</Label>
+                      <Input id="social-when" type="datetime-local" className="mt-1.5" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} />
+                    </div>
+                    <Button onClick={publish} disabled={busy === "publish" || !channelId}>
+                      {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {scheduleAt ? "Schedule via Postiz" : "Publish via Postiz"}
+                    </Button>
+                  </div>
+                )}
+                {(selected.state === "approved" || selected.state === "handed_off") && (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                    <div className="text-sm font-medium">Manual handoff</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={copyText}><Copy className="h-3.5 w-3.5" /> Copy caption</Button>
+                      <Button size="sm" variant="outline" onClick={shareNative}><Share2 className="h-3.5 w-3.5" /> Share sheet</Button>
+                      <Button size="sm" variant="outline" onClick={download}><Download className="h-3.5 w-3.5" /> Download .txt</Button>
+                      {selected.state === "approved" && (
+                        <Button size="sm" onClick={() => command("handoff")} disabled={busy === "handoff"}>I'll post this myself</Button>
+                      )}
+                    </div>
+                    {!!selected.content.managedMediaIds?.length && <div className="mt-3 flex flex-wrap gap-2">
+                      {selected.content.managedMediaIds.map((id, index) => <Button key={id} size="sm" variant="outline" asChild>
+                        <a href={`/api/listing-media/${encodeURIComponent(id)}`} download={`property-social-${index + 1}.png`}>Download approved image {index + 1}</a>
+                      </Button>)}
+                    </div>}
+                    {selected.state === "handed_off" && (
+                      <div className="mt-3 flex flex-wrap items-end gap-2">
+                        <div className="min-w-[16rem] flex-1">
+                          <Label htmlFor="social-receipt">Live post URL (your receipt)</Label>
+                          <Input id="social-receipt" className="mt-1.5" value={receiptUrl} onChange={(event) => setReceiptUrl(event.target.value)} placeholder={`https://${selected.content.platform === "x" ? "x.com/you/status/…" : `${selected.content.platform}.com/…`}`} />
+                        </div>
+                        <Button size="sm" onClick={() => command("receipt")} disabled={busy === "receipt" || !receiptUrl.trim()}>Record receipt</Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {selected.postUrl && (
+                  <p className="text-xs">
+                    Posted at{" "}
+                    <a href={selected.postUrl} target="_blank" rel="noreferrer" className="text-[var(--color-primary)] hover:underline">{selected.postUrl}</a>
+                  </p>
+                )}
+                {selectedPublications.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium">Scheduler publications</div>
+                    {selectedPublications.map((publication) => (
+                      <div key={publication.id} className="flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-xs">
+                        <Badge variant={publication.status === "published" ? "success" : publication.status === "failed" ? "danger" : "accent"} className="capitalize">{publication.status}</Badge>
+                        <span>{publication.channelName || publication.channelId} · rev {publication.revision}{publication.scheduledFor ? ` · ${new Date(publication.scheduledFor).toLocaleString()}` : ""}</span>
+                        {publication.releaseUrl && <a href={publication.releaseUrl} target="_blank" rel="noreferrer" className="text-[var(--color-primary)] hover:underline">open</a>}
+                        {publication.status === "scheduled" && (
+                          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => refresh(publication)} disabled={busy === publication.id}>
+                            <RefreshCw className="h-3.5 w-3.5" /> Check status
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {selected && history.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" /> Revision history</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1 text-xs text-[var(--color-fg-muted)]">
+                  {history.map((entry) => (
+                    <li key={`${entry.revision}:${entry.action}`}>rev {entry.revision} · {entry.action} · {new Date(entry.createdAt).toLocaleString()}</li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

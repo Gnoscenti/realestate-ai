@@ -8,11 +8,7 @@ import {
   generateReactivation,
 } from "@/lib/ai";
 import type { PriorityItem } from "@/lib/priorities";
-import {
-  composeFullCaption,
-  runSocialContentAgent,
-  type CampaignGoal,
-} from "@/lib/social-agent";
+import { GOAL_OPTIONS, listingFacts, type ContentGoal } from "@/lib/social-desk/suggest";
 import { formatCurrency } from "@/lib/utils";
 
 export type CommandArtifact = {
@@ -44,12 +40,8 @@ export function buildCommandPack(
     deals: Deal[];
   },
 ): CommandPack {
-  const lead = item.leadId
-    ? ctx.leads.find((l) => l.id === item.leadId)
-    : undefined;
-  const deal = item.dealId
-    ? ctx.deals.find((d) => d.id === item.dealId)
-    : undefined;
+  const lead = item.leadId ? ctx.leads.find((l) => l.id === item.leadId) : undefined;
+  const deal = item.dealId ? ctx.deals.find((d) => d.id === item.dealId) : undefined;
 
   const subjectProperty =
     (deal && ctx.properties.find((p) => p.id === deal.propertyId)) ||
@@ -89,9 +81,7 @@ export function buildCommandPack(
         kind: "words",
         title: "Nurture sequence",
         summary: `${seq.length}-touch recovery plan`,
-        body: seq
-          .map((s) => `Day ${s.day} · ${s.channel}\n${s.body}`)
-          .join("\n\n"),
+        body: seq.map((s) => `Day ${s.day} · ${s.channel}\n${s.body}`).join("\n\n"),
         href: `/outreach?lead=${lead.id}&mode=nurture`,
         hrefLabel: "Open nurture",
       });
@@ -129,28 +119,24 @@ export function buildCommandPack(
       hrefLabel: "Full brief",
     });
   } else if (item.kind === "content_gap" || item.kind === "social_campaign") {
-    const goal = (item.meta?.goal as CampaignGoal) || "just_listed";
+    const goal = (item.meta?.goal as ContentGoal) || "just_listed";
     const prop = item.meta?.propertyId
       ? ctx.properties.find((p) => p.id === item.meta!.propertyId)
       : subjectProperty;
-    const plan = runSocialContentAgent({
-      goal,
-      platforms: ["instagram", "facebook", "linkedin", "stories"],
-      voice: "Professional & warm",
-      property: prop,
-    });
-    const top = plan.posts[0];
+    const goalLabel = GOAL_OPTIONS.find((option) => option.value === goal)?.label || "Post";
+    const facts = prop ? listingFacts(prop) : [];
     artifacts.push({
       id: "social",
       kind: "social",
-      title: "Social pack (preview)",
-      summary: `${plan.posts.length} posts · ${plan.durationDays}d · ${plan.title}`,
-      body: top
-        ? composeFullCaption(top) +
-          `\n\n—\nVisual: ${top.visualBrief}\n\nFull campaign: ${plan.posts.length} assets across ${plan.platforms.join(", ")}.`
-        : plan.objective,
-      href: `/marketing?goal=${goal}${prop ? `&property=${prop.id}` : ""}`,
-      hrefLabel: "Open Content Agent",
+      title: `${goalLabel} · facts on record`,
+      summary: prop
+        ? `${facts.length} facts from ${prop.title}`
+        : "Open the Social Desk to draft from your facts",
+      body: facts.length
+        ? `Facts the Social Desk will draft from (nothing else is invented):\n${facts.map((fact) => `• ${fact}`).join("\n")}`
+        : "Add a listing or your own facts, then draft in the Social Desk. Every caption is reviewed for fair housing before approval.",
+      href: `/marketing${prop ? `?property=${prop.id}` : ""}`,
+      hrefLabel: "Open Social Desk",
     });
   } else if (item.kind === "deal_risk" || item.kind === "deal_milestone") {
     artifacts.push({
@@ -160,9 +146,7 @@ export function buildCommandPack(
       summary: deal ? deal.propertyTitle : "Deal update",
       body: deal
         ? `Hi ${deal.clientName.split(" ")[0]}, quick update on ${deal.propertyTitle}: we're in ${deal.stage.replaceAll("_", " ")} (${deal.progress}%). ${
-            deal.issues[0]
-              ? `I'm actively clearing: ${deal.issues[0].text}. `
-              : ""
+            deal.issues[0] ? `I'm actively clearing: ${deal.issues[0].text}. ` : ""
           }I'll confirm next milestone by end of day — call me with questions.`
         : "I'll send a written status with next milestone today.",
       href: "/transactions",
@@ -187,10 +171,13 @@ export function buildCommandPack(
       cma.headline,
       cma.subjectSummary,
       "",
-      "Browser-saved comparison set (not verified Closed/Sold comps):",
+      "Price recommendation: not calculated",
+      "Saved reference records: " + cma.comps.length,
+      "",
+      "Supplied reference records (not verified sale comparables):",
       ...cma.comps.map(
         (c) =>
-          `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · ${c.adj}`,
+          `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · status as supplied: ${c.status} · ${c.adj}`,
       ),
       "",
       "Strategy:",
@@ -203,8 +190,12 @@ export function buildCommandPack(
     artifacts.push({
       id: "cma",
       kind: "cma",
-      title: "Comparison planning snapshot",
-      summary: `${subjectProperty.neighborhood} · ${cma.comps.length} unverified workspace record${cma.comps.length === 1 ? "" : "s"}`,
+      title: "Listing comparison notes",
+      summary:
+        subjectProperty.neighborhood +
+        " · " +
+        cma.comps.length +
+        " unverified saved reference records",
       body: cmaBody,
       href: "/cma",
       hrefLabel: "Open comparison planning",
@@ -219,9 +210,7 @@ export function buildCommandPack(
     title: "Post-NAR compliance outline",
     summary: outline.title,
     body: outline.clauses.map((c) => `${c.heading}\n${c.text}`).join("\n\n"),
-    href: lead
-      ? `/outreach?lead=${lead.id}&mode=agreement`
-      : "/outreach?mode=agreement",
+    href: lead ? `/outreach?lead=${lead.id}&mode=agreement` : "/outreach?mode=agreement",
     hrefLabel: "Full agreement outline",
   });
 

@@ -4,7 +4,7 @@ const recordIdSchema = z
   .string()
   .min(1)
   .max(240)
-  .refine((value) => value === value.trim() && !/[\u0000-\u001f]/.test(value), "Invalid record ID");
+  .refine((value) => value === value.trim() && !Array.from(value).some(char => char.charCodeAt(0) <= 31), "Invalid record ID");
 
 export const templateKeySchema = z
   .string()

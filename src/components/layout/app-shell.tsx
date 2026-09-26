@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Building2,
@@ -55,6 +55,8 @@ import {
 
 const NAV_HINTS: Record<string, string> = {
   "/": "Start here each day — ranked work for you",
+  "/aieo": "Where AI answers name you, and what to fix",
+  "/marketing": "Draft from facts, approve, publish or hand off",
   "/outreach": "Reply to new leads in seconds",
   "/leads": "Your real clients & prospects",
   "/search": "Find homes by criteria",
@@ -64,13 +66,11 @@ const NAV_HINTS: Record<string, string> = {
   "/market": "Market trends & valuation views",
   "/transactions": "Deals from offer to close",
   "/properties": "Your listing book",
-  "/mls": "Connect real MLS feeds or website",
-  "/marketing": "Social posts from your listings",
-  "/aieo": "Citation-readiness score, gaps, FAQs, and schema",
+  "/mls": "Website, CSV, and market observations",
   "/feedback": "Tell us what to improve",
-  "/billing": "Trial, plan & access codes",
-  "/edge": "How we beat FUB, kvCORE, Ylopo & portals",
-  "/alerts": "DocuSign, client & deal emails",
+  "/billing": "Access, plan & beta codes",
+  "/edge": "Positioning notes",
+  "/alerts": "Gmail alerts (token required)",
 };
 
 type NavItem = {
@@ -83,6 +83,8 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { to: "/", label: "Command Center", icon: LayoutDashboard, exact: true },
+  { to: "/aieo", label: "CiteLock", icon: Radar },
+  { to: "/marketing", label: "Social Desk", icon: Megaphone },
   { to: "/outreach", label: "Instant Response", icon: Zap },
   { to: "/leads", label: "Lead Intelligence", icon: Users },
   { to: "/search", label: "Smart Search", icon: Search },
@@ -92,9 +94,7 @@ const NAV: NavItem[] = [
   { to: "/market", label: "Market & Valuation", icon: TrendingUp },
   { to: "/transactions", label: "Transaction Hub", icon: FileText },
   { to: "/properties", label: "Property Mgmt", icon: Building2 },
-  { to: "/mls", label: "MLS Hub", icon: Link2 },
-  { to: "/marketing", label: "Content Agent", icon: Megaphone },
-  { to: "/aieo", label: "CiteLock", icon: Radar },
+  { to: "/mls", label: "Listings & Data", icon: Link2 },
   { to: "/feedback", label: "Feedback Board", icon: MessageSquare },
   { to: "/billing", label: "Billing & Access", icon: CreditCard },
   { to: "/edge", label: "Edge Playbook", icon: Swords },
@@ -194,7 +194,7 @@ function Brand({ collapsed }: { collapsed?: boolean }) {
             RealEstate AI
           </div>
           <div className="text-[11px] text-[var(--color-fg-subtle)]">
-            Agent workspace · iOS ready
+            Agent workspace · Responsive web
           </div>
         </div>
       )}
@@ -219,19 +219,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const profile = useAppStore((s) => s.agentProfile);
   const properties = useAppStore((s) => s.properties);
   const memory = useAppStore((s) => s.agentMemory);
-  const syncMls = useAppStore((s) => s.syncMlsListings);
   const resyncFromWebsite = useAppStore((s) => s.resyncFromWebsite);
-  const syncAllMls = useAppStore((s) => s.syncAllMls);
-  const mlsConnections = useAppStore((s) => s.mlsConnections);
   const hotCount = useAppStore(
     (s) => s.leads.filter((l) => l.heat === "hot").length,
   );
   const myBook = myListings(properties).length;
-  const billing = useAppStore((s) => s.billing);
-  const accessOk = hasAppAccess(billing);
+  const activateBilling = useAppStore((s) => s.activateBilling);
+  const clearBilling = useAppStore((s) => s.clearBilling);
+  const [accessCheck,setAccessCheck]=useState<{userId:string|null;status:"pending"|"active"|"inactive"|"error"}>({userId:null,status:"pending"});
+  const [accessAttempt,setAccessAttempt]=useState(0);
+  const setServerAccess=useCallback((status:"pending"|"active"|"inactive"|"error")=>{
+    setAccessCheck({userId:user?.id || null,status});
+  },[user?.id]);
+  const serverAccess=accessCheck.userId===user?.id ? accessCheck.status : "pending";
+  const accessOk = serverAccess === "active";
+  const handleAccessGranted=useCallback(()=>setServerAccess("active"),[setServerAccess]);
   const emailAlerts = useAppStore((s) => s.emailAlerts);
-  const emailConnection = useAppStore((s) => s.emailConnection);
-  const scanEmailInbox = useAppStore((s) => s.scanEmailInbox);
   const alertUnread = emailUnreadCount(emailAlerts);
   const targetWorkspaceKey = workspaceStorageKey(user?.id);
   const workspaceReady = boundWorkspaceKey === targetWorkspaceKey;
@@ -276,34 +279,48 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The product tour is opt-in from the help button. Automatically opening an
   // 11-step modal on first use obscures the task the tester came to complete.
 
+  // Access must be confirmed for this identity. A cached browser billing value
+  // cannot unlock the shell while loading or after a failed server request.
+  useEffect(() => {
+    if (!workspaceReady || !user?.id) return;
+    let cancelled = false;
+    setServerAccess("pending");
+    void import("@/lib/billing/api")
+      .then(({ getMyAccess }) => getMyAccess())
+      .then((entitlement) => {
+        if (cancelled) return;
+        const billing=useAppStore.getState().billing;
+        if (entitlement.active) {
+          setServerAccess("active");
+          if (!hasAppAccess(billing) || billing.currentPeriodEnd !== entitlement.currentPeriodEnd) {
+            activateBilling({
+              ...billing,
+              status: entitlement.source === "code" ? "code" : "trialing",
+              source: entitlement.source === "code" ? "free_code" : entitlement.source === "demo" ? "demo_checkout" : "stripe_intro",
+              currentPeriodEnd: entitlement.currentPeriodEnd,
+              introEndsAt: entitlement.source === "code" ? null : entitlement.currentPeriodEnd,
+              activatedAt: billing.activatedAt || new Date().toISOString(),
+              isDemo: entitlement.source === "demo",
+            });
+          }
+        } else {
+          setServerAccess("inactive");
+          if (hasAppAccess(billing)) clearBilling();
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setServerAccess("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceReady,user?.id,accessAttempt,setServerAccess,activateBilling,clearBilling]);
+
   // App icon + favicon notification dots
   useEffect(() => {
     if (!workspaceReady || !hydrated || !accessOk) return;
     void syncNotificationBadges(alertUnread);
   }, [workspaceReady, hydrated, accessOk, alertUnread]);
-
-  // Periodic inbox scan when connected
-  useEffect(() => {
-    if (
-      !workspaceReady ||
-      !hydrated ||
-      !accessOk ||
-      !emailConnection
-    )
-      return;
-    void scanEmailInbox({});
-    const id = window.setInterval(() => {
-      void scanEmailInbox({});
-    }, 3 * 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [
-    workspaceReady,
-    hydrated,
-    onboarded,
-    accessOk,
-    emailConnection?.email,
-    scanEmailInbox,
-  ]);
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -340,8 +357,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!accessOk) {
-    return <Paywall agentName={profile?.name ?? user.displayName ?? undefined} />;
+  if(serverAccess==="pending") {
+    return <div role="status" className="flex min-h-dvh items-center justify-center text-sm">Verifying workspace access…</div>;
+  }
+  if(serverAccess==="error") {
+    return <div className="flex min-h-dvh items-center justify-center p-6">
+      <div className="max-w-md space-y-4 text-center">
+        <p role="alert">We couldn't verify your access. Check your connection and retry.</p>
+        <Button onClick={()=>setAccessAttempt(attempt=>attempt+1)}>Retry access check</Button>
+      </div>
+    </div>;
+  }
+  if (!accessOk && pathname !== "/aieo") {
+    return (
+      <Paywall
+        agentName={profile?.name ?? user.displayName ?? undefined}
+        onAccessGranted={handleAccessGranted}
+      />
+    );
   }
 
   // Beta testers land in the usable workspace immediately. Profile, MLS, and
@@ -361,7 +394,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
+    <div data-testid={accessOk ? "entitled-workspace" : "free-workspace"} className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
       <aside
         className={cn(
           "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",
@@ -434,7 +467,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="flex min-h-[44px] w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-primary-soft)] p-2.5 text-left text-xs font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-surface-2)]"
               >
                 <Settings2 className="h-4 w-4 shrink-0" />
-                Set up profile / MLS
+                Set up profile
               </button>
             )}
             <div className="rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3">
@@ -470,6 +503,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 size="icon"
                 variant="ghost"
                 className="min-h-[44px] min-w-[44px] md:hidden"
+                aria-label="Open navigation"
               >
                 <Menu className="h-5 w-5" />
               </Button>
@@ -506,7 +540,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <Settings2 className="h-4 w-4" />
-                  {profile ? "Edit profile / MLS" : "Set up profile / MLS"}
+                  {profile ? "Edit profile" : "Set up profile"}
                 </Button>
               </div>
             </SheetContent>
@@ -555,30 +589,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="hidden min-h-[44px] shrink-0 sm:inline-flex"
               onClick={() => {
                 void (async () => {
-                  if (mlsConnections.length) {
-                    const r = await syncAllMls();
-                    if (r.errors.length) toast.message(r.errors[0]!);
-                    else toast.success(`MLS synced · ${r.listings} listing(s)`);
-                    return;
-                  }
                   if (profile.website) {
                     const r = await resyncFromWebsite();
                     if (r.error) toast.message(r.error);
                     else
                       toast.success(
                         r.listings
-                          ? `Website synced · ${r.listings} listing(s)`
-                          : "Website scanned — no new listings",
+                          ? `Website scanned · ${r.listings} listing(s) observed`
+                          : "Website scanned — no listings found",
                       );
                     return;
                   }
-                  toast.message("Connect a platform in MLS Hub");
+                  toast.message("Add your website in the profile, or import listings under Listings & Data");
                   navigate({ to: "/mls" });
                 })();
               }}
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              {mlsConnections.length ? "Sync MLS" : profile.website ? "Sync site" : "MLS Hub"}
+              {profile.website ? "Rescan site" : "Listings"}
             </Button>
             </>
           )}

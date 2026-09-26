@@ -61,8 +61,7 @@ export function attachMediaToPosts<
       | "imagine"
       | "none";
   },
->(posts: T[], property?: Property | null, agentPhoto?: string | null): T[] {
-  const pick = pickListingMedia(property, agentPhoto);
+>(posts: T[], property?: Property | null, _agentPhoto?: string | null): T[] {
   const gallery = listingPhotoUrls(property);
 
   return posts.map((p, i) => {

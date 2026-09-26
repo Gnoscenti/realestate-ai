@@ -1,6 +1,6 @@
 # Flagship implementation and operations
 
-September 8, 2026. Companion: [activation and blocker register](activation-and-blocker-register.md). This document describes implemented behavior and the evidence needed for external activation. It is not a claim that production accounts are configured.
+September 8, 2026 operational record, with social capability corrections added September 26. **Historical environment details, test totals, migration tables and preservation decisions below describe the September 8 checkout unless explicitly updated.** Use [INTEGRATION-2026-09-26.md](INTEGRATION-2026-09-26.md) for the current integrated tree, migration reconciliation, commands and release evidence. Companion: [activation and blocker register](activation-and-blocker-register.md). This document describes implemented behavior and the evidence needed for external activation. It is not a claim that production accounts are configured.
 
 ## Product and evidence boundaries
 
@@ -14,7 +14,9 @@ Social's built-in studio accepts an agent-supplied marketing property and explic
 
 Public uploads reserve a deterministic object path and cleanup intent before the external call. The journal survives deletion; a five-minute settlement window prevents cleanup racing an in-flight upload. Retained photos/exports use cursor pagination, and interrupted built-in jobs fail safely so a fresh export can run.
 
-The optional paid renderer uses explicit public Blob delivery consent, approved source/output hosts, real audited Orshot template mappings, durable jobs, entitlement/quota checks and retained output. The app only reports a paid render complete after validating and retaining the actual PNG. Stripe has a separate social subscription flow and signed lifecycle webhook; a Checkout return never grants entitlement. Video remains Setup required. Direct publishing remains Planned. Download and manual posting is the working path.
+The optional paid renderer uses explicit public Blob delivery consent, approved source/output hosts, real audited Orshot template mappings, durable jobs, entitlement/quota checks and retained output. The app only reports a paid render complete after validating and retaining the actual PNG. Stripe has a separate social subscription flow and signed lifecycle webhook; a Checkout return never grants entitlement. Video remains Setup required. As of September 26, the Social Desk connects retained actual-photo exports to server-owned drafts, explicit facts/rights approval, revision history, authenticated image downloads, caption/file handoff and platform-validated user-reported receipts. Edits require a new approval; current handoff rechecks revision, source permission and managed-image availability. The image-to-manual-receipt workflow is locally browser-tested.
+
+Optional Postiz connections now support encrypted workspace API credentials, channel lookup, revision-frozen scheduling/dispatch and terminal-safe status refresh. Private managed images transfer directly as tenant-authorized bytes, without public Blob storage. Definite rejection and uncertain outcomes remain distinct; an unknown outcome without a remote post ID needs inspection in Postiz. Live Postiz authorization/publication, paid Orshot rendering and live Stripe account/lifecycle acceptance remain unverified. See the [current social runbook](social-media-generation.md).
 
 ## Running locally with durable storage
 
@@ -49,10 +51,11 @@ Check that port 8136 is free first. Existing listeners/worktrees belong to other
 1. Sign up/sign in, confirm the persisted user session, and enter the existing pre-launch access flow. A beta code is app access, not a paid social entitlement.
 2. Open `/marketing`, create a property with truthful agent-supplied title/address, and confirm photo-use permission. Upload a rights-cleared actual image under 2 MiB.
 3. Select the uploaded photo and export the square PNG. Inspect the output visually, download it, compare server byte count/hash and inspect private cache headers.
-4. Reload and open Retained image exports. Confirm the same output. Verify an anonymous request gets 401 and another workspace user gets 404.
-5. Delete a studio-created property and confirm its media/jobs/exports are unavailable and storage usage is released. If optional public Blob delivery was used, inspect pending deletion and retry it; do not claim public erasure until the provider confirms it.
-6. Restart the app and database, then verify the same session, scan history and stored byte hash. Use dedicated fixtures to test quotas/concurrent duplicates without unnecessary paid provider calls.
-7. Open `/aieo`, create/read a scan, inspect subject-specific history and evidence gaps. Complete the actual three-provider panel only after all credentials are configured, following the blocker register.
+4. Attach the exported PNG to a Social Desk draft, supply the factual caption, save, and explicitly approve the facts/rights/text. Download the approved image and caption; prepare a manual handoff and record a platform post URL only after posting. For test-only acceptance use a clearly labeled synthetic receipt. A reported receipt is not independent provider confirmation.
+5. Reload and open Retained image exports. Confirm the same output. Verify an anonymous request gets 401 and another workspace user gets 404.
+6. Delete a studio-created property and confirm its media/jobs/exports are unavailable and storage usage is released. If optional public Blob delivery was used, inspect pending deletion and retry it; do not claim public erasure until the provider confirms it.
+7. Restart the app and database, then verify the same session, scan history and stored byte hash. Use dedicated fixtures to test quotas/concurrent duplicates without unnecessary paid provider calls.
+8. Open `/aieo`, create/read a scan, inspect subject-specific history and evidence gaps. Complete the actual three-provider panel only after all credentials are configured, following the blocker register.
 
 Observed authenticated acceptance used the repository aerial test asset. Its retained PNG was 1,769,323 bytes with SHA-256 `24cfdaecb59476aab94877c57f9e958686f8e5aaecd7117377c551e5f8171998`; the same user session, bytes/hash and retained-history UI survived database/app restart. This establishes the implemented local path, not hosted deployment, listing rights or live provider behavior.
 
@@ -95,7 +98,7 @@ All original tracked and untracked nonignored work was committed on `local/2026-
 | Saved-client preservation / seed cleanup | Ported the corroborated defect fix: hydration no longer deletes real clients based on a 555 number or a name collision; explicit synthetic IDs only |
 | Production auth/database safeguards | Ported fail-closed requirements; no ephemeral-production bypass |
 | Alternate unbranded xAI discovery/visibility engine | Preserved, deferred; it measures a different discovery process and must not replace or contaminate the controlled three-provider panel |
-| SocialDesk/Postiz captions/publishing | Preserved, deferred pending full OAuth/token/revocation/publish audit; does not justify changing Planned copy |
+| SocialDesk/Postiz captions/publishing | September 8 deferral superseded by September 26 integration: durable review/manual handoff and guarded Postiz implementation are integrated. Actual live authorization/publication remains a separate gate. |
 | RapidAPI observations, trust adapters and alternate migration prefixes | Preserved for a separate licensed provenance review; not imported as verified MLS/production-volume/RealTrends evidence |
 | Broader UI/app-entitlement changes and historical delivery claims | Preserved; not wholesale applied over the explicitly approved stack. Current claims are reconstructed from merged code and fresh evidence |
 | CRLF/format-only changes | Preserved in the snapshot; avoided as unrelated integration churn |
@@ -104,4 +107,8 @@ The original checkout can be changed by other local tasks. The named preservatio
 
 ## Operations still required
 
-Hosted database backup/restore, provider spend monitoring, production auth/provider callback verification, live Orshot layer audit, Blob public delivery/deletion, live Stripe checkout/webhooks, administrative cleanup after any future workspace deletion flow, a video worker and social OAuth publishing are not completed. See the blocker register for exact next actions and working alternatives. Voice remains a draft with external release gates and migration-history work; it is not part of the flagship runtime.
+Hosted database backup/restore, provider spend monitoring, production auth/provider callback verification, live Orshot layer audit, Blob public delivery/deletion, live Stripe checkout/webhooks, administrative cleanup after any future workspace deletion flow, a video worker and authorized live Postiz publication/account-revocation acceptance are not completed. The reviewed private-image/caption manual handoff is implemented and locally tested. See the blocker register for exact next actions and working alternatives. Voice remains a draft with external release gates and migration-history work; it is not part of the flagship runtime.
+
+## September 26 legacy campaign preservation note
+
+The browser store retains saved campaigns and their persistence/actions. A populated-only **Saved browser campaigns** panel in Social Desk now provides a Markdown download with readable campaign content and original JSON fields/media references for recovery. It leaves the original saved data intact, labels historical local statuses unverified, and neither automatically imports nor publishes it. Any later import must create a fresh unapproved draft and recheck facts/media rights.

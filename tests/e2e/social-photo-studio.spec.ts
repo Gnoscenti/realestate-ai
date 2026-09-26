@@ -37,13 +37,27 @@ test("actual photo upload, retained PNG export, and reload recovery", async ({ p
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toBe("image/png");
   expect(response.headers()["cache-control"]).toContain("private");
+  await studio.getByRole("button", { name: "Attach export to draft", exact: true }).click();
+  await expect(page.getByRole("img", { name: "Attached actual-photo image 1" })).toBeVisible();
+  await page.locator("#social-caption").fill("Contact me for details of this property.");
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page.getByText("Editing rev 1")).toBeVisible();
+  await page.getByRole("checkbox", { name: /I reviewed the facts, source attribution/ }).check();
+  await page.getByRole("button", { name: "Approve facts, rights, and text" }).click();
+  const approvedImage = page.getByRole("link", { name: "Download approved image 1" });
+  await expect(approvedImage).toHaveAttribute("href", url!);
+  expect((await page.request.get((await approvedImage.getAttribute("href"))!)).status()).toBe(200);
+  await page.getByRole("button", { name: "I'll post this myself" }).click();
+  await page.locator("#social-receipt").fill("https://www.instagram.com/p/actualphoto123/");
+  await page.getByRole("button", { name: "Record receipt" }).click();
+  await expect(page.getByText("Posted (reported)").first()).toBeVisible();
   await page.reload();
   await studio.getByText("Retained image exports", { exact: true }).click();
   await expect(
     studio.getByRole("img", { name: "Retained image: Browser acceptance property" }),
   ).toBeVisible();
   await expect(studio.getByText(/SHA-256:/)).toBeVisible();
-  await expect(studio.getByText(/Direct publishing: Planned/)).toBeVisible();
+  await expect(studio.getByText(/Use the reviewed draft for manual handoff/)).toBeVisible();
   await studio
     .getByLabel("Property for image export", { exact: true })
     .selectOption({ label: "Browser acceptance property — Agent-supplied test address" });

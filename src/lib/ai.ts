@@ -1,9 +1,5 @@
 import type { AgentProfile, Deal, Lead, Property, RentalUnit } from "@/data/seed";
-import {
-  isRsfCorridor,
-  RSF_MARKET_META,
-  searchKnowledge,
-} from "@/data/rsf-knowledge";
+import { isRsfCorridor, RSF_MARKET_META, searchKnowledge } from "@/data/rsf-knowledge";
 import {
   formatRetrievedKnowledge,
   parseRememberCommand,
@@ -53,11 +49,15 @@ function matchProperties(query: string, properties: Property[]): Property[] {
   return properties
     .map((p) => {
       let score = 0;
-      const hay = `${p.title} ${p.address} ${p.neighborhood} ${p.city} ${p.type} ${p.features.join(" ")} ${p.description}`.toLowerCase();
+      const hay =
+        `${p.title} ${p.address} ${p.neighborhood} ${p.city} ${p.type} ${p.features.join(" ")} ${p.description}`.toLowerCase();
       for (const t of tokens) {
         if (hay.includes(t)) score += 8;
       }
-      if (q.includes("luxury") && (p.price >= 1000000 || p.features.some((f) => /view|pool|concierge/i.test(f))))
+      if (
+        q.includes("luxury") &&
+        (p.price >= 1000000 || p.features.some((f) => /view|pool|concierge/i.test(f)))
+      )
         score += 20;
       if (q.includes("investment") || q.includes("rental") || q.includes("roi")) {
         if (p.type === "multi" || p.capRate) score += 25;
@@ -86,7 +86,10 @@ function matchProperties(query: string, properties: Property[]): Property[] {
     .map((x) => x.p);
 }
 
-export function searchProperties(query: string, properties: Property[]): {
+export function searchProperties(
+  query: string,
+  properties: Property[],
+): {
   results: Property[];
   interpretation: string;
 } {
@@ -214,19 +217,11 @@ Best regards${profile?.name ? `,\n${profile.name}` : ""}`,
   };
 }
 
-export function generateClientBrief(
-  lead: Lead,
-  properties: Property[],
-  deals: Deal[],
-): string {
+export function generateClientBrief(lead: Lead, properties: Property[], deals: Deal[]): string {
   const matches = properties
     .filter((p) => {
-      if (p.price < lead.budgetMin * 0.85 || p.price > lead.budgetMax * 1.1)
-        return false;
-      if (
-        lead.location &&
-        p.neighborhood.toLowerCase().includes(lead.location.toLowerCase())
-      )
+      if (p.price < lead.budgetMin * 0.85 || p.price > lead.budgetMax * 1.1) return false;
+      if (lead.location && p.neighborhood.toLowerCase().includes(lead.location.toLowerCase()))
         return true;
       return p.status === "active";
     })
@@ -361,89 +356,54 @@ export function generateBuyerAgreementOutline(): {
   };
 }
 
-export function generateCmaReport(
-  subject: Property,
-  inventory: Property[],
-): {
-  headline: string;
-  subjectSummary: string;
-  suggestedList: null;
-  comps: {
-    title: string;
-    address: string;
-    price: number;
-    sqft: number;
-    ppsf: number;
-    beds: number;
-    baths: number;
-    dom: number;
-    adj: string;
-  }[];
-  strategy: string[];
-  buyerValueScript: string;
-} {
+/** Bounded comparison of supplied inventory, never a valuation or verified sale comp. */
+export function generateCmaReport(subject: Property, inventory: Property[]) {
+  const city = subject.city.trim().toLowerCase();
+  const hasSubjectArea = Number.isFinite(subject.sqft) && subject.sqft > 0;
   const comps = inventory
-    .filter((p) => p.id !== subject.id)
-    .map((p) => {
-      let score = 0;
-      if (p.neighborhood === subject.neighborhood) score += 40;
-      if (p.type === subject.type) score += 25;
-      const sizeDiff = Math.abs(p.sqft - subject.sqft) / Math.max(subject.sqft, 1);
-      score += Math.max(0, 25 - sizeDiff * 40);
-      if (Math.abs(p.price - subject.price) / subject.price < 0.25) score += 10;
-      return { p, score };
-    })
-    .sort((a, b) => b.score - a.score)
+    .filter(
+      (property) =>
+        property.id !== subject.id &&
+        city &&
+        property.city.trim().toLowerCase() === city &&
+        property.type === subject.type &&
+        Number.isFinite(property.price) &&
+        property.price > 0 &&
+        Number.isFinite(property.sqft) &&
+        property.sqft > 0 &&
+        Number.isFinite(property.price / property.sqft),
+    )
+    .sort((a, b) =>
+      hasSubjectArea ? Math.abs(a.sqft - subject.sqft) - Math.abs(b.sqft - subject.sqft) : 0,
+    )
     .slice(0, 5)
-    .map(({ p }) => {
-      const ppsf = Math.round(p.price / p.sqft);
-      const sqftDelta = p.sqft - subject.sqft;
-      const locationNote =
-        p.neighborhood === subject.neighborhood
-          ? "same saved neighborhood"
-          : "different saved neighborhood";
-      const adj = `${sqftDelta >= 0 ? "+" : ""}${sqftDelta.toLocaleString()} sqft vs subject · ${locationNote} · asking record only`;
-      return {
-        title: p.title,
-        address: p.address,
-        price: p.price,
-        sqft: p.sqft,
-        ppsf,
-        beds: p.beds,
-        baths: p.baths,
-        dom: p.daysOnMarket,
-        adj,
-      };
-    });
-
-  const rsf = /rancho|fairbanks|bridges|covenant|del mar/i.test(
-    `${subject.neighborhood} ${subject.city}`,
-  );
-
+    .map((property) => ({
+      title: property.title,
+      address: property.address,
+      price: property.price,
+      sqft: property.sqft,
+      ppsf: Math.round(property.price / property.sqft),
+      beds: property.beds,
+      baths: property.baths,
+      dom: property.daysOnMarket,
+      status: property.status,
+      adj: "Condition, concessions and transaction terms not verified",
+    }));
   return {
-    headline: `Comparison planning · ${subject.title}`,
-    subjectSummary: `${subject.address}, ${subject.neighborhood} · ${subject.beds}bd/${subject.baths}ba · ${subject.sqft.toLocaleString()} sqft · ${subject.daysOnMarket} DOM${subject.mlsNumber ? ` · MLS# ${subject.mlsNumber}` : ""}`,
-    // Browser-saved inventory does not contain verified ClosePrice/CloseDate
-    // provenance, so this local helper must never produce a price conclusion.
+    headline: "Listing comparison notes · " + subject.title,
+    subjectSummary: [subject.address, subject.city].filter(Boolean).join(", "),
+    // Preserve the explicit abstention contract: saved inventory is not an
+    // authorized, broker-reviewed comparable-sale matcher.
     suggestedList: null,
     comps,
-    strategy: rsf
-      ? [
-          "Match association type before sqft (Covenant vs Bridges vs non-assoc).",
-          "Verify source, status, close date, and close price before treating any record as a comp.",
-          "Lead listing media with lot, trail/golf, and guest house if present.",
-          "Use private-tour culture over high-traffic open houses when privacy is the brand.",
-          "Use the weekly seller brief for feedback themes; pricing requires broker-reviewed sold data.",
-        ]
-      : [
-          "Review authorized Closed/Sold records with a broker before setting or changing price.",
-          "Refresh media if DOM > 21 with no offer path.",
-          "Pre-list inspection summary reduces renegotiation risk.",
-          "Launch social + email to sphere same day as MLS live.",
-        ],
-    buyerValueScript: rsf
-      ? `In the ${RSF_MARKET_META.primary} corridor, association, lot usability, and guest-house quality matter. My role is to verify the data, prepare a broker-reviewed comparison, and deliver a defined marketing and negotiation plan.`
-      : `Post-NAR, buyers need clarity: I earn my fee by filtering inventory, verifying the source of comparable sales, negotiating repairs and credits, and managing timelines and contingencies.`,
+    strategy: [
+      `These are saved records in the same city and property type${hasSubjectArea ? ", ordered by size proximity" : "; subject area is unavailable, so source order is retained"}; they are not verified comparable sales.`,
+      "Verify sale versus lease, currency, price basis, status and source date before interpreting any recorded price or price per square foot.",
+      "Review authorized Closed/Sold records with the responsible broker and verify closed price/date, condition, concessions and representation details before recommending a list price.",
+      "Review each candidate's neighborhood, lot, tenure and property condition. Price differences alone do not establish superior or inferior condition.",
+    ],
+    buyerValueScript:
+      "These records are a starting point for a discussion. I will confirm the source details and transaction terms with the responsible broker before using them to support pricing advice.",
   };
 }
 
@@ -517,9 +477,7 @@ export function answerAssistant(
   },
 ): string {
   const q = question.toLowerCase();
-  const activeLeads = ctx.leads.filter(
-    (l) => !["closed_won", "closed_lost"].includes(l.status),
-  );
+  const activeLeads = ctx.leads.filter((l) => !["closed_won", "closed_lost"].includes(l.status));
   const hot = activeLeads.filter((l) => l.heat === "hot");
   const pipelineValue = ctx.deals.reduce((s, d) => s + d.value, 0);
   const activeListings = ctx.properties.filter((p) => p.status === "active");
@@ -543,10 +501,7 @@ export function answerAssistant(
   }
 
   const kbHits = retrieveMarketKnowledge(question, ctx.profile, ctx.memory);
-  const knowledgeBlock =
-    rsf || kbHits.length
-      ? formatRetrievedKnowledge(kbHits.slice(0, 2))
-      : "";
+  const knowledgeBlock = rsf || kbHits.length ? formatRetrievedKnowledge(kbHits.slice(0, 2)) : "";
 
   // Calendar / appointments / reminders
   if (
@@ -569,9 +524,7 @@ export function answerAssistant(
           `• ${formatApptWhen(a.start)} — ${a.title} (${APPOINTMENT_KIND_LABEL[a.kind]}${a.status === "needs_prep" ? ", needs prep" : ""})`,
       )
       .join("\n");
-    const remLines = rems
-      .map((r) => `• [${formatApptWhen(r.when)}] ${r.reminder}`)
-      .join("\n");
+    const remLines = rems.map((r) => `• [${formatApptWhen(r.when)}] ${r.reminder}`).join("\n");
     return withPersonalization(
       `Calendar brief${first ? ` for ${first}` : ""}\n\nUpcoming appointments\n${lines}\n\nAI reminders picked up\n${remLines || "• No open prep items"}\n\nOpen Calendar Hub to mark done or re-sync providers.`,
       { profile: ctx.profile, memory: ctx.memory },
@@ -616,12 +569,7 @@ export function answerAssistant(
     );
   }
 
-  if (
-    /knowledge|rancho|rsf|covenant|fairbanks|bridges|what do you know about/.test(
-      q,
-    ) &&
-    rsf
-  ) {
+  if (/knowledge|rancho|rsf|covenant|fairbanks|bridges|what do you know about/.test(q) && rsf) {
     const hits = searchKnowledge(question, 3);
     const body =
       hits.length > 0
@@ -641,10 +589,9 @@ export function answerAssistant(
 
   if (/respond|speed|first.?touch|instant|sms|text back/.test(q)) {
     const newest = [...activeLeads].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )[0];
-    const body = `Speed-to-lead is the highest-ROI AI use case in 2025–26 surveys (Inman: avg response ~15 hours; sub-5-min wins).\n\nOpen Instant Response to draft SMS/email for ${newest?.name ?? "your newest lead"} in one click${
+    const body = `A prompt, useful reply gives a new inquiry a clear next step.\n\nOpen Instant Response to draft SMS/email for ${newest?.name ?? "your newest lead"} in one click${
       newest ? ` (${newest.location})` : ""
     }.`;
     return withPersonalization(body, {
@@ -683,9 +630,7 @@ export function answerAssistant(
     const listing = activeListings[0];
     const voice = ctx.memory?.preferredVoice;
     const body = `Social Content Agent builds full multi-platform packs.${
-      listing
-        ? ` Suggested: Just Listed for ${listing.title} in ${listing.neighborhood}.`
-        : ""
+      listing ? ` Suggested: Just Listed for ${listing.title} in ${listing.neighborhood}.` : ""
     }${voice ? ` Voice: ${voice}.` : ""}`;
     return withPersonalization(body, {
       profile: ctx.profile,
@@ -708,11 +653,7 @@ export function answerAssistant(
     );
   }
 
-  if (
-    /propert|listing|home|condo|house|search|find|luxury|investment|adu|estate|acre/.test(
-      q,
-    )
-  ) {
+  if (/propert|listing|home|condo|house|search|find|luxury|investment|adu|estate|acre/.test(q)) {
     const results = matchProperties(question, ctx.properties).slice(0, 4);
     if (!results.length) {
       return withPersonalization(
@@ -735,8 +676,7 @@ export function answerAssistant(
 
   if (/market|trend|avm|valu|forecast|price|ppsf|comp|inventory/.test(q)) {
     const avgPpsf = Math.round(
-      activeListings.reduce((s, p) => s + p.pricePerSqft, 0) /
-        Math.max(1, activeListings.length),
+      activeListings.reduce((s, p) => s + p.pricePerSqft, 0) / Math.max(1, activeListings.length),
     );
     const body = `Market brief${area ? ` · ${area}` : ""}\n\nActive: ${activeListings.length} · PPSF ~${formatCurrency(avgPpsf)} · pipeline ${formatCurrency(pipelineValue, true)}\n\n${
       rsf ? RSF_MARKET_META.priceContext2026 : "Use Market or CMA Studio for client packages."
@@ -774,9 +714,7 @@ export function answerAssistant(
     const upcoming = appointmentsNeedingAttention(appointments, 24);
     return withPersonalization(
       `Command Center ranks speed-to-lead, follow-ups, deal risk, content, CMA, compliance${
-        upcoming.length
-          ? `, plus ${upcoming.length} calendar item(s) in the next 24h`
-          : ""
+        upcoming.length ? `, plus ${upcoming.length} calendar item(s) in the next 24h` : ""
       }. Open the home Action Desk for full packs.`,
       { profile: ctx.profile, memory: ctx.memory },
     );

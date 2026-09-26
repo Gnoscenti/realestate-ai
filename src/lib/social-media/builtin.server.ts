@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { hasBlockingFinding, reviewCaption } from "@/lib/social-desk/fair-housing";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { builtinImageSchema } from "./managed-types";
@@ -24,6 +25,11 @@ export async function generateBuiltinImage(
     )
   )[0];
   if (!listing) throw new Error("Choose an uploaded photo from this listing");
+  // Match the two exact, bounded strings renderBuiltinImage puts on the image.
+  // This reviews known generated labels only; it does not inspect photo pixels.
+  const overlayText = [listing.title.slice(0, 40), listing.address.slice(0, 65)].join("\n");
+  if (hasBlockingFinding(reviewCaption(overlayText)))
+    throw new Error("Resolve the blocking fair-housing findings in the image title or address before rendering");
   const intent = {
     listingId: input.listingId,
     kind: "image" as const,
@@ -90,6 +96,7 @@ export async function generateBuiltinImage(
       width: 1080,
       height: 1080,
       originalHash: imageHash(source.bytes),
+      overlayText,
     });
     if (
       !(await repository.completeSocialMediaImageJob(sql, {

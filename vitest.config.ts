@@ -4,6 +4,7 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
+    maxWorkers: 2,
     include: ["tests/unit/**/*.{test,spec}.ts"],
     exclude: ["node_modules", "dist", ".vercel", "tests/e2e/**"],
     testTimeout: 15_000,

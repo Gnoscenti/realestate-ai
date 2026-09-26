@@ -69,7 +69,7 @@ const RECORD_LIST_LIMIT = 500;
 function safeText(value: string | undefined, max: number): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
-  if (trimmed.length > max || /[\u0000-\u001f]/.test(trimmed)) {
+  if (trimmed.length > max || [...trimmed].some((char) => char.charCodeAt(0) < 32)) {
     throw new Error("Invalid source metadata");
   }
   return trimmed;
