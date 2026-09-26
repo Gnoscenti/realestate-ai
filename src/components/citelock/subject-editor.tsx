@@ -2,16 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { getMyVisibilitySubjects, saveMyVisibilitySubject } from "@/lib/aieo/visibility/api";
 import { subjectInputSchema, type SavedSubject, type SubjectInput } from "@/lib/aieo/visibility/subjects";
 import { type EntityKind } from "@/lib/aieo/visibility/expertise";
 import { US_JURISDICTIONS } from "@/lib/aieo/scan-types";
 
-type Draft = { name: string; website: string; area: string; license: string; jurisdiction: SubjectInput["jurisdiction"] };
-const blank = (): Draft => ({ name: "", website: "", area: "", license: "", jurisdiction: "US-CA" });
+type Draft = { name: string; website: string; area: string; license: string; jurisdiction: SubjectInput["jurisdiction"]; aliases: string; sourcePolicy: string; sourceUrls: string };
+const blank = (): Draft => ({ name: "", website: "", area: "", license: "", jurisdiction: "US-CA", aliases: "", sourcePolicy: "public_web", sourceUrls: "" });
 function fromInput(input: SubjectInput): Draft {
-  return { name: input.agentName, website: input.website, area: input.area, license: input.license || "", jurisdiction: input.jurisdiction };
+  return { name: input.agentName, website: input.website, area: input.area, license: input.license || "", jurisdiction: input.jurisdiction, aliases: (input.nameAliases || []).join(", "), sourcePolicy: input.sourcePolicy || "public_web", sourceUrls: (input.sourceUrls || []).join("\n") };
 }
 export function SubjectEditor({ initialAgent, disabled, onChange }: {
   initialAgent: { name: string; website: string; areaOfOperations: string; license?: string } | null;
@@ -56,6 +57,8 @@ export function SubjectEditor({ initialAgent, disabled, onChange }: {
   const parsed = useMemo(() => subjectInputSchema.safeParse({
     agentName: draft.name, website: draft.website, area: draft.area,
     jurisdiction: draft.jurisdiction, entityKind: kind, license: kind === "agent" && draft.license ? draft.license : undefined,
+    ...(draft.aliases.trim() ? { nameAliases: draft.aliases.split(",").map(name => name.trim()).filter(Boolean) } : {}),
+    ...(draft.sourcePolicy === "non_listing" ? { sourcePolicy: "non_listing", sourceUrls: draft.sourceUrls.split(/\r?\n/).map(url => url.trim()).filter(Boolean) } : {}),
   }), [draft, kind]);
   const unchanged = Boolean(current && parsed.success && JSON.stringify(parsed.data) === JSON.stringify(current.input));
   const selected = !loading && !error && unchanged ? current?.input ?? null : null;
@@ -103,9 +106,16 @@ export function SubjectEditor({ initialAgent, disabled, onChange }: {
         {US_JURISDICTIONS.map(code => <option key={code} value={code}>{code.slice(3)}</option>)}
       </select></div>
       {kind === "agent" && <div><Label htmlFor="citelock-agent-license">License number (optional)</Label><Input id="citelock-agent-license" value={draft.license} disabled={locked} onChange={e => change("license",e.target.value)} className="mt-1.5" /></div>}
+      <div><Label htmlFor="citelock-subject-aliases">Other names used by this subject (optional)</Label><Input id="citelock-subject-aliases" value={draft.aliases} disabled={locked} onChange={e => change("aliases", e.target.value)} className="mt-1.5" placeholder="Separate names with commas" />
+        <p className="mt-1 text-xs text-[var(--color-fg-muted)]">Declare only names for this same identity. Recognition still needs a matching source, brokerage or license.</p></div>
+      <div><Label htmlFor="citelock-source-policy">Recognition sources</Label><select id="citelock-source-policy" value={draft.sourcePolicy} disabled={locked} onChange={e => change("sourcePolicy", e.target.value)} className="mt-1.5 w-full rounded-md border bg-background p-2 text-sm">
+        <option value="public_web">Public web sources</option><option value="non_listing">Professional sources — exclude MLS and property listings</option>
+      </select></div>
+      {draft.sourcePolicy === "non_listing" && <div className="sm:col-span-2"><Label htmlFor="citelock-source-urls">Additional approved non-property pages (optional)</Label><Textarea id="citelock-source-urls" value={draft.sourceUrls} disabled={locked} onChange={e => change("sourceUrls", e.target.value)} className="mt-1.5" placeholder="One exact HTTPS page URL per line" />
+        <p className="mt-1 text-xs text-[var(--color-fg-muted)]">Professional profiles, licensing records, rankings, biographies and editorial articles are allowed. Add exact pages such as an established personal homepage. Property listings and uncertain sources are excluded. Source approval does not prove a page belongs to this identity.</p></div>}
     </div>
     {kind !== "agent" && <p className="text-xs text-[var(--color-fg-muted)]">Use the organization's own identity. Individual evidence and license details are not transferred.</p>}
-    {!unchanged && !parsed.success && <p className="text-xs text-[var(--color-fg-muted)]">Enter an exact name, valid HTTPS website and market area. Optional licenses must be 6–12 digits.</p>}
+    {!unchanged && !parsed.success && <p className="text-xs text-[var(--color-fg-muted)]">{parsed.error.issues[0]?.message || "Enter an exact name, valid HTTPS website and market area."}</p>}
     <div className="flex flex-wrap items-center gap-2">
       {showFields && <Button variant="outline" disabled={locked || !parsed.success || unchanged} onClick={save}>
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save subject

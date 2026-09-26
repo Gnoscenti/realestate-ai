@@ -11,6 +11,7 @@
  * separate, explicitly labeled extraction step (see providers.server.ts).
  */
 import type { VisibilitySubject } from "./basket";
+import { permitsRecognitionSource, type SourcePolicyEvaluation } from "./source-policy";
 
 export type GroundedCitation = {
   url: string;
@@ -26,6 +27,7 @@ export type SubjectEvaluation = {
   recommended: boolean;
   negativeMention: boolean;
   ambiguousIdentity: boolean;
+  sourcePolicy?: SourcePolicyEvaluation;
 };
 
 export const DIRECTORY_HOSTS: Record<string, string> = {
@@ -112,6 +114,14 @@ export function nameAppears(text: string, name: string): boolean {
   return wanted.length >= 3 && (" " + normalizeText(text) + " ").includes(" " + wanted + " ");
 }
 
+/** Aliases must be explicitly supplied; canonical substrings are never inferred. */
+export function subjectNameAppears(text: string, subject: VisibilitySubject): boolean {
+  return [subject.name, ...(subject.nameAliases || [])].some(name => nameAppears(text, name));
+}
+export function isSubjectName(name: string, subject: VisibilitySubject): boolean {
+  return [subject.name, ...(subject.nameAliases || [])].some(candidate => normalizeText(candidate) === normalizeText(name));
+}
+
 /** Canonical public URL: retain case-sensitive paths and identity-bearing query parameters. */
 function canonicalUrl(raw: string): string | null {
   try {
@@ -149,7 +159,7 @@ export function subjectFootprint(subject: VisibilitySubject): { hosts: string[];
 /** Provider citations to an exact profile count; another profile or query identity does not. */
 export function citationBelongsToSubject(citation: GroundedCitation, subject: VisibilitySubject): boolean {
   const normalized = canonicalUrl(citation.url);
-  if (!normalized) return false;
+  if (!normalized || !permitsRecognitionSource(citation.url, subject)) return false;
   const footprint = subjectFootprint(subject);
   if (footprint.hosts.some(host => normalizeHost(new URL(normalized).hostname) === host)) return true;
   return footprint.profileUrls.includes(normalized);
@@ -160,12 +170,12 @@ export function evaluateSubject(
   citations: GroundedCitation[],
   subject: VisibilitySubject,
 ): SubjectEvaluation {
-  const mentioned = nameAppears(answer, subject.name);
+  const mentioned = subjectNameAppears(answer, subject);
   const citedUrls = citations
     .filter((citation) => citationBelongsToSubject(citation, subject))
     .map((citation) => citation.url);
   const cited = citedUrls.length > 0;
-  const sentences = answer.replace(/\*\*/g, "").split(/(?<=[.!?])\s+|\n+/).filter(s => nameAppears(s,subject.name));
+  const sentences = answer.replace(/\*\*/g, "").split(/(?<=[.!?])\s+|\n+/).filter(s => subjectNameAppears(s,subject));
   const negativeMention = sentences.some(s =>
     /\b(?:do not|don't|cannot|can't|would not|wouldn't|not)\s+(?:personally\s+)?recommend\b|\b(?:avoid|unresponsive|disappoint\w*|poor service)\b/i.test(s));
   const anchored = sentences.some(s => {

@@ -72,6 +72,33 @@ const answer = (text: string, urls: string[]) => ({
 });
 
 describe("visibility batch lifecycle", () => {
+  it("persists explicit alias/policy settings and fails closed while retaining disallowed or missing grounding", async () => {
+    vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_CALL", "1");
+    const { userId, workspace } = await entitledWorkspace();
+    const input = { ...INPUT, nameAliases: ["Jordan R"], sourcePolicy: "non_listing" as const,
+      sourceUrls: ["https://jordanrivera.example/about"] };
+    const batch = await startVisibilityBatch(userId, workspace.id, input, { providers: [spec] });
+    expect(batch.subject).toMatchObject({ nameAliases: input.nameAliases, sourcePolicy: "non_listing", sourceUrls: input.sourceUrls });
+    expect(batch.basketVersion).toBe("v2-expertise-nonlisting-v1");
+    const text = "Consider Jordan R at Pacific Coast Realty.";
+    const rejected = "https://jordanrivera.example/properties/123";
+    const ask = vi.fn().mockResolvedValueOnce(answer(text, [rejected])).mockResolvedValueOnce(answer(text, []));
+    const extract = vi.fn();
+    await continueVisibilityBatch(userId, workspace.id, batch.id, { providers: [spec], ask, extract });
+    await continueVisibilityBatch(userId, workspace.id, batch.id, { providers: [spec], ask, extract });
+    const detail = await getVisibilityRuns(userId, workspace.id, batch.id);
+    const failed = detail.runs.filter(run => run.status === "failed");
+    expect(failed).toHaveLength(2);
+    expect(failed.every(run => run.errorCode === "source_policy_rejected" && run.answerText === text &&
+      run.methodVersion === "expertise-v2.2" && !run.mentioned && !run.cited && !run.recommended)).toBe(true);
+    expect(failed.find(run => run.citations.length)?.citations[0]?.url).toBe(rejected);
+    expect(failed.map(run => run.evaluation?.sourcePolicy?.rejectionReason).sort()).toEqual(["excluded_sources", "missing_grounding"]);
+    expect(detail.report.completed).toBe(0);
+    expect(detail.report.discovery.percent).toBeNull();
+    expect(detail.report.costUsd).toBeGreaterThan(0);
+    expect(extract).not.toHaveBeenCalled();
+  });
+
   it("refuses without entitlement", async () => {
     const userId = `vis-noent-${randomUUID()}`;
     const workspace = await ensurePersonalWorkspace(userId);

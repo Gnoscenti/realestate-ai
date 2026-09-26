@@ -4,10 +4,12 @@
  * counted and shown, never folded into a zero.
  */
 import { clusterById, type VisibilitySubject } from "./basket";
+import { evaluateSourcePolicy } from "./source-policy";
 import {
   citationBelongsToSubject,
   toCitation,
   evaluateSubject,
+  isSubjectName,
   type SubjectEvaluation,
   directoryLabel,
   hostMatches,
@@ -17,7 +19,7 @@ import {
 import { summarizeExpertise, TOPIC_PATTERNS, type ExpertiseEvidence, type PageObservation } from "./expertise";
 import type { ExtractedEntity, GroundedSource } from "./providers.server";
 
-export const REPORT_ALGORITHM_VERSION = "visibility-2.2" as const;
+export const REPORT_ALGORITHM_VERSION = "visibility-2.3" as const;
 
 export type VisibilityRun = {
   id: string;
@@ -130,9 +132,7 @@ function entityKey(entity: ExtractedEntity): string {
 }
 
 function isSubjectEntity(entity: ExtractedEntity, subject: VisibilitySubject): boolean {
-  const a = entity.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const b = subject.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  return a === b && entity.kind === (subject.entityKind || "agent");
+  return isSubjectName(entity.name, subject) && entity.kind === (subject.entityKind || "agent");
 }
 
 export function buildVisibilityReport(
@@ -143,10 +143,13 @@ export function buildVisibilityReport(
   // One persisted execution key is one observation, even if a caller supplies duplicates.
   runs = [...new Map(runs.map(run => [run.batchId + ":" + run.promptId + ":" + run.provider, run])).values()];
   runs = runs.map(run => {
-    const evaluation = run.evaluation || (run.answerText ? evaluateSubject(run.answerText,run.citations,subject) : undefined);
-    return {...run, evaluation, recommended: evaluation
-      ? !evaluation.ambiguousIdentity && !evaluation.negativeMention && Boolean(evaluation.recommended || (["expertise-v2", "expertise-v2.1"].includes(run.methodVersion || "") && run.recommended))
-      : ["expertise-v2", "expertise-v2.1"].includes(run.methodVersion || "") && Boolean(run.recommended)};
+    const sourcePolicy = evaluateSourcePolicy(run.citations, run.sources || [], subject);
+    const policyRejected = sourcePolicy?.accepted === false;
+    const storedEvaluation = run.evaluation || (run.answerText ? evaluateSubject(run.answerText,run.citations,subject) : undefined);
+    const evaluation = storedEvaluation ? { ...storedEvaluation, ...(sourcePolicy ? { sourcePolicy } : {}) } : undefined;
+    return {...run, evaluation, ...(policyRejected && run.status === "ok" ? { status: "failed" as const, errorCode: "source_policy_rejected", mentioned: false, cited: false } : {}), recommended: !policyRejected && (evaluation
+      ? evaluation.sourcePolicy?.accepted !== false && !evaluation.ambiguousIdentity && !evaluation.negativeMention && Boolean(evaluation.recommended || (["expertise-v2", "expertise-v2.1", "expertise-v2.2"].includes(run.methodVersion || "") && run.recommended))
+      : ["expertise-v2", "expertise-v2.1", "expertise-v2.2"].includes(run.methodVersion || "") && Boolean(run.recommended))};
   });
   const completedRuns = runs.filter((run) => run.status === "ok");
   const failedRuns = runs.filter((run) => run.status === "failed");
@@ -334,6 +337,7 @@ export function buildVisibilityReport(
     "Review evidence is client-reported; selected sources may be biased, incomplete or contradictory. Missing evidence is unknown.",
     "Competitor names are model-extracted from answer text and labeled as such; subject mention/citation is deterministic.",
   ];
+  if (subject.sourcePolicy === "non_listing") limits.push("Non-listing source policy: MLS/property pages and unclassified grounding are rejected; raw citations and retrieved sources remain available in the observation. Allowed sources do not establish identity without a matching footprint or local license/brokerage anchor.");
   if (!opportunities.length) limits.push("No actionable opportunity yet: add permitted, entity-matched expertise, inspect a public page, and run the matching expertise questions. Contradictory or missing evidence requires review.");
   if (failedRuns.length) limits.push(`${failedRuns.length} run(s) failed and are excluded from every rate; their error codes are shown.`);
   if (unbrandedCount < 10) limits.push("Fewer than 10 completed unbranded runs: rates are descriptive, not statistically powered.");

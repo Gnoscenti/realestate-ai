@@ -134,9 +134,20 @@ async function createPgliteSql(): Promise<Sql> {
   // Embedded Postgres, imported on demand so it never loads on the Neon path.
   // Local disk persists across restarts; isolated tests explicitly use memory.
   globalRef.__pgliteInstance__ ??= (async () => {
+    const dataDir = process.env.VITEST || process.env.PGLITE_IN_MEMORY === "1"
+      ? undefined
+      : (process.env.PGLITE_DATA_DIR || ".local-data/pglite");
+    if (dataDir) {
+      // PGlite creates its data directory, but requires its ancestors to exist.
+      const [{ mkdir }, { dirname }] = await Promise.all([
+        import("node:fs/promises"),
+        import("node:path"),
+      ]);
+      await mkdir(dirname(dataDir), { recursive: true });
+    }
     const { PGlite } = await import("@electric-sql/pglite");
     const pg = new PGlite({
-      dataDir: process.env.VITEST || process.env.PGLITE_IN_MEMORY === "1" ? undefined : (process.env.PGLITE_DATA_DIR || ".local-data/pglite"),
+      dataDir,
       parsers: {
         [OID_INT8]: Number,
         [OID_DATE]: identity,

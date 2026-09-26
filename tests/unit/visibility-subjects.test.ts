@@ -12,6 +12,12 @@ async function setup() {
   return { userId, workspace };
 }
 describe("saved Citelock identities", () => {
+  it("round-trips declared aliases and exact approved source settings without a schema migration", async () => {
+    const { userId, workspace } = await setup();
+    const declared = { ...input, nameAliases: ["Jordan R"], sourcePolicy: "non_listing" as const, sourceUrls: ["https://jordan.example/"] };
+    await saveSubject(userId, workspace.id, declared, 0);
+    expect((await listSubjects(userId, workspace.id))[0]?.input).toEqual(declared);
+  });
   it("persists separate identities and rejects cross-workspace access or member edits", async () => {
     const { userId, workspace } = await setup();
     const agent = await saveSubject(userId, workspace.id, input, 0);

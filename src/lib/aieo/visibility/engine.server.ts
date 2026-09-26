@@ -16,10 +16,12 @@ import { requireEntitlement } from "@/lib/billing/entitlement.server";
 import { getLatestCiteLockScan } from "../repository.server";
 import { citeLockSubjectFingerprint } from "../scan.server";
 import type { CiteLockScanInput } from "../scan-types";
-import { BASKET_VERSION, buildVisibilityBasket, type VisibilitySubject } from "./basket";
+import { basketVersionForSubject, methodVersionForSubject, recognitionSettingsKey, buildVisibilityBasket, type VisibilitySubject } from "./basket";
+import type { SubjectInput } from "./subjects";
+import { evaluateSourcePolicy } from "./source-policy";
 import { listExpertise, listExpertisePages } from "./expertise.server";
 import { summarizeExpertise, type EntityKind } from "./expertise";
-import { evaluateSubject, nameAppears, hostOf, normalizeHost } from "./evaluate";
+import { evaluateSubject, isSubjectName, hostOf, normalizeHost } from "./evaluate";
 import {
   askGrounded,
   configuredProviders,
@@ -191,7 +193,7 @@ function toRun(row: RunRow): VisibilityRun {
 export async function resolveVisibilitySubject(
   userId: string,
   workspaceId: string,
-  input: CiteLockScanInput & { area: string; entityKind?: EntityKind },
+  input: CiteLockScanInput & { area: string; entityKind?: EntityKind } & Pick<SubjectInput, "nameAliases" | "sourcePolicy" | "sourceUrls">,
   sql: Sql,
 ): Promise<{ subject: VisibilitySubject; fingerprint: string }> {
   const scanFingerprint = citeLockSubjectFingerprint(input);
@@ -216,6 +218,8 @@ export async function resolveVisibilitySubject(
     fingerprint,
     subject: {
       name: input.agentName.trim(),
+      ...(input.nameAliases?.length ? { nameAliases: [...new Set(input.nameAliases.map(name => name.trim()))] } : {}),
+      ...(input.sourcePolicy ? { sourcePolicy: input.sourcePolicy, sourceUrls: input.sourceUrls || [] } : {}),
       entityKind: input.entityKind || "agent",
       expertise,
       expertiseTopics: themes.filter(t => t.status === "supported").map(t => t.topic),
@@ -234,7 +238,7 @@ export type StartBatchDependencies = { sql?: Sql; providers?: ProviderSpec[]; ba
 export async function startVisibilityBatch(
   userId: string,
   workspaceId: string,
-  input: CiteLockScanInput & { area: string; entityKind?: EntityKind },
+  input: CiteLockScanInput & { area: string; entityKind?: EntityKind } & Pick<SubjectInput, "nameAliases" | "sourcePolicy" | "sourceUrls">,
   dependencies: StartBatchDependencies = {},
 ): Promise<VisibilityBatch> {
   const sql = dependencies.sql || (await getSql());
@@ -257,13 +261,13 @@ export async function startVisibilityBatch(
 
   let { subject, fingerprint } = await resolveVisibilitySubject(userId, workspace.id, input, sql);
   if (/[\n\r{}<>]/.test(input.area) || input.area.length > 160 ||
-      input.area.toLowerCase().includes(input.agentName.toLowerCase()))
+      [input.agentName, ...(input.nameAliases || [])].some(name => input.area.toLowerCase().includes(name.toLowerCase())))
     throw new Error("Use only a geographic market area, without the subject name or instructions.");
   let prompts = buildVisibilityBasket(subject);
   if (dependencies.baselineBatchId) {
     const baseline = await getVisibilityRuns(userId,workspace.id,dependencies.baselineBatchId,sql);
-    if (baseline.batch.basketVersion !== BASKET_VERSION || baseline.batch.status==="running" ||
-        baseline.runs.some(run => run.methodVersion !== "expertise-v2.1" || run.surface !== providerSurface(run.provider)))
+    if (baseline.batch.basketVersion !== basketVersionForSubject(baseline.batch.subject) || baseline.batch.status==="running" ||
+        baseline.runs.some(run => run.methodVersion !== methodVersionForSubject(baseline.batch.subject) || run.surface !== providerSurface(run.provider)))
       throw new Error("Start a new baseline for this method, or finish the existing batch first.");
     subject=baseline.batch.subject; fingerprint=baseline.batch.subjectFingerprint;
     prompts=[...new Map(baseline.runs.map(run=>[run.promptId,{
@@ -293,7 +297,7 @@ export async function startVisibilityBatch(
       workspace.id,
       userId,
       fingerprint,
-      BASKET_VERSION,
+      basketVersionForSubject(subject),
       JSON.stringify(subject),
       JSON.stringify(providers.map((spec) => spec.provider)),
       planned,
@@ -305,7 +309,7 @@ export async function startVisibilityBatch(
         `insert into citelock_visibility_runs (
            id, workspace_id, batch_id, subject_fingerprint, cluster_id, prompt_id,
            prompt, branded, provider, requested_model, method_version, surface
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'expertise-v2.1',$11)`,
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           randomUUID(),
           workspace.id,
@@ -317,6 +321,7 @@ export async function startVisibilityBatch(
           prompt.branded,
           spec.provider,
           spec.model,
+          methodVersionForSubject(subject),
           providerSurface(spec.provider),
         ],
       );
@@ -368,11 +373,13 @@ async function executeRun(
     );
     return;
   }
-  const evaluation = evaluateSubject(answer.text, answer.citations, subject);
+  const sourcePolicy = evaluateSourcePolicy(answer.citations, answer.sources || [], subject);
+  const policyRejected = sourcePolicy?.accepted === false;
+  const evaluation = { ...evaluateSubject(answer.text, answer.citations, subject), ...(sourcePolicy ? { sourcePolicy } : {}) };
   let entities: ExtractedEntity[] = [];
   let extractionModel: string | null = null;
   let ticks = answer.costUsdTicks || 0;
-  if (!run.branded) {
+  if (!run.branded && !policyRejected) {
     try {
       const extracted = await extract(spec, answer.text);
       entities = extracted.entities;
@@ -384,13 +391,13 @@ async function executeRun(
   }
   // Conservative classification: no favorable fallback when extraction fails.
   // An extracted name must still have identity support and no local negative text.
-  const subjectEntity = entities.find(entity => nameAppears(entity.name, subject.name) &&
+  const subjectEntity = entities.find(entity => isSubjectName(entity.name, subject) &&
     entity.kind === (subject.entityKind || "agent"));
-  const recommended = !evaluation.negativeMention && !evaluation.ambiguousIdentity &&
+  const recommended = !policyRejected && !evaluation.negativeMention && !evaluation.ambiguousIdentity &&
     (evaluation.recommended || Boolean(subjectEntity?.recommended));
   await sql.query(
     `update citelock_visibility_runs
-        set status = 'ok', error_code = null, lease_until = null,
+        set status = $16, error_code = $17, lease_until = null,
             returned_model = $2, answer_text = $3, citations = $4::jsonb, search_calls = $5,
             mentioned = $6, cited = $7, recommended = $8, entities = $9::jsonb,
             extraction_model = $10, usage = $11::jsonb, cost_usd_ticks = $12,
@@ -402,8 +409,8 @@ async function executeRun(
       answer.text,
       JSON.stringify(answer.citations),
       answer.searchCalls ?? null,
-      evaluation.mentioned,
-      evaluation.cited,
+      !policyRejected && evaluation.mentioned,
+      !policyRejected && evaluation.cited,
       recommended,
       JSON.stringify(entities),
       extractionModel,
@@ -412,6 +419,8 @@ async function executeRun(
       Date.now() - started,
       JSON.stringify(evaluation),
       JSON.stringify(answer.sources || []),
+      policyRejected ? "failed" : "ok",
+      policyRejected ? "source_policy_rejected" : null,
     ],
   );
 }
@@ -574,7 +583,7 @@ export async function visibilityTrend(userId:string,workspaceId:string,fingerpri
     for(const raw of rows) {
       const run=toRun(raw);
       const config=[fingerprint,batch.basketVersion,batch.subject.area,batch.subject.entityKind || "agent",run.provider,
-        run.requestedModel,run.returnedModel || "unavailable",run.prompt,run.surface,run.methodVersion,run.extractionModel];
+        run.requestedModel,run.returnedModel || "unavailable",run.prompt,run.surface,run.methodVersion,run.extractionModel,recognitionSettingsKey(batch.subject)];
       const key=createHash("sha256").update(JSON.stringify(config)).digest("hex");
       const prior=series.get(key);
       const comparable=prior && prior.startedAt.slice(0,10)!==batch.startedAt.slice(0,10) && prior.completed && run.status==="ok";
@@ -582,7 +591,7 @@ export async function visibilityTrend(userId:string,workspaceId:string,fingerpri
         batchId:batch.id,startedAt:batch.startedAt,clusterId:run.clusterId,provider:run.provider,
         model:run.returnedModel || run.requestedModel,prompt:run.prompt,surface:run.surface || "api_web_grounded",
         method:run.methodVersion || "legacy-v1",seriesId:key,
-        mentioned:Number(run.mentioned || false),recommended:Number(["expertise-v2","expertise-v2.1"].includes(run.methodVersion || "") && run.recommended || false),
+        mentioned:Number(run.mentioned || false),recommended:Number(["expertise-v2","expertise-v2.1","expertise-v2.2"].includes(run.methodVersion || "") && run.recommended || false),
         cited:Number(run.cited || false),completed:Number(run.status==="ok"),failed:Number(run.status==="failed"),
         previousDate:comparable ? prior.startedAt : null,
         change:comparable ? "Comparable observations; descriptive only, not demonstrated lift." : "No comparable prior observation on a different date.",

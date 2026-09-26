@@ -1,4 +1,5 @@
 import { EXPERTISE_TOPICS, type EntityKind, type ExpertiseEvidence } from "./expertise";
+import { NON_LISTING_INSTRUCTION, type RecognitionSourceSettings } from "./source-policy";
 /**
  * Versioned client-intent prompt basket for CiteLock Visibility.
  *
@@ -26,9 +27,11 @@ export type VisibilityPrompt = {
   text: string;
 };
 
-export type VisibilitySubject = {
+export type VisibilitySubject = RecognitionSourceSettings & {
   /** Exact person name as verified/declared. */
   name: string;
+  /** Explicit alternate names declared for this identity, not inferred name fragments. */
+  nameAliases?: string[];
   entityKind?: EntityKind;
   expertise?: ExpertiseEvidence[];
   expertiseTopics?: (keyof typeof EXPERTISE_TOPICS)[];
@@ -45,6 +48,18 @@ export type VisibilitySubject = {
   /** Public profile URLs the subject controls (sameAs, directories). */
   profileUrls: string[];
 };
+
+export function basketVersionForSubject(subject: VisibilitySubject): string {
+  return subject.sourcePolicy === "non_listing" ? "v2-expertise-nonlisting-v1" : BASKET_VERSION;
+}
+export function methodVersionForSubject(subject: VisibilitySubject): string {
+  return subject.nameAliases?.length || subject.sourcePolicy ? "expertise-v2.2" : "expertise-v2.1";
+}
+/** Evaluation settings are part of comparison identity even when prompt text is unchanged. */
+export function recognitionSettingsKey(subject: VisibilitySubject): string {
+  return JSON.stringify({ nameAliases: [...new Set(subject.nameAliases || [])].sort(),
+    sourcePolicy: subject.sourcePolicy || null, sourceUrls: [...new Set(subject.sourceUrls || [])].sort() });
+}
 
 export const VISIBILITY_CLUSTERS: VisibilityCluster[] = [
   {
@@ -154,6 +169,9 @@ export function buildVisibilityBasket(subject: VisibilitySubject): VisibilityPro
       .replace(/\bagents or teams\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
       .replace(/\bagents\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
       .replace(/\bagent\b/g,subject.entityKind === "brokerage" ? "brokerage" : "team");
+  }
+  if (subject.sourcePolicy === "non_listing") {
+    for (const prompt of prompts) prompt.text += " " + NON_LISTING_INSTRUCTION;
   }
   return prompts;
 }

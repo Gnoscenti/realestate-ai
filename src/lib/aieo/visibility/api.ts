@@ -191,8 +191,9 @@ export const repeatMyVisibilityBatch = createServerFn({method:"POST"}).middlewar
     const workspace=await ensurePersonalWorkspace(context.userId);
     const {batch}=await getVisibilityRuns(context.userId,workspace.id,data.batchId);
     return startVisibilityBatch(context.userId,workspace.id,{
-      agentName:batch.subject.name,website:"https://"+batch.subject.websiteHost,
+      agentName:batch.subject.name,website:batch.subject.websiteUrl || "https://"+batch.subject.websiteHost,
       area:batch.subject.area,entityKind:batch.subject.entityKind || "agent",jurisdiction:"US-CA",
+      nameAliases:batch.subject.nameAliases,sourcePolicy:batch.subject.sourcePolicy,sourceUrls:batch.subject.sourceUrls,
     },{baselineBatchId:batch.id});
   });
 
