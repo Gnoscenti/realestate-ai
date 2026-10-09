@@ -1014,3 +1014,33 @@ Vercel automatic preview for the source commit: dpl_9UEN6JTSpD2LK2C64vX9G51SRrNU
 Production key metadata rechecked: XAI,OpenAI,Perplexity,Gemini,RapidAPI all Sensitive,targetProduction only; VITE_AUTH_ENABLED plain,targetProduction. Source values privately matched before making them non-readable. Current production database/auth/Stripe remain protected/non-readable. No production migration, merge, promotion or client-content publication.
 CLI link created ignored project metadata and appended VERCEL_OIDC_TOKEN to ignored.env.local; original6 keys remain present. Its redundant .gitignore additions were removed from our change; .env.example exception preserved.
 Delivery report and release instructions updated with observed push/build/smoke outcomes. A documentation-only follow-up commit records this audit trail; no further application changes after the tested source commit.
+
+
+## Session 8 — 2026-10-08: local database startup and persistence verification
+### Repo map and conventions
+Reopened the ledger and inspected the actual current tree. Clean branch local/2026-09-26-citelock-source-policy at 34c784b already includes recursive parent-directory creation in src/lib/db.ts and tests/unit/db-startup.test.ts. It also contains newer CiteLock source-policy work; preserve that work and do not reset to the older preservation branch. No remote branch with this name was returned by git ls-remote.
+### Audit findings
+The reported ENOENT arose because PGlite creates its own data directory but not missing ancestor directories. Existing commit 34c784b already awaits recursive ancestor creation only for disk-backed development. Current regression tests cover nested missing parents, same-process database close/reopen, explicit in-memory operation and the production PostgreSQL guard. Independent process restart and the real Vite command need current verification.
+### Citelock/GEO intent
+No product-direction change: preserve the source-backed manual free/paid guide and newer recognition source policy.
+### Blocker register
+No blocker to the local startup fix identified. Previously documented hosted deployment gates are separate from this development database failure.
+### Decisions made and why
+D-024: Verify and strengthen the fix already present rather than duplicate or revert newer code. Exercise real PGlite storage and separate-process restart, retain memory-only test isolation and fail-closed production behavior, then commit verification changes and push the current branch under the user's explicit authorization.
+### Verification results
+Initial inspection only: clean tree, startup patch present, port 8131 free, current branch has no remote copy. No fresh test outcome claimed yet.
+### Open items
+Run focused/full local checks; verify fresh Vite startup and persisted data after a process restart; record actual results, commit, push and confirm remote/local commit equality.
+
+### Session8 verification progress and additional environment finding
+Existing startup tests passed3/3. Added a fourth regression using two independent Node processes and real Vite SSR transformation: default .local-data/pglite starts from an absent parent, stores a row, shuts down, and returns the same row and complete migration list after restart. Focused4/4 PASS; TypeScript and ESLint0warnings PASS.
+Actual Vite command successfully initialized a new nested PGlite database, then failed on EACCES refreshing node_modules/.vite/deps, which is owned by root. Moving that child across directories was also denied; preserved its user-owned parent node_modules/.vite in ignored tmp/session8/vite-cache-backup instead, after resolved-path checks. Vite can now create a new cache under the user's account. No chmod/chown/sudo, application-data deletion, secret change or production configuration change. Actual-command retry pending.
+
+Actual Vite cold-start PASS: nested directory absent before launch, automatic DB initialization, HTTP200 /api/auth/get-session, regenerated deps owned by ttroj. Real account sign-up HTTP200. Stopped that process, restarted the same Vite command against the same isolated database, and signed in successfully with identical persisted user ID (HTTP200). Both task-owned servers stopped after verification; port8131 is released. Credentials and test data stay ignored.
+First full suite36files/256tests PASS. Tightened the fixture to keep its Vite cache outside .local-data and assert the database parent remains absent immediately before DB initialization, preventing test setup from masking the bug. Repeat suite concurrently with cold SSR/account initialization encountered existing15s timeouts; rerun under bounded concurrency is planned without changing assertions/timeouts.
+
+### Session8 final verification and delivery scope
+Final complete suite PASS:36files/256tests with node node_modules/vitest/vitest.mjs run --maxWorkers=1 (80.15s), including all4 startup regressions and the stricter missing-parent assertion. The earlier overlapping run had existing15s timeouts and a stalled worker and was terminated; it is not counted as a pass. No test timeout, assertion, production guard, quota or type was weakened. Production build PASS using node node_modules/vite/bin/vite.js build; TypeScript PASS with tsc --noEmit; final ESLint PASS with --max-warnings=0. Whitespace diff check PASS.
+Implemented startup correction was already in34c784b: await recursive creation of disk data-directory ancestors before constructing PGlite; explicit in-memory operation creates no disk directories and production still requires DATABASE_URL. This session adds separate-process/default-path regression coverage, README clarification and these audit results. The current branch's newer CiteLock work is preserved unchanged.
+Real workflow verified against the actual Vite CLI on8131: cold startup from absent nested parent, HTTP200 session endpoint, sign-up, complete process stop/restart and successful sign-in with identical stored account ID. Isolated fixtures use no production database; no provider request was needed. Development cache ownership repair is local/ignored; private accounts, env files, runtime evidence and generated build output are excluded from Git.
+No native PostgreSQL, full browser-suite or hosted production revalidation was repeated for this local PGlite bootstrap change. Earlier release evidence is historical. Scope is the current branch's verified startup fix and normal Git delivery; main and production promotion remain unchanged by this task.

@@ -1,4 +1,7 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
@@ -37,6 +40,33 @@ afterEach(async () => {
 });
 
 describe("PGlite startup", () => {
+  it("creates the default directory on first process start and retains data and migrations after restart", async () => {
+    const fixture = fileURLToPath(new URL("../fixtures/pglite-startup.mjs", import.meta.url));
+    const migrationsDir = fileURLToPath(new URL("../../migrations/", import.meta.url));
+    const migrationFiles = (await readdir(migrationsDir)).filter(name => name.endsWith(".sql")).sort();
+    await expect(stat(path.join(folder, ".local-data"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    const run = async (mode: "write" | "read") => {
+      const { stdout } = await promisify(execFile)(process.execPath, [fixture, mode], {
+        cwd: folder,
+        // Do not inherit DATABASE_URL, provider secrets, or Vitest's memory flag.
+        env: { PATH: process.env.PATH, NODE_ENV: "development" },
+        timeout: 30_000,
+      });
+      return JSON.parse(stdout);
+    };
+
+    expect(await run("write")).toEqual({
+      rows: [{ value: "persisted across processes" }],
+      migrations: migrationFiles,
+    });
+    expect((await stat(path.join(folder, ".local-data", "pglite"))).isDirectory()).toBe(true);
+    expect(await run("read")).toEqual({
+      rows: [{ value: "persisted across processes" }],
+      migrations: migrationFiles,
+    });
+  }, 60_000);
+
   it("boots with missing data-directory parents and preserves data on reopen", async () => {
     await expect(stat(path.join(folder, "missing"))).rejects.toMatchObject({ code: "ENOENT" });
     const first = await import("@/lib/db");

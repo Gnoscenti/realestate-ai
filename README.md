@@ -30,7 +30,7 @@ npm run build             # compile only; no deployment database writes
 npm run preview           # Nitro preview of the built Vercel artifact; configure DB/auth first
 ```
 
-Without `DATABASE_URL`, accounts and server data persist in ignored `.local-data/pglite`. Use one local server per data directory; `PGLITE_DATA_DIR` isolates another instance. `PGLITE_IN_MEMORY=1` is for disposable tests. Set a stable `BETTER_AUTH_SECRET` locally if sessions should survive server restarts.
+Without `DATABASE_URL`, accounts and server data persist in ignored `.local-data/pglite`. Startup creates any missing parent directories automatically, including for a custom `PGLITE_DATA_DIR`. Use one local server per data directory; `PGLITE_DATA_DIR` isolates another instance. `PGLITE_IN_MEMORY=1` is for disposable tests. Set a stable `BETTER_AUTH_SECRET` locally if sessions should survive server restarts.
 
 See `.env.example`. xAI and the default Perplexity Agent configuration have been verified live; other adapters retain explicit verification limitations. Failed observations are stored and excluded from successful-answer denominators.
 
