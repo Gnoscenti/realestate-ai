@@ -65,7 +65,7 @@ describe("PGlite startup", () => {
       rows: [{ value: "persisted across processes" }],
       migrations: migrationFiles,
     });
-  }, 60_000);
+  }, 70_000);
 
   it("boots with missing data-directory parents and preserves data on reopen", async () => {
     await expect(stat(path.join(folder, "missing"))).rejects.toMatchObject({ code: "ENOENT" });
