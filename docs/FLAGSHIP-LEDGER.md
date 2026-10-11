@@ -1157,3 +1157,29 @@ CI run 36247445361 on the previous head completed successfully on attempt 2. Its
 After actual Production migration and before any production smoke fixtures, a single read-only repeatable snapshot compared all 41 original application tables and 37 rows on their original columns against the backup fingerprints. All row counts and complete content digests matched, with zero mismatches. No production records were changed by this check. There are no additional migrations in this review follow-up.
 
 Final combined local gate for the review fixes: TypeScript, zero-warning whole-repository ESLint, production build and all 438 unit/integration tests across 56 files passed. Two existing overlay-negative fixtures initially stopped at the newly required entitlement; explicit test grants corrected their setup while retaining the original image rejection and provider-not-called assertions. No test assertion or production guard was weakened.
+
+
+## Session 9 — 2026-10-11: authorized main merge and production acceptance
+### Repo map and conventions
+Read this ledger and fetched current remote refs. Started clean at b2e6016. Current main is c4c9e18 (includes September26 integrated CiteLock/actual-photo Social Desk and the TanStack security fix). Remote feature branch advanced to3dfc017 and already contains main; fast-forwarded the current checkout to that combined history. PR41 is open against main. Its remaining diff is four startup-test/documentation paths; no application downgrade or schema delta relative to main.
+### Citelock/GEO intent
+Preserve both newer product histories, source-backed free/paid guides, permitted-source controls, real recognition evidence and actual-photo/manual Social Desk workflows. Production acceptance covers authenticated UI -> server -> durable data -> reloaded output, without publishing customer content or charging a payment.
+### Audit findings and blocker register
+Prior production is Vercel cloud-realtor deployment dpl_FVv2XdSUcp7j2KZfccPEjMmj7cUJ at main c4c9e18, READY. Current preview3dfc017 is READY. Prior September26 notes record23 production migrations and65 tables plus hosted acceptance; those are historical, not a substitute for current production tests. No new migration is present in the proposed merge.
+### Decisions made and why
+D-025: User explicitly authorizes merging into main, production deployment and fixing failures. Preserve current main ancestry and security versions, use PR41 and normal merge protections, verify the exact resulting production commit, and record production workflow evidence. Keep secrets/private browser state out of output and Git. Use an isolated synthetic acceptance account; no external social publication.
+### Verification results / open items
+Ancestry verified: origin/main is an ancestor of combined branch3dfc017. Fresh release gates, PR status/review, Vercel configuration, production startup/login/CiteLock/Social Desk verification and final delivery remain in progress.
+
+### Session9 release findings
+Fresh lockfile install reported four advisory-affected packages: sharp0.35.4 (GHSA-wq5f-xc86-pv6w, fixed0.35.5), Capacitor iOS8.5.0 (GHSA-rvm3-566m-v7fv, fixed8.5.1), brace-expansion1.1.18/5.0.9 (recursive/CPU DoS, fixed1.1.21/5.0.12), and source-map-js1.2.1 (GHSA-68fv-2mgg-jv7q, fixed1.2.2). Checked the published upstream advisories. Apply compatible targeted updates before release; retain main's patched TanStack versions.
+User reported missing makeSerovalPlugin during local SSR while dependencies were being synchronized. Current installed router-core1.171.34 explicitly exports it, and start-client-core1.170.34 imports it; npm tree shows a consistent single router-core version. An existing Vite process on8131 retained modules from before npm ci. Its command/cwd were verified, launch settings retained privately, and it was stopped for a fresh restart after the dependency updates. Do not hide the Vite overlay or weaken production auth.
+
+Dependency correction complete: sharp0.35.5, Capacitor iOS8.5.3, brace-expansion1.1.21/5.0.12 and source-map-js1.2.2 installed; npm audit reports0 vulnerabilities. The original patched TanStack dependency family is retained.
+Local SSR correction verified at the module and HTTP boundaries: makeSerovalPlugin resolves as a function from the installed router-core SSR client entry, and GET / on the restarted8131server returns200. The user's original environment/command were preserved privately. Browser hydration verification and final release checks follow.
+
+### Session9 pre-merge verification
+Current local browser verification PASS: homepageHTTP200, login rendered, no Vite error overlay and zero uncaught page errors. TypeScript and whole-repository ESLint0warnings PASS. Full final unit/integration suite56files/439tests PASS in131.74seconds with one worker; no assertions or timeouts changed. README now explains restarting Vite after branch/dependency changes to prevent cached-module mismatches.
+PR41 at3dfc017 had successful test/PostgreSQL/Vercel checks and was mergeable. These checks predate the dependency fixes; a new commit and fresh CI are required. No schema changes relative to main. Existing production startup baseline /api/auth/get-session returned200.
+
+Final local production build PASS after the compatible security updates. Tracked source scan against configured local secret values and the private production beta fixture found zero matches; only secret names/counts were emitted. The production test will redeem the already-configured beta code through the regular UI; no direct DB entitlement grant or auth bypass is planned.
