@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildVisibilityBasket, basketVersionForSubject, methodVersionForSubject, recognitionSettingsKey, type VisibilitySubject } from "@/lib/aieo/visibility/basket";
 import { evaluateSubject, isSubjectName, toCitation } from "@/lib/aieo/visibility/evaluate";
-import { evaluateSourcePolicy, isPropertyListingUrl, permitsRecognitionSource } from "@/lib/aieo/visibility/source-policy";
+import { canonicalSourceUrl, evaluateSourcePolicy, isPropertyListingUrl, permitsRecognitionSource } from "@/lib/aieo/visibility/source-policy";
 import { subjectInputSchema } from "@/lib/aieo/visibility/subjects";
 import { buildVisibilityReport } from "@/lib/aieo/visibility/report";
 import { observation } from "../fixtures/visibility-expertise";
@@ -33,6 +33,18 @@ describe("explicit recognition aliases", () => {
 });
 
 describe("non-listing recognition source policy", () => {
+  it("rejects HTTP grounding even when the HTTPS equivalent or exact HTTP URL is approved", () => {
+    for (const url of ["http://www.realtrends.com/agent-profile/julie/", "http://juliepiercecasey.com/"]) {
+      expect(canonicalSourceUrl(url)).toBeNull();
+      expect(permitsRecognitionSource(url, julie)).toBe(false);
+      expect(permitsRecognitionSource(url, { ...julie, sourceUrls: [url] })).toBe(false);
+      expect(evaluateSourcePolicy([{ url }], [], julie)).toMatchObject({
+        accepted: false, rejectionReason: "excluded_sources", excludedCitationUrls: [url],
+      });
+    }
+    expect(canonicalSourceUrl("https://www.realtrends.com/agent-profile/julie/?utm_source=test#bio"))
+      .toBe("https://realtrends.com/agent-profile/julie");
+  });
   it("permits professional sources while denying property pages on the same domains", () => {
     for (const url of ["https://juliepiercecasey.com/", "https://juliepiercecasey.com/about", "https://www.zillow.com/profile/juliepierce",
       "https://www.realtrends.com/agent-profile/julie-pierce-casey-california/", "https://www2.dre.ca.gov/PublicASP/pplinfo.asp?License_id=01224815",

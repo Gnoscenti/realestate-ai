@@ -13,6 +13,10 @@ The connected workflow:
 
 Readiness and schema exports support this loop. Sales price and transaction volume do not measure service quality.
 
+The integrated branch also retains the authenticated Gateway assistant, authorized Closed/Sold imports, reviewed outreach, and actual-photo studio with durable private uploads and PNG export. Social Desk connects retained media to independent fact/rights approval. Paid Orshot rendering and scheduler publication require separately verified provider configuration.
+
+See `docs/INTEGRATION-2026-09-26.md` for current integration/migration evidence. Earlier release reports retain their original dates and are not fresh deployment acceptance.
+
 ## Run locally
 
 Use Node 22+ and the declared npm 12. On Windows use WSL; this working tree has Linux dependencies.

@@ -43,6 +43,15 @@ export const updateSocialDraft = createServerFn({ method: "POST" })
     return changeSocialDraft(context.userId, workspace.id, data.id, data.revision, data.command);
   });
 
+export const getSocialHandoff = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.uuid(), revision: z.number().int().positive() }))
+  .handler(async ({ context, data }) => {
+    const { getApprovedSocialHandoff } = await import("./repository.server");
+    const workspace = await workspaceFor(context.userId);
+    return getApprovedSocialHandoff(context.userId, workspace.id, data.id, data.revision);
+  });
+
 export const getSocialHistory = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator(z.object({ id: z.uuid() }))

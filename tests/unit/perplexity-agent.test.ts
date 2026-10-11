@@ -43,7 +43,7 @@ describe("Perplexity Agent SDK integration", () => {
     const request = JSON.parse(String(init.body));
     expect(request).toMatchObject({ model: spec.model, input: "What is RESO?",
       tools: [{ type: "web_search", max_tokens: 6000, max_tokens_per_page: 1200 }],
-      max_steps: 2, max_output_tokens: 2000, store: false });
+      max_steps: 2, max_output_tokens: 6000, store: false });
     expect(request).not.toHaveProperty("previous_response_id");
     expect(request).not.toHaveProperty("preset");
     expect(answer.text).toContain("Real Estate Standards Organization");
@@ -69,6 +69,44 @@ describe("Perplexity Agent SDK integration", () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     },
   );
+
+
+  it("retains partial answer, source metadata, incomplete reason and billed usage without accepting it", async () => {
+    stub({ ...body(), status: "incomplete", incomplete_details: { reason: "max_output_tokens" } });
+    await expect(askGrounded(spec, "query")).rejects.toMatchObject({
+      code: "provider_incomplete", httpStatus: 200,
+      details: { responseStatus: "incomplete", incompleteReason: "max_output_tokens",
+        evidence: { text: expect.stringContaining("Real Estate Standards Organization"),
+          citations: [expect.objectContaining({ url: source.url })], sources: expect.any(Array),
+          costUsdTicks: 55_000_000, usage: expect.objectContaining({ output_tokens: 20 }) } },
+    });
+  });
+
+  it("records exhausted quota separately from retryable throttling and never echoes messages", async () => {
+    for (const provider of ["openai", "xai", "perplexity"] as const) {
+      const fetch = stub({ error: { code: "credit_balance_exhausted", type: "insufficient_quota",
+        message: "reflected " + spec.key } }, 429, { "retry-after": "90" });
+      await expect(askGrounded({ ...spec, provider }, "query")).rejects.toMatchObject({
+        code: "provider_quota_exhausted", message: "provider_quota_exhausted", httpStatus: 429,
+        retryAfterMs: undefined, details: { providerCode: "credit_balance_exhausted", providerType: "insufficient_quota" },
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("preserves partial Responses API evidence and honors Retry-After on OpenAI and xAI", async () => {
+    for (const provider of ["openai", "xai"] as const) {
+      stub({ ...body(), status: "incomplete", incomplete_details: { reason: "max_output_tokens" } });
+      await expect(askGrounded({ ...spec, provider }, "query")).rejects.toMatchObject({
+        code: "provider_incomplete", details: { incompleteReason: "max_output_tokens",
+          evidence: { text: expect.stringContaining("Real Estate Standards Organization"), citations: expect.any(Array) } },
+      });
+      stub({ error: { type: "rate_limit_error" } }, 429, { "retry-after": "120" });
+      await expect(askGrounded({ ...spec, provider }, "query")).rejects.toMatchObject({
+        code: "provider_rate_limited", retryAfterMs: 120_000, httpStatus: 429,
+      });
+    }
+  });
 
   it("honors seconds and HTTP-date Retry-After, with a conservative fallback", () => {
     expect(retryAfterMs("1.5",0)).toBe(1500);

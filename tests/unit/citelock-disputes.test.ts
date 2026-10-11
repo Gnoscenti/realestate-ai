@@ -33,6 +33,7 @@ function volumeEvidence(
 function scanWith(evidence: CiteEvidence[]): Omit<CiteLockScanRecord, "id"> {
   return {
     subjectFingerprint: FINGERPRINT,
+    agentName: "Test Agent",
     website: "https://agent.example/",
     jurisdiction: "US-CA",
     evaluatedAt: "2026-08-21T00:00:00.000Z",

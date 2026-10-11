@@ -555,7 +555,7 @@ function VisibilityTab({
             </Badge>
             <span>
               {new Date(detail.batch.startedAt).toLocaleString()} · {report.completed} answers, {report.failed} failed ·
-              {report.ambiguous} ambiguous identities · {report.negative} negative mentions · engines {report.providers.join(", ")} · basket {detail.batch.basketVersion} · cost ${report.costUsd.toFixed(2)}
+              {report.ambiguous} ambiguous identities · {report.negative} negative mentions · engines {report.providers.join(", ")} · basket {detail.batch.basketVersion} · provider-reported cost at least ${report.costUsd.toFixed(2)}
             </span>
           </div>
 
@@ -712,7 +712,7 @@ function VisibilityTab({
               >
                 <span>{new Date(batch.startedAt).toLocaleString()}</span>
                 <span className="tabular text-[var(--color-fg-muted)]">
-                  {batch.completedRuns}/{batch.plannedRuns} ok · {batch.failedRuns} failed · ${batch.costUsd.toFixed(2)}
+                  {batch.completedRuns}/{batch.plannedRuns} ok · {batch.failedRuns} failed · reported at least ${batch.costUsd.toFixed(2)}
                 </span>
               </button>
             ))}
@@ -759,6 +759,13 @@ function RunRow({ run, expanded, onToggle }: { run: VisibilityRun; expanded: boo
       </button>
       {expanded && (
         <div className="space-y-2 border-t border-[var(--color-border)] p-3 text-xs">
+          {run.providerFailure && <p className="text-[var(--color-warning)]" role="status">
+            {[run.providerFailure.httpStatus ? `HTTP ${run.providerFailure.httpStatus}` : null,
+              run.providerFailure.providerType, run.providerFailure.providerCode,
+              run.providerFailure.responseStatus, run.providerFailure.incompleteReason].filter(Boolean).join(" · ")}
+            {run.errorCode === "provider_quota_exhausted" && " · Add provider credits or configure a funded project key before a new batch."}
+            {run.errorCode === "provider_incomplete" && " · Partial response retained as evidence; excluded from recognition counts."}
+          </p>}
           {run.answerText ? (
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--color-bg-elevated)] p-3 font-sans leading-relaxed">
               {run.answerText}
@@ -800,7 +807,7 @@ function RunRow({ run, expanded, onToggle }: { run: VisibilityRun; expanded: boo
             {run.observedAt ? `${new Date(run.observedAt).toLocaleString()} · ` : ""}
             {run.latencyMs ? `${(run.latencyMs / 1000).toFixed(1)}s · ` : ""}
             {typeof run.searchCalls === "number" ? `${run.searchCalls} web searches · ` : ""}
-            ${(run.costUsdTicks / 1e10).toFixed(3)}
+            provider-reported cost at least ${(run.costUsdTicks / 1e10).toFixed(3)}
             {run.extractionModel ? ` · entities via ${run.extractionModel}` : ""}
           </div>
         </div>

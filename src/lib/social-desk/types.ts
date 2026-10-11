@@ -44,11 +44,17 @@ export const socialContentSchema = z
     attribution: z.string().trim().max(500).default(""),
     /** Public HTTPS image URLs the agent has rights to use (listing photos, own media). */
     mediaUrls: z.array(publicUrl.refine(Boolean)).max(4).default([]),
+    /** Server-owned actual photos/exports; resolved within the current workspace. */
+    managedMediaIds: z.array(z.uuid()).max(4).optional(),
     /** Where this draft came from, for traceability (e.g. citelock:profile_claim:zillow.com). */
     origin: z.string().trim().max(200).default(""),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.mediaUrls.length + (value.managedMediaIds?.length ?? 0) > 4)
+      ctx.addIssue({ code: "custom", path: ["managedMediaIds"], message: "Use at most four images per post" });
+    if (new Set(value.managedMediaIds).size !== (value.managedMediaIds?.length ?? 0))
+      ctx.addIssue({ code: "custom", path: ["managedMediaIds"], message: "Choose each saved image only once" });
     if (Array.from(value.caption).length > PLATFORM_LIMITS[value.platform]) {
       ctx.addIssue({
         code: "custom",

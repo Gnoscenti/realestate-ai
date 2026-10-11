@@ -29,7 +29,8 @@ export type ProviderSpec = {
   verified: boolean;
 };
 
-export const PERPLEXITY_AGENT_SURFACE = "perplexity_agent_web_v1";
+export const PERPLEXITY_AGENT_SURFACE = "perplexity_agent_web_v2_output6000";
+export const PERPLEXITY_AGENT_MAX_OUTPUT_TOKENS = 6000;
 export const PERPLEXITY_AGENT_MODEL = "openai/gpt-5.6-luna";
 
 export function providerSurface(provider: string): string {
@@ -56,12 +57,22 @@ export type GroundedAnswer = {
   costUsdTicks?: number;
 };
 
+export type ProviderFailureDetails = {
+  providerCode?: string;
+  providerType?: string;
+  incompleteReason?: string;
+  responseStatus?: string;
+  /** Partial returned evidence is retained but never counted as success. */
+  evidence?: GroundedAnswer;
+};
+
 export class ProviderError extends Error {
   constructor(
     readonly code: string,
     message?: string,
     readonly retryAfterMs?: number,
     readonly httpStatus?: number,
+    readonly details?: ProviderFailureDetails,
   ) {
     super(message || code);
     this.name = "ProviderError";
@@ -117,7 +128,7 @@ async function postJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,
-): Promise<{ status: number; json: Record<string, unknown> }> {
+): Promise<{ status: number; json: Record<string, unknown>; retryAfter: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -134,7 +145,7 @@ async function postJson(
     } catch {
       throw new ProviderError("provider_invalid_json", `HTTP ${response.status} non-JSON body`);
     }
-    return { status: response.status, json };
+    return { status: response.status, json, retryAfter: response.headers.get("retry-after") };
   } catch (error) {
     if (error instanceof ProviderError) throw error;
     if (error instanceof Error && error.name === "AbortError")
@@ -148,12 +159,28 @@ async function postJson(
   }
 }
 
-function httpError(status: number, json: Record<string, unknown>): ProviderError {
-  const detail = (json.error as { message?: string } | undefined)?.message;
-  if (status === 401 || status === 403) return new ProviderError("provider_auth", detail);
-  if (status === 429) return new ProviderError("provider_rate_limited", detail);
-  if (status === 404) return new ProviderError("provider_model_unavailable", detail);
-  return new ProviderError(`provider_http_${status}`, detail);
+/** Persist short provider identifiers, never arbitrary reflected error messages. */
+function diagnosticCode(value: unknown): string | undefined {
+  return typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value) ? value : undefined;
+}
+
+function failureDetails(json: Record<string, unknown>): ProviderFailureDetails {
+  const error = json.error && typeof json.error === "object" ? json.error as Record<string, unknown> : {};
+  const incomplete = json.incomplete_details && typeof json.incomplete_details === "object"
+    ? json.incomplete_details as Record<string, unknown> : {};
+  return { providerCode: diagnosticCode(error.code), providerType: diagnosticCode(error.type),
+    incompleteReason: diagnosticCode(incomplete.reason), responseStatus: diagnosticCode(json.status) };
+}
+
+function httpError(status: number, json: Record<string, unknown>, retryAfter: string | null = null): ProviderError {
+  const details = failureDetails(json);
+  const quotaExhausted = [details.providerCode, details.providerType].some(code =>
+    code === "insufficient_quota" || code === "credit_balance_exhausted");
+  const code = status === 401 || status === 403 ? "provider_auth"
+    : status === 429 ? quotaExhausted ? "provider_quota_exhausted" : "provider_rate_limited"
+    : status === 404 ? "provider_model_unavailable" : `provider_http_${status}`;
+  return new ProviderError(code, undefined,
+    code === "provider_rate_limited" ? retryAfterMs(retryAfter) : undefined, status, details);
 }
 
 type ResponsesOutputItem = {
@@ -163,7 +190,7 @@ type ResponsesOutputItem = {
 };
 
 /** OpenAI-style Responses API (xAI and OpenAI share the shape). */
-function parseResponsesApi(json: Record<string, unknown>): GroundedAnswer {
+function parseResponsesApi(json: Record<string, unknown>, httpStatus: number): GroundedAnswer {
   const output = (json.output as ResponsesOutputItem[] | undefined) || [];
   const chunks: string[] = [];
   const citations = new Map<string, GroundedCitation>();
@@ -182,24 +209,28 @@ function parseResponsesApi(json: Record<string, unknown>): GroundedAnswer {
     }
   }
   const text = chunks.join("\n").trim();
-  if (!text) throw new ProviderError("provider_empty_response");
   const usage = (json.usage as Record<string, unknown> | undefined) || undefined;
   const tools = usage?.server_side_tool_usage_details as
     | { web_search_calls?: number }
     | undefined;
   const ticks = usage?.cost_in_usd_ticks;
-  return {
+  const answer: GroundedAnswer = {
     text,
+    httpStatus,
     citations: [...citations.values()],
     returnedModel: typeof json.model === "string" ? json.model : undefined,
     searchCalls: tools?.web_search_calls ?? searchCalls,
     usage,
     costUsdTicks: typeof ticks === "number" && Number.isFinite(ticks) ? ticks : undefined,
   };
+  if (json.status !== "completed" || json.error || output.some(item => item.status === "incomplete"))
+    throw new ProviderError("provider_incomplete", undefined, undefined, httpStatus, { ...failureDetails(json), evidence: answer });
+  if (!text) throw new ProviderError("provider_empty_response", undefined, undefined, httpStatus, { evidence: answer });
+  return answer;
 }
 
 async function askXai(spec: ProviderSpec, prompt: string): Promise<GroundedAnswer> {
-  const { status, json } = await postJson(
+  const { status, json, retryAfter } = await postJson(
     "https://api.x.ai/v1/responses",
     { Authorization: `Bearer ${spec.key}` },
     {
@@ -210,12 +241,12 @@ async function askXai(spec: ProviderSpec, prompt: string): Promise<GroundedAnswe
       store: false,
     },
   );
-  if (status < 200 || status >= 300) throw httpError(status, json);
-  return parseResponsesApi(json);
+  if (status < 200 || status >= 300) throw httpError(status, json, retryAfter);
+  return parseResponsesApi(json, status);
 }
 
 async function askOpenAi(spec: ProviderSpec, prompt: string): Promise<GroundedAnswer> {
-  const { status, json } = await postJson(
+  const { status, json, retryAfter } = await postJson(
     "https://api.openai.com/v1/responses",
     { Authorization: `Bearer ${spec.key}` },
     {
@@ -225,12 +256,12 @@ async function askOpenAi(spec: ProviderSpec, prompt: string): Promise<GroundedAn
       store: false,
     },
   );
-  if (status < 200 || status >= 300) throw httpError(status, json);
-  return parseResponsesApi(json);
+  if (status < 200 || status >= 300) throw httpError(status, json, retryAfter);
+  return parseResponsesApi(json, status);
 }
 
 async function askGemini(spec: ProviderSpec, prompt: string): Promise<GroundedAnswer> {
-  const { status, json } = await postJson(
+  const { status, json, retryAfter } = await postJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(spec.model)}:generateContent`,
     { "x-goog-api-key": spec.key },
     {
@@ -238,7 +269,7 @@ async function askGemini(spec: ProviderSpec, prompt: string): Promise<GroundedAn
       tools: [{ google_search: {} }],
     },
   );
-  if (status < 200 || status >= 300) throw httpError(status, json);
+  if (status < 200 || status >= 300) throw httpError(status, json, retryAfter);
   const candidate = (
     json.candidates as
       | {
@@ -305,13 +336,9 @@ async function askPerplexity(spec: ProviderSpec, prompt: string): Promise<Ground
       tools: [{ type: "web_search", max_tokens: 6000, max_tokens_per_page: 1200 }],
       instructions: "Search the web before answering. Ground factual claims in retrieved sources and cite them inline. If evidence is insufficient, say so. Do not invent sources.",
       max_steps: 2,
-      max_output_tokens: 2000,
+      max_output_tokens: PERPLEXITY_AGENT_MAX_OUTPUT_TOKENS,
       store: false,
     }).withResponse();
-    if (response.status !== "completed" || response.error)
-      throw new ProviderError("provider_incomplete", undefined, undefined, http.status);
-    if (typeof response.output_text !== "string" || !response.output_text.trim())
-      throw new ProviderError("provider_empty_answer", undefined, undefined, http.status);
     const citations: GroundedCitation[] = [];
     const sources: GroundedSource[] = [];
     let searchItems = 0;
@@ -337,11 +364,9 @@ async function askPerplexity(spec: ProviderSpec, prompt: string): Promise<Ground
     const invocations = response.usage?.tool_calls_details?.search_web?.invocation;
     const searchCalls = typeof invocations === "number" && Number.isFinite(invocations)
       ? invocations : searchItems;
-    if (!searchItems && searchCalls <= 0)
-      throw new ProviderError("provider_ungrounded", undefined, undefined, http.status);
     const cost = response.usage?.cost;
-    return {
-      text: response.output_text.trim(),
+    const answer: GroundedAnswer = {
+      text: typeof response.output_text === "string" ? response.output_text.trim() : "",
       citations: [...new Map(citations.map(citation => [citation.url, citation])).values()],
       sources,
       returnedModel: response.model,
@@ -351,6 +376,13 @@ async function askPerplexity(spec: ProviderSpec, prompt: string): Promise<Ground
         ? Math.round(cost.total_cost * 1e10) : undefined,
       httpStatus: http.status,
     };
+    const details = { ...failureDetails(response as unknown as Record<string, unknown>), evidence: answer };
+    if (response.status !== "completed" || response.error)
+      throw new ProviderError("provider_incomplete", undefined, undefined, http.status, details);
+    if (!answer.text) throw new ProviderError("provider_empty_answer", undefined, undefined, http.status, details);
+    if (!searchItems && searchCalls <= 0)
+      throw new ProviderError("provider_ungrounded", undefined, undefined, http.status, details);
+    return answer;
   } catch (error) {
     if (error instanceof ProviderError) throw error;
     if (error instanceof Perplexity.APIConnectionTimeoutError)
@@ -359,12 +391,9 @@ async function askPerplexity(spec: ProviderSpec, prompt: string): Promise<Ground
       throw new ProviderError("provider_network");
     if (error instanceof Perplexity.APIError) {
       const status = error.status;
-      const code = status === 401 || status === 403 ? "provider_auth"
-        : status === 429 ? "provider_rate_limited"
-        : status === 404 ? "provider_model_unavailable" : `provider_http_${status}`;
-      // Never propagate SDK messages/bodies: upstream may reflect sensitive input.
-      throw new ProviderError(code, undefined,
-        status === 429 ? retryAfterMs(error.headers?.get("retry-after") || null) : undefined, status);
+      // The SDK error payload may contain arbitrary reflected messages. Keep only codes.
+      const payload = error.error && typeof error.error === "object" ? error.error as Record<string, unknown> : {};
+      throw httpError(status || 0, payload.error ? payload : { error: payload }, error.headers?.get("retry-after") || null);
     }
     throw new ProviderError(error instanceof SyntaxError ? "provider_invalid_json" : "provider_malformed_response");
   }
@@ -440,7 +469,7 @@ export async function extractEntities(
     spec.provider === "xai"
       ? env("XAI_EXTRACTION_MODEL") || "grok-4-1-fast-non-reasoning"
       : env("OPENAI_EXTRACTION_MODEL") || spec.model;
-  const { status, json } = await postJson(
+  const { status, json, retryAfter } = await postJson(
     url,
     { Authorization: `Bearer ${spec.key}` },
     {
@@ -460,7 +489,7 @@ export async function extractEntities(
       },
     },
   );
-  if (status < 200 || status >= 300) throw httpError(status, json);
+  if (status < 200 || status >= 300) throw httpError(status, json, retryAfter);
   const content = (json.choices as { message?: { content?: string } }[] | undefined)?.[0]
     ?.message?.content;
   if (typeof content !== "string") throw new ProviderError("extraction_empty");

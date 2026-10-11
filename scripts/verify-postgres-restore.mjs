@@ -1,6 +1,6 @@
 // Disposable test databases only. Refuses a populated restore target; never drops tables.
 import { spawnSync } from "node:child_process";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 
@@ -39,7 +39,9 @@ try {
   await Promise.all(clients.map(client=>client.connect()));
   if (Object.keys(await snapshot(clients[1])).length) throw new Error("Restore target is not empty. Choose a fresh disposable database.");
   const before = await snapshot(clients[0]);
-  const folder = await mkdtemp(path.resolve("tmp","postgres-restore-"));
+  const temporaryRoot = path.resolve("tmp");
+  await mkdir(temporaryRoot, { recursive: true, mode: 0o700 });
+  const folder = await mkdtemp(path.join(temporaryRoot,"postgres-restore-"));
   const backup = path.join(folder,"database.dump");
   run("pg_dump",["--format=custom","--no-owner","--no-acl","--file",backup],source);
   run("pg_restore",["--exit-on-error","--no-owner","--no-acl","--dbname",decodeURIComponent(target.pathname.slice(1)),backup],target);

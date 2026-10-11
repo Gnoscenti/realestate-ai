@@ -61,7 +61,10 @@ import {
   type FeedbackStatus,
 } from "@/lib/feedback";
 
+import type { CampaignPlan, PostStatus, SocialPost } from "@/lib/social-agent";
+
 interface AppState {
+  campaigns: CampaignPlan[];
   leads: Lead[];
   properties: Property[];
   deals: Deal[];
@@ -169,6 +172,19 @@ interface AppState {
   updateRental: (id: string, patch: Partial<RentalUnit>) => void;
   applyMarketRent: (id: string) => void;
 
+  saveCampaign: (plan: CampaignPlan) => void;
+  updateCampaignPost: (
+    campaignId: string,
+    postId: string,
+    patch: Partial<SocialPost>,
+  ) => void;
+  setCampaignPostStatus: (
+    campaignId: string,
+    postId: string,
+    status: PostStatus,
+  ) => void;
+  deleteCampaign: (id: string) => void;
+
   pushActivity: (item: Omit<ActivityItem, "id" | "time">) => void;
   pushChat: (msg: Omit<ChatMessage, "id" | "createdAt">) => void;
   clearChat: () => void;
@@ -249,6 +265,7 @@ export const useAppStore = create<AppState>()(
       chat: welcomeFor(),
       sidebarCollapsed: false,
       completedPriorities: [],
+      campaigns: [],
       agentProfile: null,
       onboarded: false,
       hydrated: false,
@@ -1034,6 +1051,67 @@ export const useAppStore = create<AppState>()(
         });
       },
 
+      saveCampaign: (plan) => {
+        set((s) => ({
+          campaigns: [plan, ...s.campaigns.filter((c) => c.id !== plan.id)].slice(
+            0,
+            20,
+          ),
+        }));
+        get().recordSignal({
+          kind: "campaign",
+          text: `${plan.title} ${plan.objective} ${plan.propertyLabel ?? ""}`,
+          meta: {
+            goal: plan.goal,
+            voice: plan.brandVoice,
+            neighborhood: plan.propertyLabel,
+          },
+        });
+        for (const pl of plan.platforms) {
+          get().recordSignal({
+            kind: "campaign",
+            meta: { platform: pl },
+          });
+        }
+        get().pushActivity({
+          type: "marketing",
+          title: "Social campaign generated",
+          description: `${plan.title} · ${plan.posts.length} posts`,
+          badge: "Content Agent",
+        });
+      },
+
+      updateCampaignPost: (campaignId, postId, patch) => {
+        set((s) => ({
+          campaigns: s.campaigns.map((c) =>
+            c.id !== campaignId
+              ? c
+              : {
+                  ...c,
+                  posts: c.posts.map((p) =>
+                    p.id === postId ? { ...p, ...patch } : p,
+                  ),
+                },
+          ),
+        }));
+      },
+
+      setCampaignPostStatus: (campaignId, postId, status) => {
+        get().updateCampaignPost(campaignId, postId, { status });
+        if (status === "published" || status === "queued") {
+          get().pushActivity({
+            type: "marketing",
+            title: "Legacy local campaign state changed",
+            description: `Campaign ${campaignId} · ${status} locally · no social-network request was sent`,
+            badge: "Planning only",
+          });
+        }
+      },
+
+      deleteCampaign: (id) => {
+        set((s) => ({ campaigns: s.campaigns.filter((c) => c.id !== id) }));
+      },
+
       pushActivity: (item) => {
         set((s) => ({
           activity: [
@@ -1108,6 +1186,7 @@ export const useAppStore = create<AppState>()(
         chat: s.chat,
         sidebarCollapsed: s.sidebarCollapsed,
         completedPriorities: s.completedPriorities,
+        campaigns: s.campaigns,
         agentProfile: s.agentProfile,
         onboarded: s.onboarded,
         agentMemory: s.agentMemory,
@@ -1146,9 +1225,9 @@ export function ensureHydrationHook() {
     if (st.emailConnection === undefined) patch.emailConnection = null;
     if (!st.billing) patch.billing = emptyBilling();
     if (!st.feedback) patch.feedback = [];
+    if (!st.campaigns) patch.campaigns = [];
     if (Object.keys(patch).length) useAppStore.setState(patch);
-    // Never delete records automatically on hydration (ledger A-023). Users
-    // remove practice data explicitly from Property/Lead pages.
+    // Hydration must preserve saved records. Sample cleanup is an explicit user action.
     useAppStore.getState().setHydrated(true);
   });
 }

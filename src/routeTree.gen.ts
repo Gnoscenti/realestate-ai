@@ -28,6 +28,8 @@ import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiListingMediaIdRouteImport } from './routes/api/listing-media/$id'
+import { Route as ApiWebhooksSocialStripeRouteImport } from './routes/api/webhooks/social-stripe'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -124,6 +126,16 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiListingMediaIdRoute = ApiListingMediaIdRouteImport.update({
+  id: '/api/listing-media/$id',
+  path: '/api/listing-media/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksSocialStripeRoute = ApiWebhooksSocialStripeRouteImport.update({
+  id: '/api/webhooks/social-stripe',
+  path: '/api/webhooks/social-stripe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -145,6 +157,8 @@ export interface FileRoutesByFullPath {
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -166,6 +180,8 @@ export interface FileRoutesByTo {
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -188,6 +204,8 @@ export interface FileRoutesById {
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -211,6 +229,8 @@ export interface FileRouteTypes {
     | '/search'
     | '/transactions'
     | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/webhooks/social-stripe'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -232,6 +252,8 @@ export interface FileRouteTypes {
     | '/search'
     | '/transactions'
     | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/webhooks/social-stripe'
   id:
     | '__root__'
     | '/'
@@ -253,6 +275,8 @@ export interface FileRouteTypes {
     | '/search'
     | '/transactions'
     | '/api/auth/$'
+    | '/api/listing-media/$id'
+    | '/api/webhooks/social-stripe'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -275,6 +299,8 @@ export interface RootRouteChildren {
   SearchRoute: typeof SearchRoute
   TransactionsRoute: typeof TransactionsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiListingMediaIdRoute: typeof ApiListingMediaIdRoute
+  ApiWebhooksSocialStripeRoute: typeof ApiWebhooksSocialStripeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -412,6 +438,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/listing-media/$id': {
+      id: '/api/listing-media/$id'
+      path: '/api/listing-media/$id'
+      fullPath: '/api/listing-media/$id'
+      preLoaderRoute: typeof ApiListingMediaIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/social-stripe': {
+      id: '/api/webhooks/social-stripe'
+      path: '/api/webhooks/social-stripe'
+      fullPath: '/api/webhooks/social-stripe'
+      preLoaderRoute: typeof ApiWebhooksSocialStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -435,6 +475,8 @@ const rootRouteChildren: RootRouteChildren = {
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiListingMediaIdRoute: ApiListingMediaIdRoute,
+  ApiWebhooksSocialStripeRoute: ApiWebhooksSocialStripeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1016,6 +1016,7 @@ CLI link created ignored project metadata and appended VERCEL_OIDC_TOKEN to igno
 Delivery report and release instructions updated with observed push/build/smoke outcomes. A documentation-only follow-up commit records this audit trail; no further application changes after the tested source commit.
 
 
+ local/2026-09-26-citelock-source-policy
 ## Session 8 — 2026-10-08: local database startup and persistence verification
 ### Repo map and conventions
 Reopened the ledger and inspected the actual current tree. Clean branch local/2026-09-26-citelock-source-policy at 34c784b already includes recursive parent-directory creation in src/lib/db.ts and tests/unit/db-startup.test.ts. It also contains newer CiteLock source-policy work; preserve that work and do not reset to the older preservation branch. No remote branch with this name was returned by git ls-remote.
@@ -1047,3 +1048,113 @@ No native PostgreSQL, full browser-suite or hosted production revalidation was r
 
 ### Session8 Git delivery outcome
 Normal SSH push succeeded for local/2026-09-26-citelock-source-policy and established upstream tracking. GitHub and local HEAD both returned a576615c7cccdf1fadc81193625df28a1d1df4f7 immediately after push, with0ahead/0behind and a clean working tree. This publishes the already-present34c784b startup fix/newer CiteLock work plus the verified startup regression commit a576615. No force push, main merge or production promotion was performed. This documentation-only follow-up records the observed delivery outcome; all required work for the requested local startup repair is complete.
+=======
+## Session8 — 2026-09-26 integrated main reconciliation
+
+# Flagship integration — September 26, 2026
+
+## Current release decision
+
+The existing main and preserved local product work are combined on `integration/2026-09-26-flagship`, starting from main `907214abc877aae3e0de46c0943eb58cf263bb07` and preserved local `34c784b7f9b44c50fce2d10cc5d8fde0e0bac705`. This is a release candidate, not a claim of hosted acceptance. Production merge/autodeployment remains held until the real target schema and backup/migration readiness can be verified. Existing CLI access returns403; deployment metadata alone does not prove the database is ready.
+
+## Repo map and preservation
+
+Authoritative original checkout: `/home/ttroj/code/realestate-ai`. Work is isolated in `/home/ttroj/code/realestate-ai-integration-2026-09-26`. TypeScript/React/TanStack Start/Vite/Nitro; PostgreSQL in production, persistent local PGlite, authenticated workspace APIs. Main's secured Gateway/OIDC assistant, authorized Closed/Sold import, reviewed outreach and actual-photo storage/rendering remain.
+
+Initial branch `local/2026-09-08-flagship-preservation` at c21bca6 had four commits absent from main and14 changed paths, with no stashes. All14 were committed unchanged on named branch `local/2026-09-26-citelock-source-policy` as34c784b before the integration merge. Earlier branch/commits remain. The existing FLAGSHIP-LEDGER.md was consulted and is retained; its dated provider/test claims are not current verification.
+
+## Product outcome
+
+- CiteLock retains the source-backed free/paid guide, saved subject/evidence workflow, versioned grounded observations, page improvements, review and verified publication handoff. Main historical Recognition APIs remain tenant-scoped; paid calls now require entitlement. No measured lift or consumer-app ranking is inferred.
+- Provider failures retain partial answers, reported citations/sources, usage, known cost, safe status/subtype and incomplete reason. Exhausted quota is not retried as ordinary throttling. Perplexity uses a bounded6000-token output policy with a separately versioned persisted surface; old observations cannot silently become comparable.
+- The older numeric RealTrends scan adapter was not person-bound. It remains disabled for attestation with an explicit source-subject-unverified result. The separate identity-and-locale-bound instructional guide remains available. No pricing, MLS or unsupported numeric claim gate was weakened.
+- Social Desk joins durable actual-photo uploads/PNG exports to persisted drafts, exact-revision fact/rights review, manual handoff/receipts and optional guarded Postiz dispatch. Private image bytes can be handed to an authorized scheduler without making the image public. Tenant ownership/deletion/source permission are rechecked; changing attachments invalidates approval.
+- Existing browser campaigns remain preserved and can be downloaded for recovery. Historical local statuses are not treated as provider publication evidence.
+- Main's sold-record library and #34 property/subject/disclaimer/FAQ fixes remain. Local factual comparisons and exports do not invent condition or list-price advice.
+
+## Migration ledger
+
+All historical SQL filenames and normalized contents are retained; main SQL bytes are unchanged and shared local CRLF differences are recorded; numeric-prefix collisions between the two previously used lineages are documented rather than concealed by unsafe renumbering.
+
+`0005_integrated_lineage_compatibility.sql` is intentionally a compatibility prelude before imported0007. It recognizes the old local recognition schema, renames that table to `citelock_legacy_recognition_runs`, preserving its rows and freeing the primary-key name. Main's historical0007 then creates its different, scan-bound schema. Unknown schemas or an existing archive collision fail closed. No scan/panel identity or historical measurement is fabricated for archived evidence. Fresh/main databases are no-ops at the prelude.
+
+`0017_managed_media_overlay_review.sql` is the new integration security migration: persist exact rendered overlay labels for review. It does not rewrite prior migrations. Historical generated assets without this record require regeneration before new Social Desk approval/publication; studio download remains available. This is a known-text check, not OCR of a supplied photo.
+
+Three-lineage in-memory checks passed before the overlay addition: fresh, main upgrade and local upgrade; legacy evidence retained; original migration timestamps preserved; repeated migration pass no-op. Final rerun/native checks are recorded below when complete. No production migration was attempted.
+
+Voice #29 remains deferred draft. Its six historical migrations were not renamed because production nonapplication was not proven. Do not assume a next-free range until its future integration is actually ready.
+
+## Integration log and exact decisions
+
+The merge initially conflicted in36 paths. CRLF normalization before a three-way comparison removed many false conflicts. Main bytes were retained for99 files whose only difference was line endings. Remaining decisions and evidence are appended from each reviewer below. No blanket branch replacement or force push is used.
+
+## Verification results
+
+- Initial integrated full run:399 pass/9 fail; seven startup timeouts during concurrent PGlite/Vite/TypeScript work plus two provider-test expectation corrections. No failing assertion was waived.
+- Serial full unit rerun:53 files /408 tests PASS.
+- TypeScript and ESLint with zero warnings PASS; inherited control-character regex findings replaced with equivalent checks.
+- Production build PASS before final overlay security and historical-campaign recovery additions; final rebuilt artifact required.
+- Actual-photo connected browser flow PASS, including saved draft approval/handoff/receipt, retained PNG download, reload and deletion404.
+- Remaining full browser/native/restore/security acceptance results are appended after completion.
+
+## Open release items
+
+1. Real production migration history/schema and backup/restore readiness. Current production is cloud-realtor main@907214a, READY; anonymous auth/session200 does not prove authenticated/database workflows.
+2. Normal Vercel CLI authorization refresh and isolated hosted Preview DB/configuration. Do not copy a production database into Preview or disable the production database guard.
+3. Funded OpenAI project, separately identified bounded provider acceptance run, authorized Postiz posting, audited Orshot setup and Stripe money-flow acceptance. No purchase, live provider run or social post occurred in this integration.
+4. Real customer authorized publication plus later comparable observations remains the product-outcome pilot. No ranking lift/exit guarantee is made.
+
+
+Exact PR/register, conflict resolutions, migration and verification evidence: [INTEGRATION-2026-09-26.md](INTEGRATION-2026-09-26.md). Earlier ledger entries retain their original dates and are not overwritten.
+
+
+## Final local acceptance — September26
+
+- Final TypeScript, zero-warning ESLint and production build PASS after overlay security and legacy campaign recovery UI.
+- Full unit53files/408tests PASS; final overlay/migration/handoff13/13 PASS (includes6 new overlay tests beyond the408). Tests retain original assertions; worker contention corrected by bounded concurrency.
+- Browser20 scenarios covered: initial18/20 PASS; the two failures passed unchanged on a fresh final server. Earlier failures occurred across a live HMR/schema change; no weaker assertions or longer timeouts were used.
+- Native PostgreSQL16.15:57 preserved-workflow tests plus47 main/overlay/handoff/real-assistant checks,104 total PASS.23 migrations, repeated no-op; actualmain11-file and local15-file upgrade snapshots both PASS preserving original applied timestamps and evidence.
+- Logical restore PASS:65public tables/723rows/23migration records, content digests identical in a separate empty disposable target. This proves local restore, not hosted Production backup policy.
+- Repository safety scan:335tracked files, six known private secret values checked, zero matches.26 historical migration references preserve normalized SQL contents; main historical files retain their exact bytes, shared local CRLF differences explicitly recorded.
+- Non-SQL integrated text files normalized fromCRLF toLF only for readable review; original bytes remain in the preservation commit. No historical SQL content rewritten.
+- Code whitespace passed; Markdown's intentional hard-line-break spaces are retained.
+- Compiled production auth/session checks and remote PR/CI outcomes are recorded in the subsequent handoff.
+
+
+## Compiled runtime acceptance and review handoff
+
+Final compiled production artifact with native PostgreSQL:3/3 browser tests PASS (31.4seconds), using real Better Auth sessions. Covered server access grants/tampering/fail-closed requests, persisted Social Desk, cross-device subjects, account isolation/logout, unrelated-Origin403, free-guide save/reload/rollback/export and server-gated upgrade. All provider/payment/scheduler keys disabled in this isolated runtime. Production still requires its own trusted proxy-IP configuration and live operational acceptance.
+
+All task-owned browser servers stopped. Only the newly created native-test container was stopped after verification; its data remains available. Existing containers/checkouts were not restarted or altered. Final source secret scan338tracked files/sixknownsecretvalues/zeromatches; main Gateway/OIDC assistant files have no integration diff.
+
+The code is prepared as a draft PR because actual Production schema, backup and migration readiness could not be verified with the current CLI403. The operator was asked to refresh normal Vercel login while implementation continued. No production database write, main merge, promotion, purchase, provider baseline or social publication occurred.
+
+
+## September 26 release gates — actual Production and hosted Preview
+
+Normal Vercel authorization was restored and the operator supplied the direct connection from the existing cloud-realtor-prod Neon resource. Read-only target validation found PostgreSQL 17.11, the expected 11 main migration names, no foreign migration names, and modern recognition schema. Production credentials and data remain in ignored private operator files.
+
+Production backup and restore: a PostgreSQL 17.11 custom-format logical dump used the same exported read-only snapshot as its data fingerprints. All 42 tables and 48 rows (including 11 ledger rows) restored into an empty isolated local target with matching schema and complete content fingerprints. The 12 pending migrations then passed on the restore, preserving 41 original application tables on their original columns and all historical migration timestamps; repeat execution was a no-op. Dump SHA256: cc8051a60363c459cc4227c0b959391d4f79749dcf4da6fc4f7c92af76bbf902. This proves logical restoration; provider PITR/retention, cluster role/ACL restoration and independent sequence-state consistency were not attested.
+
+Hosted Preview uses a new empty database and a restricted SQL-created role within the existing Neon resource. It contains synthetic acceptance fixtures only and shares production compute; it is not a separate Neon branch. The role has no elevated flags, memberships, production relation/column grants, schema creation, foreign-server access or executable application security-definer functions. Explicit production table reads are denied. The preview migration ledger is read-only to the application role. Production database/auth/provider credentials were not copied to Preview; branch-only credentials and beta access were generated separately, with inherited Stripe/GitHub credentials blanked only for this branch.
+
+The initial Preview direct connection and 10-connection role limit caused signup HTTP 500 / SQLSTATE 53300. Vercel logs identified exhausted preview connections. Preview now uses the verified Neon pooled endpoint and a bounded 20-connection role; production configuration and application source were unchanged by this correction. Hosted acceptance passed on deployment dpl_6W3fH2ta6sPg5EobCXtNpELPHFUK, implementation SHA 5486e835f1a5f843824ce8da25b7747cc5fd73df. Coverage includes real signup and secure sessions, free-guide persistence, beta access, saved subjects, retained actual-photo PNG, durable draft approval/manual handoff, and the account-isolation/security checks enumerated in the private acceptance receipt. No external post, purchase, payment or paid-provider baseline was made.
+
+Production migration completed at 2026-09-26T14:06:51.104Z: 12 files applied, 23 total migrations, 65 public tables, all original 11 migration timestamps preserved, modern recognition retained, no legacy archive created, and nullable overlay review metadata present. The runner used a 5-second lock timeout and 120-second statement timeout; a second run reported up to date. The reviewed implementation remains 5486e835f1a5f843824ce8da25b7747cc5fd73df. This documentation update records verified release evidence; fresh CI and main merge/production deployment verification follow it.
+
+Application rollback is redeployment of the former main 907214abc877aae3e0de46c0943eb58cf263bb07 while retaining the expanded schema and ledger. Do not drop new tables or restore over customer writes merely to roll back application code. Voice PR #29 remains deferred, with its historical migration names unchanged. Live paid-provider coverage, Stripe webhook/payment acceptance, external social publication and measured GEO/AIEO uplift remain separate operational acceptance items; no successful lift is claimed.
+
+
+## Review follow-up before main merge — September 26
+
+Automated review of PR #39 returned eight inline threads after head 7da4a59 was pushed. Seven distinct issues were assessed (two threads identified the same Social Desk boundary). RapidAPI now requires a real active server entitlement before cache, lease, quota or provider access; Social Desk external publishing requires the same entitlement before provider lookup and rechecks it before dispatch. Free/manual draft review, export and receipts retain their existing access rules. Regression tests cover inactive, expired and canceled access with injected provider responses only.
+
+The release validator now inserts and reads back the retained recognition schema, including its scan link and required hashes/metadata; its scan fixture also supplies the required agent name. The restore verifier creates its private temporary parent in a clean checkout. A separate fresh PostgreSQL 16 proof reproduced the old failures, passed all ten corrected checks, verified validation rollback, and restored 65 tables/24 rows/23 migration records including a synthetic application row. The task-owned verification container is stopped.
+
+Source policy rejects HTTP citations instead of rewriting them as HTTPS, including explicitly listed HTTP sources. Lease entry validates actual calendar dates before ISO conversion, with invalid-month, leap-year and date-rollover coverage. The auth hook implementation is selected once at module initialization, keeping real-session hooks unconditional and preserving the disabled-auth fallback without fetching a session. The reported lint failure was not reproduced on the old head; this refactor removes the structural concern without restoring a suppression.
+
+CI run 36247445361 on the previous head completed successfully on attempt 2. Its first native-production-browser job failed inside Nitro preview startup before the browser assertions; one authorized job retry passed all 57 native tests and 3 compiled auth scenarios without code/assertion changes. Its public browser result was 19 passed plus one test that passed on retry; development auth was 2 passed with the compiled-only case intentionally skipped. Fresh full CI is required for the review-fix commit; these older results are not substituted for it.
+
+After actual Production migration and before any production smoke fixtures, a single read-only repeatable snapshot compared all 41 original application tables and 37 rows on their original columns against the backup fingerprints. All row counts and complete content digests matched, with zero mismatches. No production records were changed by this check. There are no additional migrations in this review follow-up.
+
+Final combined local gate for the review fixes: TypeScript, zero-warning whole-repository ESLint, production build and all 438 unit/integration tests across 56 files passed. Two existing overlay-negative fixtures initially stopped at the newly required entitlement; explicit test grants corrected their setup while retaining the original image rejection and provider-not-called assertions. No test assertion or production guard was weakened. main

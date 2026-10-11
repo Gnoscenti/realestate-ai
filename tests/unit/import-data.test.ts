@@ -69,6 +69,12 @@ describe("parseListingsCsv", () => {
     expect(items.every((item) => !item.description.includes("Owned by your book"))).toBe(true);
   });
 
+  it("preserves explicit co-listing variants without claiming primary representation", () => {
+    const { items } = parseListingsCsv("Address,Price,Side\n1 Test Way,1000000,co-listing agent\n2 Test Way,1000000,co_listing agent\n3 Test Way,1000000,co listing agent\n4 Test Way,1000000,listing agent", { agentName: "Morgan Hale" });
+    expect(items.map((item) => item.representation?.role)).toEqual(["co_listing", "co_listing", "co_listing", "listing"]);
+    expect(items.every((item) => item.source?.evidenceLevel === "user_declared")).toBe(true);
+  });
+
   it("requires address and price", () => {
     const { items, skipped } = parseListingsCsv("Name Only\nbogus");
     expect(items).toHaveLength(0);

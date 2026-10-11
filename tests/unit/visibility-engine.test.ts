@@ -53,6 +53,7 @@ async function entitledWorkspace() {
   await redeemAccessCode(userId, workspace.id, "RSF-BETA-01");
   await saveCiteLockScan(userId, workspace.id, {
     subjectFingerprint: citeLockSubjectFingerprint(INPUT),
+    agentName: INPUT.agentName,
     website: INPUT.website,
     jurisdiction: "US-CA",
     evaluatedAt: new Date().toISOString(),
@@ -72,6 +73,36 @@ const answer = (text: string, urls: string[]) => ({
 });
 
 describe("visibility batch lifecycle", () => {
+  it("stores failed partial evidence and quota subtype without success metrics or quota retries", async () => {
+    vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_CALL", "1");
+    const { userId, workspace } = await entitledWorkspace();
+    const batch = await startVisibilityBatch(userId, workspace.id, INPUT, { providers: [spec] });
+    const partial = answer("Consider Jordan Rivera at Pacific Coast Realty.", [INPUT.website]);
+    const ask = vi.fn()
+      .mockRejectedValueOnce(new ProviderError("provider_incomplete", undefined, undefined, 200, {
+        incompleteReason: "max_output_tokens", responseStatus: "incomplete", evidence: { ...partial, usage: { output_tokens: 2000 } },
+      }))
+      .mockRejectedValueOnce(new ProviderError("provider_quota_exhausted", undefined, undefined, 429, {
+        providerCode: "credit_balance_exhausted", providerType: "insufficient_quota",
+      }));
+    const extract = vi.fn();
+    await continueVisibilityBatch(userId, workspace.id, batch.id, { providers: [spec], ask, extract });
+    await continueVisibilityBatch(userId, workspace.id, batch.id, { providers: [spec], ask, extract });
+    const detail = await getVisibilityRuns(userId, workspace.id, batch.id);
+    const incomplete = detail.runs.find(run => run.errorCode === "provider_incomplete")!;
+    expect(incomplete).toMatchObject({ status: "failed", answerText: partial.text, citations: [expect.objectContaining({ url: INPUT.website })],
+      costUsdTicks: partial.costUsdTicks, mentioned: false, cited: false, recommended: false,
+      providerFailure: { incompleteReason: "max_output_tokens", httpStatus: 200 } });
+    expect(JSON.parse(incomplete.usage!)).toMatchObject({ output_tokens: 2000 });
+    expect(detail.runs.find(run => run.errorCode === "provider_quota_exhausted")).toMatchObject({
+      status: "failed", providerFailure: { providerCode: "credit_balance_exhausted", httpStatus: 429 },
+    });
+    expect(detail.report.completed).toBe(0);
+    expect(detail.report.costUsd).toBe(partial.costUsdTicks / 1e10);
+    expect(extract).not.toHaveBeenCalled();
+    expect(ask).toHaveBeenCalledTimes(2);
+  });
+
   it("persists explicit alias/policy settings and fails closed while retaining disallowed or missing grounding", async () => {
     vi.stubEnv("CITELOCK_VISIBILITY_RUNS_PER_CALL", "1");
     const { userId, workspace } = await entitledWorkspace();
@@ -343,7 +374,7 @@ describe("Agent surface persistence and provider cooldown", () => {
     let step;
     do { step=await continueVisibilityBatch(userId,workspace.id,batch.id,{providers:[agent],ask,extract}); } while(step.remaining);
     const detail=await getVisibilityRuns(userId,workspace.id,batch.id);
-    expect(detail.runs.every(run=>run.surface==="perplexity_agent_web_v1" && !run.cited && run.sources?.length===1)).toBe(true);
+    expect(detail.runs.every(run=>run.surface==="perplexity_agent_web_v2_output6000" && !run.cited && run.sources?.length===1)).toBe(true);
     const sql=await getSql();
     await sql.query("update citelock_visibility_runs set surface='api_web_grounded' where batch_id=$1",[batch.id]);
     await expect(startVisibilityBatch(userId,workspace.id,INPUT,{providers:[agent],baselineBatchId:batch.id})).rejects.toThrow(/new baseline/);

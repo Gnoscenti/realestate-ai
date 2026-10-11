@@ -181,6 +181,7 @@ function toRun(row: RunRow): VisibilityRun {
     methodVersion: row.method_version,
     surface: row.surface,
     usage: row.usage ? JSON.stringify(json(row.usage, null)) : undefined,
+    providerFailure: (json(row.usage, {}) as Record<string, unknown> | null)?.citelock_failure as VisibilityRun["providerFailure"],
     entities: json(row.entities, []),
     extractionModel: row.extraction_model || undefined,
     costUsdTicks: Number(row.cost_usd_ticks) || 0,
@@ -364,12 +365,24 @@ async function executeRun(
       );
     }
     const retryable = code === "provider_rate_limited" && run.attempt < MAX_ATTEMPTS;
+    const failure = error instanceof ProviderError ? error : undefined;
+    const partial = failure?.details?.evidence;
+    const { evidence: _partialEvidence, ...diagnostics } = failure?.details || {};
+    const usage = { ...(partial?.usage || {}), citelock_failure: {
+      ...diagnostics, ...(failure?.httpStatus ? { httpStatus: failure.httpStatus } : {}),
+    } };
     await sql.query(
       `update citelock_visibility_runs
           set status = $2, error_code = $3, lease_until = null, latency_ms = $4,
-              observed_at = now()
+              observed_at = now(), returned_model = $5, answer_text = $6,
+              citations = $7::jsonb, sources = $8::jsonb, usage = $9::jsonb,
+              cost_usd_ticks = cost_usd_ticks + $10, search_calls = $11,
+              mentioned = false, cited = false, recommended = false
         where id = $1`,
-      [run.id, retryable ? "pending" : "failed", code, Date.now() - started],
+      [run.id, retryable ? "pending" : "failed", code, Date.now() - started,
+        partial?.returnedModel || null, partial?.text || null,
+        JSON.stringify(partial?.citations || []), JSON.stringify(partial?.sources || []),
+        JSON.stringify(usage), Math.round(partial?.costUsdTicks || 0), partial?.searchCalls ?? null],
     );
     return;
   }

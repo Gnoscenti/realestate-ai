@@ -62,18 +62,18 @@ const modules = [
   },
   {
     to: "/cma",
-    title: "CMA Studio",
+    title: "Comparison Planning",
     description:
-      "One-click comps, list-price guidance, and value scripts for listing presentations.",
+      "Review saved properties and learn what verified sold data is still required.",
     icon: BarChart3,
-    features: ["Comps", "List price", "Value script"],
+    features: ["Saved records", "Source checks", "Workflow"],
     highlight: true,
   },
   {
     to: "/marketing",
     title: "Social Desk",
     description:
-      "Draft from facts on record, fair-housing review, approve the exact text, publish via your scheduler or hand off.",
+      "Use actual listing photos, review sourced drafts, approve the exact revision and export or hand off.",
     icon: Megaphone,
     features: ["Facts first", "Review", "Publish"],
     highlight: true,
@@ -96,11 +96,11 @@ const modules = [
   },
   {
     to: "/market",
-    title: "Market & Valuation",
+    title: "Market Data Setup",
     description:
-      "Pricing arithmetic over your own inventory and what-if scenarios. Not an appraisal.",
+      "Prepare authorized Closed/Sold sources before client-facing valuation work.",
     icon: TrendingUp,
-    features: ["Pricing math", "Scenarios"],
+    features: ["Source checks", "MLS data", "Broker review"],
   },
   {
     to: "/transactions",

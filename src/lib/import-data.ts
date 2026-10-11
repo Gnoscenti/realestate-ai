@@ -296,10 +296,10 @@ export function parseListingsCsv(
             : "active";
     const sideRaw = cell(row, map, "listing_side").toLowerCase();
     const representationRole =
-      sideRaw === "mine" || sideRaw.includes("listing agent")
-        ? "listing"
-        : sideRaw.includes("co-list") || sideRaw.includes("co_list")
-          ? "co_listing"
+      /co[-_ ]list/.test(sideRaw)
+        ? "co_listing"
+        : sideRaw === "mine" || sideRaw.includes("listing agent")
+          ? "listing"
           : sideRaw.includes("office")
             ? "office"
             : sideRaw.includes("market") || sideRaw.includes("comp")
@@ -385,16 +385,11 @@ export const LISTING_CSV_TEMPLATE = `Address,Price,Beds,Baths,Sqft,City,Neighbor
 123 Example Lane,4250000,5,5.5,5200,Rancho Santa Fe,The Covenant,SDP1234567,active,house,mine
 `;
 
-/**
- * Detect rows that came from the historical seed dataset by their synthetic
- * ids ONLY. Real people can share a seed name or use an @email.com address,
- * so name, phone, and free-text matching was removed (ledger A-023). Purging
- * is always an explicit user action, never automatic.
- */
+/** Only identifiers assigned to bundled fixtures can identify sample records. */
 export function looksLikeSeedLead(l: Lead): boolean {
   return /^lead_\d+$/.test(l.id);
 }
 
 export function looksLikeSeedProperty(p: Property): boolean {
-  return /^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id) || /^mls_[a-z_]+_\d+$/.test(p.id);
+  return /^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id);
 }
