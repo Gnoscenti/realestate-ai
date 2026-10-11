@@ -1016,6 +1016,38 @@ CLI link created ignored project metadata and appended VERCEL_OIDC_TOKEN to igno
 Delivery report and release instructions updated with observed push/build/smoke outcomes. A documentation-only follow-up commit records this audit trail; no further application changes after the tested source commit.
 
 
+## Session 8 — 2026-10-08: local database startup and persistence verification
+### Repo map and conventions
+Reopened the ledger and inspected the actual current tree. Clean branch local/2026-09-26-citelock-source-policy at 34c784b already includes recursive parent-directory creation in src/lib/db.ts and tests/unit/db-startup.test.ts. It also contains newer CiteLock source-policy work; preserve that work and do not reset to the older preservation branch. No remote branch with this name was returned by git ls-remote.
+### Audit findings
+The reported ENOENT arose because PGlite creates its own data directory but not missing ancestor directories. Existing commit 34c784b already awaits recursive ancestor creation only for disk-backed development. Current regression tests cover nested missing parents, same-process database close/reopen, explicit in-memory operation and the production PostgreSQL guard. Independent process restart and the real Vite command need current verification.
+### Citelock/GEO intent
+No product-direction change: preserve the source-backed manual free/paid guide and newer recognition source policy.
+### Blocker register
+No blocker to the local startup fix identified. Previously documented hosted deployment gates are separate from this development database failure.
+### Decisions made and why
+D-024: Verify and strengthen the fix already present rather than duplicate or revert newer code. Exercise real PGlite storage and separate-process restart, retain memory-only test isolation and fail-closed production behavior, then commit verification changes and push the current branch under the user's explicit authorization.
+### Verification results
+Initial inspection only: clean tree, startup patch present, port 8131 free, current branch has no remote copy. No fresh test outcome claimed yet.
+### Open items
+Run focused/full local checks; verify fresh Vite startup and persisted data after a process restart; record actual results, commit, push and confirm remote/local commit equality.
+
+### Session8 verification progress and additional environment finding
+Existing startup tests passed3/3. Added a fourth regression using two independent Node processes and real Vite SSR transformation: default .local-data/pglite starts from an absent parent, stores a row, shuts down, and returns the same row and complete migration list after restart. Focused4/4 PASS; TypeScript and ESLint0warnings PASS.
+Actual Vite command successfully initialized a new nested PGlite database, then failed on EACCES refreshing node_modules/.vite/deps, which is owned by root. Moving that child across directories was also denied; preserved its user-owned parent node_modules/.vite in ignored tmp/session8/vite-cache-backup instead, after resolved-path checks. Vite can now create a new cache under the user's account. No chmod/chown/sudo, application-data deletion, secret change or production configuration change. Actual-command retry pending.
+
+Actual Vite cold-start PASS: nested directory absent before launch, automatic DB initialization, HTTP200 /api/auth/get-session, regenerated deps owned by ttroj. Real account sign-up HTTP200. Stopped that process, restarted the same Vite command against the same isolated database, and signed in successfully with identical persisted user ID (HTTP200). Both task-owned servers stopped after verification; port8131 is released. Credentials and test data stay ignored.
+First full suite36files/256tests PASS. Tightened the fixture to keep its Vite cache outside .local-data and assert the database parent remains absent immediately before DB initialization, preventing test setup from masking the bug. Repeat suite concurrently with cold SSR/account initialization encountered existing15s timeouts; rerun under bounded concurrency is planned without changing assertions/timeouts.
+
+### Session8 final verification and delivery scope
+Final complete suite PASS:36files/256tests with node node_modules/vitest/vitest.mjs run --maxWorkers=1 (80.15s), including all4 startup regressions and the stricter missing-parent assertion. The earlier overlapping run had existing15s timeouts and a stalled worker and was terminated; it is not counted as a pass. No test timeout, assertion, production guard, quota or type was weakened. Production build PASS using node node_modules/vite/bin/vite.js build; TypeScript PASS with tsc --noEmit; final ESLint PASS with --max-warnings=0. Whitespace diff check PASS.
+Implemented startup correction was already in34c784b: await recursive creation of disk data-directory ancestors before constructing PGlite; explicit in-memory operation creates no disk directories and production still requires DATABASE_URL. This session adds separate-process/default-path regression coverage, README clarification and these audit results. The current branch's newer CiteLock work is preserved unchanged.
+Real workflow verified against the actual Vite CLI on8131: cold startup from absent nested parent, HTTP200 session endpoint, sign-up, complete process stop/restart and successful sign-in with identical stored account ID. Isolated fixtures use no production database; no provider request was needed. Development cache ownership repair is local/ignored; private accounts, env files, runtime evidence and generated build output are excluded from Git.
+No native PostgreSQL, full browser-suite or hosted production revalidation was repeated for this local PGlite bootstrap change. Earlier release evidence is historical. Scope is the current branch's verified startup fix and normal Git delivery; main and production promotion remain unchanged by this task.
+
+### Session8 Git delivery outcome
+Normal SSH push succeeded for local/2026-09-26-citelock-source-policy and established upstream tracking. GitHub and local HEAD both returned a576615c7cccdf1fadc81193625df28a1d1df4f7 immediately after push, with0ahead/0behind and a clean working tree. This publishes the already-present34c784b startup fix/newer CiteLock work plus the verified startup regression commit a576615. No force push, main merge or production promotion was performed. This documentation-only follow-up records the observed delivery outcome; all required work for the requested local startup repair is complete.
+
 ## Session8 — 2026-09-26 integrated main reconciliation
 
 # Flagship integration — September 26, 2026
@@ -1125,3 +1157,29 @@ CI run 36247445361 on the previous head completed successfully on attempt 2. Its
 After actual Production migration and before any production smoke fixtures, a single read-only repeatable snapshot compared all 41 original application tables and 37 rows on their original columns against the backup fingerprints. All row counts and complete content digests matched, with zero mismatches. No production records were changed by this check. There are no additional migrations in this review follow-up.
 
 Final combined local gate for the review fixes: TypeScript, zero-warning whole-repository ESLint, production build and all 438 unit/integration tests across 56 files passed. Two existing overlay-negative fixtures initially stopped at the newly required entitlement; explicit test grants corrected their setup while retaining the original image rejection and provider-not-called assertions. No test assertion or production guard was weakened.
+
+
+## Session 9 — 2026-10-11: authorized main merge and production acceptance
+### Repo map and conventions
+Read this ledger and fetched current remote refs. Started clean at b2e6016. Current main is c4c9e18 (includes September26 integrated CiteLock/actual-photo Social Desk and the TanStack security fix). Remote feature branch advanced to3dfc017 and already contains main; fast-forwarded the current checkout to that combined history. PR41 is open against main. Its remaining diff is four startup-test/documentation paths; no application downgrade or schema delta relative to main.
+### Citelock/GEO intent
+Preserve both newer product histories, source-backed free/paid guides, permitted-source controls, real recognition evidence and actual-photo/manual Social Desk workflows. Production acceptance covers authenticated UI -> server -> durable data -> reloaded output, without publishing customer content or charging a payment.
+### Audit findings and blocker register
+Prior production is Vercel cloud-realtor deployment dpl_FVv2XdSUcp7j2KZfccPEjMmj7cUJ at main c4c9e18, READY. Current preview3dfc017 is READY. Prior September26 notes record23 production migrations and65 tables plus hosted acceptance; those are historical, not a substitute for current production tests. No new migration is present in the proposed merge.
+### Decisions made and why
+D-025: User explicitly authorizes merging into main, production deployment and fixing failures. Preserve current main ancestry and security versions, use PR41 and normal merge protections, verify the exact resulting production commit, and record production workflow evidence. Keep secrets/private browser state out of output and Git. Use an isolated synthetic acceptance account; no external social publication.
+### Verification results / open items
+Ancestry verified: origin/main is an ancestor of combined branch3dfc017. Fresh release gates, PR status/review, Vercel configuration, production startup/login/CiteLock/Social Desk verification and final delivery remain in progress.
+
+### Session9 release findings
+Fresh lockfile install reported four advisory-affected packages: sharp0.35.4 (GHSA-wq5f-xc86-pv6w, fixed0.35.5), Capacitor iOS8.5.0 (GHSA-rvm3-566m-v7fv, fixed8.5.1), brace-expansion1.1.18/5.0.9 (recursive/CPU DoS, fixed1.1.21/5.0.12), and source-map-js1.2.1 (GHSA-68fv-2mgg-jv7q, fixed1.2.2). Checked the published upstream advisories. Apply compatible targeted updates before release; retain main's patched TanStack versions.
+User reported missing makeSerovalPlugin during local SSR while dependencies were being synchronized. Current installed router-core1.171.34 explicitly exports it, and start-client-core1.170.34 imports it; npm tree shows a consistent single router-core version. An existing Vite process on8131 retained modules from before npm ci. Its command/cwd were verified, launch settings retained privately, and it was stopped for a fresh restart after the dependency updates. Do not hide the Vite overlay or weaken production auth.
+
+Dependency correction complete: sharp0.35.5, Capacitor iOS8.5.3, brace-expansion1.1.21/5.0.12 and source-map-js1.2.2 installed; npm audit reports0 vulnerabilities. The original patched TanStack dependency family is retained.
+Local SSR correction verified at the module and HTTP boundaries: makeSerovalPlugin resolves as a function from the installed router-core SSR client entry, and GET / on the restarted8131server returns200. The user's original environment/command were preserved privately. Browser hydration verification and final release checks follow.
+
+### Session9 pre-merge verification
+Current local browser verification PASS: homepageHTTP200, login rendered, no Vite error overlay and zero uncaught page errors. TypeScript and whole-repository ESLint0warnings PASS. Full final unit/integration suite56files/439tests PASS in131.74seconds with one worker; no assertions or timeouts changed. README now explains restarting Vite after branch/dependency changes to prevent cached-module mismatches.
+PR41 at3dfc017 had successful test/PostgreSQL/Vercel checks and was mergeable. These checks predate the dependency fixes; a new commit and fresh CI are required. No schema changes relative to main. Existing production startup baseline /api/auth/get-session returned200.
+
+Final local production build PASS after the compatible security updates. Tracked source scan against configured local secret values and the private production beta fixture found zero matches; only secret names/counts were emitted. The production test will redeem the already-configured beta code through the regular UI; no direct DB entitlement grant or auth bypass is planned.
