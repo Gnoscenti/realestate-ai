@@ -32,6 +32,7 @@ import {
   draftSocialCaption,
   getSocialDesk,
   getSocialHistory,
+  getSocialHandoff,
   publishSocial,
   refreshSocialPublication,
   saveNewSocialDraft,
@@ -51,6 +52,11 @@ import {
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { describeAiError } from "@/lib/ai-errors";
+import { ActualPhotoStudio } from "@/components/marketing/actual-photo-studio";
+import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
+import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
+import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
+import { exportCampaignMarkdown, type CampaignPlan } from "@/lib/social-agent";
 
 const searchSchema = z.object({
   origin: z.string().max(200).optional(),
@@ -97,6 +103,7 @@ function SocialDeskPage() {
   const { origin: originParam, property: propertyParam } = Route.useSearch();
   const properties = useAppStore((state) => state.properties);
   const profile = useAppStore((state) => state.agentProfile);
+  const savedBrowserCampaigns = useAppStore((state) => state.campaigns);
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -316,10 +323,45 @@ function SocialDeskPage() {
     }
   };
 
+  const downloadBrowserCampaign = (campaign: CampaignPlan) => {
+    const text = [
+      "Historical browser campaign. Local approval/schedule/post statuses are unverified and do not establish external publication. Review facts and media rights before reuse.",
+      "",
+      exportCampaignMarkdown(campaign),
+      "",
+      "## Original saved campaign data",
+      "",
+      "The following JSON preserves the original saved fields for recovery, including image references and local status values.",
+      "",
+      "```json",
+      JSON.stringify(campaign, null, 2),
+      "```",
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${campaign.title.replace(/[^\w]+/g, "-").toLowerCase() || "saved-browser-campaign"}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const attachManagedImage = (image: ManagedPhotoView) => {
+    if (selected?.state === "publishing" || selected?.state === "scheduled") { toast.error("Start a new post to use this image while the current revision is with your scheduler."); return; }
+    const ids = composer.managedMediaIds || [];
+    if (ids.includes(image.id)) { toast.message("This image is already attached"); return; }
+    if (ids.length + composer.mediaUrls.length >= 4) { toast.error("Use at most four images per post"); return; }
+    setComposer({ ...composer, managedMediaIds: [...ids, image.id], title: composer.title || image.title,
+      facts: composer.facts || `Agent-supplied property title: ${image.title}. Actual uploaded property photo; marketing permission confirmed by uploader.` });
+    setComposerDirty(true);
+    setRightsReviewed(false);
+    toast.success("Image attached. Add your caption, save, and review this revision.");
+  };
+
   const copyText = async () => {
     if (!selected) return;
     try {
-      await navigator.clipboard.writeText(exportSocialDraft(selected));
+      const { draft } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      await navigator.clipboard.writeText(exportSocialDraft(draft));
       toast.success("Approved caption copied");
     } catch (error) {
       toast.error(errorMessage(error, "Copy failed"));
@@ -329,22 +371,30 @@ function SocialDeskPage() {
   const shareNative = async () => {
     if (!selected) return;
     try {
-      const text = exportSocialDraft(selected);
-      if (typeof navigator.share === "function") {
-        await navigator.share({ text, url: selected.content.mediaUrls[0] || undefined });
+      const { draft, images } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      const text = exportSocialDraft(draft);
+      const files = await Promise.all(images.map(async (image, index) => {
+        const response = await fetch(image.url);
+        if (!response.ok) throw new Error("A saved image is unavailable. Reload the draft before posting.");
+        return new File([await response.blob()], `property-social-${index + 1}.${image.contentType === "image/png" ? "png" : "jpg"}`, { type: image.contentType });
+      }));
+      if (typeof navigator.share === "function" && (!files.length || navigator.canShare?.({ files }))) {
+        await navigator.share(files.length ? { text, files } : { text, url: draft.content.mediaUrls[0] || undefined });
       } else {
         await navigator.clipboard.writeText(text);
-        toast.message("Share sheet unavailable here — caption copied instead");
+        toast.message(files.length ? "Caption copied. Download the approved images below to post them." : "Share sheet unavailable here — caption copied instead");
       }
     } catch (error) {
       if ((error as Error).name !== "AbortError") toast.error(errorMessage(error, "Share failed"));
     }
   };
 
-  const download = () => {
+  const download = async () => {
     if (!selected) return;
     try {
-      const text = [exportSocialDraft(selected), "", `Media: ${selected.content.mediaUrls.join(", ") || "none"}`].join("\n");
+      const { draft, images } = await getSocialHandoff({ data: { id: selected.id, revision: selected.revision } });
+      const text = [exportSocialDraft(draft), "", `Public media: ${draft.content.mediaUrls.join(", ") || "none"}`,
+        ...images.map(image => `Private image: ${image.title} · SHA-256 ${image.sha256} · download this image from the approved draft before posting.`)].join("\n");
       const blob = new Blob([text], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -410,6 +460,23 @@ function SocialDeskPage() {
           </Button>
         </div>
       </div>
+
+      {savedBrowserCampaigns.length > 0 && <details className="rounded border p-4">
+        <summary className="cursor-pointer font-medium">Saved browser campaigns ({savedBrowserCampaigns.length})</summary>
+        <p className="mt-2 text-sm text-muted-foreground">Your earlier campaigns are still saved in this browser. Their local approval, schedule and post statuses are unverified. Download a copy to review the content and media rights before reuse.</p>
+        <ul className="mt-3 space-y-3">
+          {savedBrowserCampaigns.map(campaign => <li key={campaign.id} className="flex flex-wrap items-center justify-between gap-3 rounded border p-3">
+            <span className="min-w-0 break-words text-sm">{campaign.title} · {campaign.posts.length} saved posts</span>
+            <Button size="sm" variant="outline" onClick={() => downloadBrowserCampaign(campaign)}><Download className="h-3.5 w-3.5" /> Download {campaign.title}</Button>
+          </li>)}
+        </ul>
+      </details>}
+
+      <ActualPhotoStudio onUseImage={attachManagedImage} />
+      <details className="rounded border p-4">
+        <summary className="cursor-pointer font-medium">Optional paid image templates and billing</summary>
+        <div className="mt-4 space-y-4"><SocialBillingControls /><SocialMediaGenerator /></div>
+      </details>
 
       {loadError && (
         <Card>
@@ -673,11 +740,11 @@ function SocialDeskPage() {
               )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <Label htmlFor="social-source">Link to include (optional, https)</Label>
+                  <Label htmlFor="social-source">Source link for review (optional, https)</Label>
                   <Input id="social-source" className="mt-1.5" value={composer.sourceUrl} onChange={(event) => { setComposer({ ...composer, sourceUrl: event.target.value }); setComposerDirty(true); }} placeholder="https://your-site.com/page" />
                 </div>
                 <div>
-                  <Label htmlFor="social-attribution">Attribution / disclosures (optional)</Label>
+                  <Label htmlFor="social-attribution">Attribution notes (copy required disclosures into caption)</Label>
                   <Input id="social-attribution" className="mt-1.5" value={composer.attribution} onChange={(event) => { setComposer({ ...composer, attribution: event.target.value }); setComposerDirty(true); }} placeholder="Photo: listing photographer · DRE #…" />
                 </div>
               </div>
@@ -701,6 +768,16 @@ function SocialDeskPage() {
                 ) : null}
                 <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">Aggregator or MLS photos require reuse rights you hold. Postiz re-hosts media before publishing.</p>
               </div>
+              {!!composer.managedMediaIds?.length && <div className="space-y-2" aria-label="Saved images attached to draft">
+                <p className="text-sm font-medium">Saved actual-photo images</p>
+                <p className="text-xs text-muted-foreground">Private images stay in your workspace. Download them for manual posting; Postiz receives their bytes only when you publish.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {composer.managedMediaIds.map((id, index) => <div key={id} className="rounded border p-2">
+                    <img src={`/api/listing-media/${encodeURIComponent(id)}`} alt={`Attached actual-photo image ${index + 1}`} className="aspect-square w-full object-contain" />
+                    <Button size="sm" variant="outline" onClick={() => { setComposer({ ...composer, managedMediaIds: composer.managedMediaIds?.filter(value => value !== id) }); setComposerDirty(true); }}>Remove image {index + 1}</Button>
+                  </div>)}
+                </div>
+              </div>}
               {selected?.state==="draft" && !composerDirty && <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" checked={rightsReviewed} onChange={e=>setRightsReviewed(e.target.checked)}/>
                 I reviewed the facts, source attribution, and rights for this text and any media in this revision.
@@ -762,6 +839,11 @@ function SocialDeskPage() {
                         <Button size="sm" onClick={() => command("handoff")} disabled={busy === "handoff"}>I'll post this myself</Button>
                       )}
                     </div>
+                    {!!selected.content.managedMediaIds?.length && <div className="mt-3 flex flex-wrap gap-2">
+                      {selected.content.managedMediaIds.map((id, index) => <Button key={id} size="sm" variant="outline" asChild>
+                        <a href={`/api/listing-media/${encodeURIComponent(id)}`} download={`property-social-${index + 1}.png`}>Download approved image {index + 1}</a>
+                      </Button>)}
+                    </div>}
                     {selected.state === "handed_off" && (
                       <div className="mt-3 flex flex-wrap items-end gap-2">
                         <div className="min-w-[16rem] flex-1">

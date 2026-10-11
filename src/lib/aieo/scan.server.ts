@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { WebsiteScrapeResult } from "@/lib/website-scrape";
 import { scrapeRealtorWebsite } from "@/lib/scrape-site.server";
 import { verifyCaDreIdentity } from "./ca-dre.server";
-import { fetchRealTrendsProduction } from "./realtrends.server";
+import type { fetchRealTrendsProduction } from "./realtrends.server";
 import { listingClaimKeys, listingPriceClaimScope } from "./provenance";
 import type { CiteEvidence } from "./types";
 import type {
@@ -124,6 +124,14 @@ function siteEvidence(
 
   if (observations.length) {
     for (const [index, claim] of (scrape.claims || []).entries()) {
+      // Quantified production claims remain locked until an independent,
+      // period-matched production adapter is configured. The website
+      // observation is intentionally not allowed into the beta evidence graph.
+      if (
+        claim.field === "transaction_volume" ||
+        claim.field === "transaction_sides"
+      )
+        continue;
       const claimUrl = sanitizeCiteLockPublicUrl(claim.sourceUrl) || sourceUrl;
       items.push({
         id: `site:claim:${claim.claimScope}:${index}`,
@@ -269,6 +277,13 @@ export async function executeCiteLockScan(
         undefined,
       code: scrape.ok ? undefined : "website_unavailable",
     },
+    {
+      source: "independent_production",
+      status: "unavailable",
+      label:
+        "Quantified production claims are suppressed until an authorized independent source is configured",
+      code: "independent_production_adapter_pending",
+    },
   ];
 
   // Prefer the submitted credential. If the site publishes a different one,
@@ -302,34 +317,27 @@ export async function executeCiteLockScan(
     });
   }
 
-  // Independent production source (RealTrends). The profile URL may be
-  // submitted explicitly or discovered from Person-bound sameAs links; the
-  // adapter itself fails closed and never fabricates a figure.
-  const fetchProduction =
-    dependencies.fetchProduction || fetchRealTrendsProduction;
+  // The legacy numeric adapter is keyed only by profile URL and does not bind
+  // the page's identity to this subject. Preserve the verified-scan boundary:
+  // a user-supplied or sameAs URL cannot attest another person's production.
+  // The instructional guide has its own heading-and-locale-bound public parser.
   const discoveredRealTrendsUrl = (personBoundProfile.sameAs || [])
     .map(sanitizeCiteLockPublicUrl)
     .find((url) => url && isRealTrendsProfileUrl(url));
   const realTrendsUrl = input.realTrendsUrl || discoveredRealTrendsUrl;
-  if (realTrendsUrl) {
-    const production = await fetchProduction({
-      profileUrl: realTrendsUrl,
-      observedAt: evaluatedAt,
-    });
-    evidence.push(...production.evidence);
-    sourceOutcomes.push(...production.outcomes);
-  } else {
-    sourceOutcomes.push({
-      source: "production",
-      status: "unavailable",
-      label:
-        "No independent production source is linked; site production claims stay uncorroborated",
-      code: "production_source_unlinked",
-    });
-  }
+  sourceOutcomes.push({
+    source: "production",
+    status: "unavailable",
+    label: realTrendsUrl
+      ? "Production attestation requires independent verification of the exact subject and reporting period. Use the source-backed guide for attributed public-source instructions."
+      : "No independent production source is linked; quantified production claims remain suppressed",
+    code: realTrendsUrl ? "production_source_subject_unverified" : "production_source_unlinked",
+    ...(realTrendsUrl ? { url: realTrendsUrl } : {}),
+  });
 
   return {
     subjectFingerprint: citeLockSubjectFingerprint(input),
+    agentName: input.agentName,
     website: storedWebsite,
     jurisdiction: input.jurisdiction,
     evaluatedAt,

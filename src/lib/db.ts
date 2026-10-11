@@ -3,10 +3,8 @@ export type DbSource = "neon" | "pglite";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const rawDatabaseUrl = typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+const databaseUrl = rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -15,6 +13,10 @@ const databaseUrl =
  * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
+// An ephemeral process-local database is never a production persistence layer.
+if (typeof process !== "undefined" && process.env.NODE_ENV === "production" && !databaseUrl) {
+  throw new Error("DATABASE_URL is required in production. Ephemeral storage is refused.");
+}
 
 // Production must never run on the in-memory fallback: every deploy would start
 // with an empty database and lose accounts, scans, and drafts (ledger D-009).
@@ -176,13 +178,9 @@ async function createPgliteSql(): Promise<Sql> {
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const doneRows = await pg.query<{ name: string }>(
-      "select name from _migrations",
-    );
+    const doneRows = await pg.query<{ name: string }>("select name from _migrations");
     const done = new Set(doneRows.rows.map((r) => r.name));
-    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) =>
-      a.localeCompare(b),
-    )) {
+    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) => a.localeCompare(b))) {
       const name = path.split("/").pop() as string;
       if (done.has(name)) continue;
       // Apply + record atomically (parity with scripts/migrate.mjs) so a failed

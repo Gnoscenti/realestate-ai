@@ -102,9 +102,9 @@ try {
     await client.query(
       `insert into citelock_scans (
          id, workspace_id, created_by_user_id, subject_fingerprint,
-         website_url, jurisdiction, evidence, profile_patch, source_outcomes,
+         website_url, jurisdiction, agent_name, evidence, profile_patch, source_outcomes,
          evaluated_at
-       ) values ($1,$2,$3,$4,$5,$6,'[]'::jsonb,'{}'::jsonb,'[]'::jsonb, now())`,
+       ) values ($1,$2,$3,$4,$5,$6,'Synthetic validation agent','[]'::jsonb,'{}'::jsonb,'[]'::jsonb, now())`,
       [scanId, workspaceId, userId, fingerprint, "https://example.org", "US-CA"],
     );
     const { rows: scans } = await client.query(
@@ -155,17 +155,37 @@ try {
     );
     step("citelock_disputes open-conflict upsert", true);
 
-    // Recognition run insert.
+    // The retained recognition schema links evidence to a scan in the same workspace.
+    const recognitionId = randomUUID();
+    const prompt = "Who is the synthetic validation agent?";
+    const response = "Synthetic validation response; no provider was called.";
+    const promptHash = createHash("sha256").update(prompt).digest("hex");
+    const responseHash = createHash("sha256").update(response).digest("hex");
     await client.query(
       `insert into citelock_recognition_runs (
-         id, workspace_id, created_by_user_id, subject_fingerprint, query_id,
-         provider, model, prompt, location, mentioned, cited, correct_identity,
-         correct_brokerage, citations, observed_at
-       ) values ($1,$2,$3,$4,'identity','grok','grok-4.6','Who is …?','server:local',
+         id, workspace_id, scan_id, created_by_user_id, subject_fingerprint,
+         panel_version, query_id, provider, model, prompt, prompt_hash, location,
+         run_date, status, response_text, response_hash, mentioned, cited,
+         correct_identity, correct_brokerage, citations, observed_at
+       ) values ($1,$2,$3,$4,$5,'validate-v1','identity','validation','synthetic',
+                 $6,$7,'server:local',current_date,'succeeded',$8,$9,
                  true,false,true,false,'[]'::jsonb, now())`,
-      [randomUUID(), workspaceId, userId, fingerprint],
+      [recognitionId, workspaceId, scanId, userId, fingerprint, prompt, promptHash, response, responseHash],
     );
-    step("citelock_recognition_runs insert", true);
+    const { rows: recognitionRuns } = await client.query(
+      `select scan_id, prompt_hash, response_text, response_hash, status
+         from citelock_recognition_runs where id = $1 and workspace_id = $2`,
+      [recognitionId, workspaceId],
+    );
+    const recognition = recognitionRuns[0];
+    step(
+      "citelock_recognition_runs insert/select round trip",
+      recognition?.scan_id === scanId &&
+        recognition.prompt_hash === promptHash &&
+        recognition.response_text === response &&
+        recognition.response_hash === responseHash &&
+        recognition.status === "succeeded",
+    );
 
     // Production cache insert.
     await client.query(

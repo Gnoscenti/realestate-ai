@@ -1,20 +1,9 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import {
-  BarChart3,
-  Copy,
-  Download,
-  FileSpreadsheet,
-  Sparkles,
-} from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { BarChart3, Copy, Download, FileSpreadsheet, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { SoldDataLibraryPanel } from "@/components/cma/sold-data-library";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,13 +34,13 @@ function CmaPage() {
     ...subjects.filter((p) => p.listingSide !== "mine"),
   ];
   const [subjectId, setSubjectId] = useState(mineFirst[0]?.id ?? "");
-  const subject =
-    properties.find((p) => p.id === subjectId) ?? mineFirst[0];
+  const subject = properties.find((p) => p.id === subjectId) ?? mineFirst[0];
 
   const report = useMemo(
     () => (subject ? generateCmaReport(subject, properties) : null),
     [subject, properties],
   );
+  const hasComparisonSet = (report?.comps.length ?? 0) > 0;
 
   const exportText = () => {
     if (!report || !subject) return "";
@@ -62,12 +51,13 @@ function CmaPage() {
       profile ? `Prepared by ${profile.name} · ${profile.areaOfOperations}` : "",
       profile?.website ? profile.website : "",
       "",
+      "Price recommendation: not calculated",
       "Saved reference records: " + report.comps.length,
       "",
       "Local reference records (not verified sale comparables):",
       ...report.comps.map(
         (c) =>
-          `• ${c.title} | ${c.address} | ${formatCurrency(c.price)} | ${c.sqft} sqft | ${formatCurrency(c.ppsf)}/sf | ${c.adj}`,
+          `• ${c.title} | ${c.address} | ${formatCurrency(c.price)} | ${c.sqft} sqft | ${formatCurrency(c.ppsf)}/sf | status as supplied: ${c.status} | ${c.adj}`,
       ),
       "",
       "Strategy:",
@@ -87,20 +77,18 @@ function CmaPage() {
           <div className="mb-2 flex flex-wrap gap-2">
             <Badge variant="default">
               <BarChart3 className="h-3 w-3" />
-              CMA Studio
+              CMA planning beta
             </Badge>
-            {profile && (
-              <Badge variant="secondary">
-                {profile.areaOfOperations}
-              </Badge>
-            )}
+            {profile && <Badge variant="secondary">{profile.areaOfOperations}</Badge>}
           </div>
           <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
             Listing comparison notes
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Compare supplied records in your local book. These are not verified sale
-            comparables, an MLS feed, an appraisal or a pricing recommendation.
+            Compare properties saved in this browser workspace
+            {profile ? ` for ${profile.areaOfOperations}` : ""}, and keep authorized Closed/Sold
+            source records in your private server workspace. This planning beta does not choose
+            comparable sales or recommend a price.
           </p>
         </div>
         <div className="w-full max-w-sm">
@@ -121,6 +109,8 @@ function CmaPage() {
         </div>
       </div>
 
+      <SoldDataLibraryPanel />
+
       {myListings(properties).length > 0 && (
         <div className="flex flex-wrap gap-2">
           {myListings(properties).map((p) => (
@@ -128,7 +118,7 @@ function CmaPage() {
               key={p.id}
               type="button"
               onClick={() => setSubjectId(p.id)}
-              className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]"
+              className="min-h-11 rounded-full border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-elevated)]"
             >
               Your listing · {p.neighborhood}
               {p.mlsNumber ? ` · ${p.mlsNumber}` : ""}
@@ -137,10 +127,47 @@ function CmaPage() {
         </div>
       )}
 
-      {!subject && <Card><CardContent className="py-8">
-        <p className="font-medium">No subject property yet</p>
-        <p className="mt-2 text-sm text-[var(--color-fg-muted)]">Add an active, pending or coming-soon property to your listing book, then return to prepare comparison notes.</p>
-      </CardContent></Card>}
+      {!subject && (
+        <Card>
+          <CardHeader>
+            <CardTitle>No subject property yet</CardTitle>
+            <CardDescription>
+              Add or import a real property before building a workspace comparison set.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {report && subject && !hasComparisonSet && (
+        <Card>
+          <CardHeader>
+            <CardTitle>More comparison data needed</CardTitle>
+            <CardDescription>
+              No saved records meet the same-city, property-type and valid-price/area requirements.
+              Notes about the subject remain available, but a price recommendation is never
+              calculated from this browser set. Import authorized Closed/Sold records for broker
+              review.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button asChild className="min-h-11">
+              <Link to="/mls">Connect or import listings</Link>
+            </Button>
+            <Button asChild variant="secondary" className="min-h-11">
+              <Link to="/properties">Add a property</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {report && subject && (
         <>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -153,9 +180,7 @@ function CmaPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
-                {subject.listingSide === "mine" && (
-                  <Badge variant="accent">Your listing</Badge>
-                )}
+                {subject.listingSide === "mine" && <Badge variant="accent">Your listing</Badge>}
                 {subject.features.slice(0, 6).map((f) => (
                   <Badge key={f} variant="secondary">
                     {f}
@@ -166,14 +191,15 @@ function CmaPage() {
             <Card>
               <CardContent className="flex h-full flex-col justify-center p-6">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                  Saved reference records
+                  Price recommendation
                 </div>
-                <div className="mt-2 font-display text-3xl font-semibold tabular text-[var(--color-success)]">
-                  {report.comps.length}
+                <div className="mt-2 font-display text-xl font-semibold text-[var(--color-fg)]">
+                  Not calculated
                 </div>
                 <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
-                  Recorded subject price · confirm source and price basis{" "}
-                  {formatCurrency(subject.price)}
+                  Browser-saved records are not verified sold comps. Import an authorized
+                  Closed/Sold source before pricing client property. Saved reference records:{" "}
+                  {report.comps.length}.
                 </p>
               </CardContent>
             </Card>
@@ -184,7 +210,8 @@ function CmaPage() {
               <div>
                 <CardTitle>Candidate reference records</CardTitle>
                 <CardDescription>
-                  Same city and property type, ordered by size proximity; at most five records.
+                  Same city and property type; at most five unverified records. Ordered by size
+                  proximity when subject area is supplied.
                 </CardDescription>
               </div>
               <FileSpreadsheet className="h-5 w-5 text-[var(--color-fg-subtle)]" />
@@ -194,45 +221,42 @@ function CmaPage() {
                 <thead>
                   <tr className="border-b border-[var(--color-border)] text-[11px] uppercase tracking-wider text-[var(--color-fg-subtle)]">
                     <th className="pb-3 pr-3 font-medium">Property</th>
-                    <th className="pb-3 pr-3 font-medium">Price</th>
+                    <th className="pb-3 pr-3 font-medium">Recorded price</th>
                     <th className="pb-3 pr-3 font-medium">Sqft</th>
-                    <th className="pb-3 pr-3 font-medium">$/sf</th>
+                    <th className="pb-3 pr-3 font-medium">Recorded $/sf</th>
                     <th className="pb-3 pr-3 font-medium">Beds/Baths</th>
                     <th className="pb-3 pr-3 font-medium">DOM</th>
                     <th className="pb-3 font-medium">Verification needed</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {!report.comps.length && <tr><td colSpan={7} className="py-6 text-[var(--color-fg-muted)]">No matching records with a positive price and area. Add verified reference data to your listing book before comparing.</td></tr>}
+                  {!report.comps.length && (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-[var(--color-fg-muted)]">
+                        No matching records with a positive price and area. Add verified reference
+                        data to your listing book before comparing.
+                      </td>
+                    </tr>
+                  )}
                   {report.comps.map((c) => (
                     <tr
                       key={c.address + c.title}
                       className="border-b border-[var(--color-border)]/60"
                     >
                       <td className="py-3 pr-3">
-                        <div className="font-medium text-[var(--color-fg)]">
-                          {c.title}
-                        </div>
+                        <div className="font-medium text-[var(--color-fg)]">{c.title}</div>
                         <div className="text-xs text-[var(--color-fg-subtle)]">
-                          {c.address} · status as supplied: {c.status.replace(/_/g," ")}
+                          {c.address} · status as supplied: {c.status.replace(/_/g, " ")}
                         </div>
                       </td>
-                      <td className="py-3 pr-3 tabular">
-                        {formatCurrency(c.price)}
-                      </td>
-                      <td className="py-3 pr-3 tabular">
-                        {formatNumber(c.sqft)}
-                      </td>
-                      <td className="py-3 pr-3 tabular">
-                        {formatCurrency(c.ppsf)}
-                      </td>
+                      <td className="py-3 pr-3 tabular">{formatCurrency(c.price)}</td>
+                      <td className="py-3 pr-3 tabular">{formatNumber(c.sqft)}</td>
+                      <td className="py-3 pr-3 tabular">{formatCurrency(c.ppsf)}</td>
                       <td className="py-3 pr-3">
                         {c.beds}/{c.baths}
                       </td>
                       <td className="py-3 pr-3">{c.dom}</td>
-                      <td className="py-3 text-[var(--color-fg-muted)]">
-                        {c.adj}
-                      </td>
+                      <td className="py-3 text-[var(--color-fg-muted)]">{c.adj}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -282,7 +306,12 @@ function CmaPage() {
                 try {
                   await navigator.clipboard.writeText(text);
                   toast.success("Comparison notes copied");
-                  pushActivity({type:"valuation",title:"Comparison notes copied",description:subject.title,badge:"Notes"});
+                  pushActivity({
+                    type: "valuation",
+                    title: "Comparison notes copied",
+                    description: subject.title,
+                    badge: "Notes",
+                  });
                 } catch {
                   toast.message("Select text to copy");
                 }
@@ -298,7 +327,7 @@ function CmaPage() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `cma-${subject.id}.txt`;
+                a.download = `planning-comparison-${subject.id}.txt`;
                 a.click();
                 URL.revokeObjectURL(url);
                 toast.success("Download started");

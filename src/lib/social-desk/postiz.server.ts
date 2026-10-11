@@ -253,9 +253,21 @@ export async function uploadMediaToPostiz(
   } finally {
     clearTimeout(timer);
   }
+  return uploadImageBytesToPostiz(connection, bytes, contentType, fetchImpl);
+}
+
+/** Upload tenant-authorized bytes directly; private photos never need a public URL. */
+export async function uploadImageBytesToPostiz(
+  connection: { apiUrl: string; apiKey: string },
+  bytes: Uint8Array,
+  contentType: string,
+  fetchImpl: typeof safeFetch = safeFetch,
+): Promise<{ id: string; path: string }> {
+  if (!/^image\/(jpeg|png|webp|avif)$/.test(contentType) || !bytes.byteLength || bytes.byteLength > 15 * 1024 * 1024)
+    throw new PostizError("media_invalid", "Choose a supported raster image up to 15 MB");
   const form = new FormData();
   const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
-  form.append("file", new Blob([bytes], { type: contentType }), `${randomUUID()}.${extension}`);
+  form.append("file", new Blob([Uint8Array.from(bytes)], { type: contentType }), `${randomUUID()}.${extension}`);
   const { status, json } = await postizFetch(connection, "/upload", { method: "POST", body: form }, fetchImpl);
   assertOk(status, json, "Upload media");
   const record = json as { id?: string; path?: string } | null;

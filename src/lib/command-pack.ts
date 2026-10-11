@@ -40,12 +40,8 @@ export function buildCommandPack(
     deals: Deal[];
   },
 ): CommandPack {
-  const lead = item.leadId
-    ? ctx.leads.find((l) => l.id === item.leadId)
-    : undefined;
-  const deal = item.dealId
-    ? ctx.deals.find((d) => d.id === item.dealId)
-    : undefined;
+  const lead = item.leadId ? ctx.leads.find((l) => l.id === item.leadId) : undefined;
+  const deal = item.dealId ? ctx.deals.find((d) => d.id === item.dealId) : undefined;
 
   const subjectProperty =
     (deal && ctx.properties.find((p) => p.id === deal.propertyId)) ||
@@ -85,9 +81,7 @@ export function buildCommandPack(
         kind: "words",
         title: "Nurture sequence",
         summary: `${seq.length}-touch recovery plan`,
-        body: seq
-          .map((s) => `Day ${s.day} · ${s.channel}\n${s.body}`)
-          .join("\n\n"),
+        body: seq.map((s) => `Day ${s.day} · ${s.channel}\n${s.body}`).join("\n\n"),
         href: `/outreach?lead=${lead.id}&mode=nurture`,
         hrefLabel: "Open nurture",
       });
@@ -135,7 +129,9 @@ export function buildCommandPack(
       id: "social",
       kind: "social",
       title: `${goalLabel} · facts on record`,
-      summary: prop ? `${facts.length} facts from ${prop.title}` : "Open the Social Desk to draft from your facts",
+      summary: prop
+        ? `${facts.length} facts from ${prop.title}`
+        : "Open the Social Desk to draft from your facts",
       body: facts.length
         ? `Facts the Social Desk will draft from (nothing else is invented):\n${facts.map((fact) => `• ${fact}`).join("\n")}`
         : "Add a listing or your own facts, then draft in the Social Desk. Every caption is reviewed for fair housing before approval.",
@@ -150,9 +146,7 @@ export function buildCommandPack(
       summary: deal ? deal.propertyTitle : "Deal update",
       body: deal
         ? `Hi ${deal.clientName.split(" ")[0]}, quick update on ${deal.propertyTitle}: we're in ${deal.stage.replaceAll("_", " ")} (${deal.progress}%). ${
-            deal.issues[0]
-              ? `I'm actively clearing: ${deal.issues[0].text}. `
-              : ""
+            deal.issues[0] ? `I'm actively clearing: ${deal.issues[0].text}. ` : ""
           }I'll confirm next milestone by end of day — call me with questions.`
         : "I'll send a written status with next milestone today.",
       href: "/transactions",
@@ -177,12 +171,13 @@ export function buildCommandPack(
       cma.headline,
       cma.subjectSummary,
       "",
+      "Price recommendation: not calculated",
       "Saved reference records: " + cma.comps.length,
       "",
       "Supplied reference records (not verified sale comparables):",
       ...cma.comps.map(
         (c) =>
-          `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · ${c.adj}`,
+          `• ${c.title} — ${formatCurrency(c.price)} · ${c.ppsf}/sqft · ${c.dom} DOM · status as supplied: ${c.status} · ${c.adj}`,
       ),
       "",
       "Strategy:",
@@ -196,10 +191,14 @@ export function buildCommandPack(
       id: "cma",
       kind: "cma",
       title: "Listing comparison notes",
-      summary: subjectProperty.neighborhood + " · " + cma.comps.length + " saved reference records",
+      summary:
+        subjectProperty.neighborhood +
+        " · " +
+        cma.comps.length +
+        " unverified saved reference records",
       body: cmaBody,
       href: "/cma",
-      hrefLabel: "Open CMA Studio",
+      hrefLabel: "Open comparison planning",
     });
   }
 
@@ -211,9 +210,7 @@ export function buildCommandPack(
     title: "Post-NAR compliance outline",
     summary: outline.title,
     body: outline.clauses.map((c) => `${c.heading}\n${c.text}`).join("\n\n"),
-    href: lead
-      ? `/outreach?lead=${lead.id}&mode=agreement`
-      : "/outreach?mode=agreement",
+    href: lead ? `/outreach?lead=${lead.id}&mode=agreement` : "/outreach?mode=agreement",
     hrefLabel: "Full agreement outline",
   });
 

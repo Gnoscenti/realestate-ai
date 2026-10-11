@@ -9,10 +9,10 @@ import {
   sanitizeCiteLockPublicUrl,
 } from "@/lib/aieo/scan-types";
 import {
-  pilotEvidence,
-  pilotProfile,
-  pilotProperties,
-} from "../fixtures/citelock-san-diego-pilot";
+  attestedEvidence,
+  attestedProfile,
+  attestedProperties,
+} from "../fixtures/citelock-provider-attestation";
 
 const NOW = "2026-08-19T19:00:00.000-07:00";
 
@@ -196,17 +196,23 @@ describe("CiteLock verified scan", () => {
           id: "site:profile:0:name",
           status: "published",
         }),
-        expect.objectContaining({
-          field: "transaction_volume",
-          claimScope: "sales-volume:2025:full-year",
-          status: "published",
-        }),
         expect.objectContaining({ id: "regulator:license", status: "verified" }),
+      ]),
+    );
+    expect(scan.agentName).toBe("San Diego Pilot Agent");
+    expect(scan.evidence.some((item) => item.field === "transaction_volume")).toBe(false);
+    expect(scan.sourceOutcomes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "independent_production",
+          status: "unavailable",
+          code: "independent_production_adapter_pending",
+        }),
       ]),
     );
   });
 
-  it("fetches the independent production source when a RealTrends profile is submitted", async () => {
+  it("does not attest production from an unbound RealTrends URL, even when its adapter would return verified figures", async () => {
     const fetchProduction = vi.fn(async () => ({
       evidence: [
         {
@@ -248,16 +254,23 @@ describe("CiteLock verified scan", () => {
       },
     );
 
-    expect(fetchProduction).toHaveBeenCalledWith({
-      profileUrl: "https://www.realtrends.com/agent-profile/san-diego-pilot/",
-      observedAt: NOW,
-    });
-    // The site claims $44M for 2025 while the independent source reports
-    // $33.6M — the same-period conflict must block downstream publishing.
-    const report = scoreAieo({ evidence: scan.evidence, evaluatedAt: NOW });
-    expect(
-      report.gates.find((gate) => gate.id === "production-claims")?.status,
-    ).toBe("block");
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.evidence.some(item => ["transaction_volume", "transaction_sides"].includes(item.field))).toBe(false);
+    expect(scan.sourceOutcomes).toContainEqual(expect.objectContaining({ code: "production_source_subject_unverified", status: "unavailable" }));
+  });
+
+
+  it("rejects wrong-person production URLs as attestation while retaining the submitted source for review", async () => {
+    const fetchProduction = vi.fn(async () => ({ evidence: [{ field: "transaction_volume", value: "$90M in 2025" }], outcomes: [] }));
+    const scan = await executeCiteLockScan({ website: "https://agent.example", agentName: "San Diego Pilot Agent",
+      jurisdiction: "US-CA", realTrendsUrl: "https://www.realtrends.com/agent-profile/someone-else/" },
+    { now: () => NOW, scanWebsite, fetchProduction: fetchProduction as never,
+      verifyCalifornia: vi.fn(async () => ({ evidence: [], outcomes: [] })) });
+    expect(fetchProduction).not.toHaveBeenCalled();
+    expect(scan.evidence.some(item => item.field === "transaction_volume")).toBe(false);
+    expect(scan.sourceOutcomes).toContainEqual(expect.objectContaining({
+      code: "production_source_subject_unverified", url: "https://www.realtrends.com/agent-profile/someone-else/",
+    }));
   });
 
   it("reports the production source as unlinked when none is discoverable", async () => {
@@ -288,7 +301,7 @@ describe("CiteLock verified scan", () => {
     );
   });
 
-  it("discovers a RealTrends profile from person-bound sameAs links", async () => {
+  it("does not turn a person-bound sameAs link into verified production", async () => {
     const sameAsWebsite = vi.fn(async () => ({
       ...(await scanWebsite()),
       profileObservations: [
@@ -328,10 +341,7 @@ describe("CiteLock verified scan", () => {
         fetchProduction,
       },
     );
-    expect(fetchProduction).toHaveBeenCalledWith({
-      profileUrl: "https://www.realtrends.com/agent-profile/san-diego-pilot/",
-      observedAt: NOW,
-    });
+    expect(fetchProduction).not.toHaveBeenCalled();
   });
 
   it("never applies merged fields that lack a person-bound page observation", async () => {
@@ -439,10 +449,10 @@ describe("CiteLock verified scan", () => {
     );
 
     const report = scoreAieo({
-      profile: pilotProfile,
-      properties: [pilotProperties[0]!],
+      profile: attestedProfile,
+      properties: [attestedProperties[0]!],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         ...scan.evidence.filter((item) =>
           item.field.startsWith("listing_"),
         ),

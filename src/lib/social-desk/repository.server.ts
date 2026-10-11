@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getSql, type Sql } from "@/lib/db";
+import { requireEntitlement } from "@/lib/billing/entitlement.server";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import {
   socialContentSchema,
@@ -19,8 +20,11 @@ import {
   getPostizPostStatus,
   loadPostizConnection,
   uploadMediaToPostiz,
+  uploadImageBytesToPostiz,
   type PostizChannel,
 } from "./postiz.server";
+
+import { resolveManagedAttachments } from "./managed-attachments.server";
 
 type Row = {
   id: string;
@@ -120,6 +124,7 @@ export async function createSocialDraft(
 ): Promise<SocialDraft> {
   const content = socialContentSchema.parse(input);
   const sql = await access(userId, workspaceId, sqlOverride, ["owner", "admin"]);
+  await resolveManagedAttachments(userId, workspaceId, content.managedMediaIds, sql);
   const rows = await sql.query<Row>(
     `with changed as (
        insert into social_drafts (id, workspace_id, content) values ($1, $2, $3::jsonb) returning *
@@ -168,6 +173,7 @@ export async function changeSocialDraft(
     await requireLinkedSocialSupport(userId,workspaceId,id,sql);
   }
   const content = command.action === "edit" ? command.content : parseContent(current.content);
+  if (command.action !== "receipt") await resolveManagedAttachments(userId, workspaceId, content.managedMediaIds, sql);
   const state =
     command.action === "edit"
       ? "draft"
@@ -195,6 +201,18 @@ export async function changeSocialDraft(
   );
   if (!changed[0]) throw new Error("This draft changed in another tab. Reload before continuing.");
   return toDraft(changed[0]);
+}
+
+/** Recheck current revision and source/photo availability for every user handoff. */
+export async function getApprovedSocialHandoff(userId: string, workspaceId: string, id: string, revision: number, sqlOverride?: Sql) {
+  const sql = await access(userId, workspaceId, sqlOverride);
+  const draft = await getSocialDraft(userId, workspaceId, id, sql);
+  if (draft.revision !== revision) throw new Error("This draft changed in another tab. Reload before continuing.");
+  if (draft.state !== "approved" && draft.state !== "handed_off") throw new Error("Approve this revision before exporting");
+  const { requireLinkedSocialSupport } = await import("@/lib/aieo/visibility/interventions.server");
+  await requireLinkedSocialSupport(userId, workspaceId, id, sql);
+  const images = await resolveManagedAttachments(userId, workspaceId, draft.content.managedMediaIds, sql);
+  return { draft, images };
 }
 
 export async function socialDraftHistory(userId: string, workspaceId: string, id: string, sqlOverride?: Sql) {
@@ -229,6 +247,7 @@ export type PublishDependencies = {
   sql?: Sql;
   channels?: (connection: { apiUrl: string; apiKey: string }) => Promise<PostizChannel[]>;
   upload?: typeof uploadMediaToPostiz;
+  uploadManaged?: typeof uploadImageBytesToPostiz;
   create?: typeof createPostizPost;
 };
 
@@ -246,6 +265,7 @@ export async function publishSocialDraft(
 ): Promise<{ draft: SocialDraft; publication: SocialPublication }> {
   const input = publishRequestSchema.parse(request);
   const sql = await access(userId, workspaceId, dependencies.sql, ["owner", "admin"]);
+  await requireEntitlement(userId, workspaceId, sql);
   const rows = await sql.query<Row>("select * from social_drafts where workspace_id = $1 and id = $2", [workspaceId, input.id]);
   const current = rows[0];
   if (!current) throw new Error("Draft not found");
@@ -257,6 +277,9 @@ export async function publishSocialDraft(
     throw new Error("Resolve the blocking fair-housing findings before publishing");
   const {requireLinkedSocialSupport}=await import("@/lib/aieo/visibility/interventions.server");
   await requireLinkedSocialSupport(userId,workspaceId,input.id,sql);
+  await resolveManagedAttachments(userId, workspaceId, content.managedMediaIds, sql);
+  if (content.platform === "instagram" && !content.mediaUrls.length && !content.managedMediaIds?.length)
+    throw new Error("Instagram requires a photo. Attach an actual photo before publishing.");
   const connection = await loadPostizConnection(userId, workspaceId, sql);
   if (!connection) throw new Error("Connect your Postiz workspace first (Social desk → Publishing)");
   const channels = await (dependencies.channels
@@ -287,6 +310,19 @@ export async function publishSocialDraft(
     const upload = dependencies.upload || uploadMediaToPostiz;
     const media: { id: string; path: string }[] = [];
     for (const url of content.mediaUrls) media.push(await upload(connection, url));
+    if (content.managedMediaIds?.length) {
+      const { readManagedImage } = await import("@/lib/social-media/managed-media.server");
+      const uploadManaged = dependencies.uploadManaged || uploadImageBytesToPostiz;
+      for (const id of content.managedMediaIds) {
+        await resolveManagedAttachments(userId, workspaceId, [id], sql);
+        const image = await readManagedImage(userId, id, sql);
+        media.push(await uploadManaged(connection, image.bytes, image.contentType));
+      }
+    }
+    await requireLinkedSocialSupport(userId, workspaceId, input.id, sql);
+    await resolveManagedAttachments(userId, workspaceId, content.managedMediaIds, sql);
+    // Access may expire or be revoked while channel/media requests are in flight.
+    await requireEntitlement(userId, workspaceId, sql);
     const create = dependencies.create || createPostizPost;
     dispatched=true;
     const result = await create(connection, {

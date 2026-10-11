@@ -140,7 +140,7 @@ export const citeLockScanInputSchema = z.object({
 export type CiteLockScanInput = z.infer<typeof citeLockScanInputSchema>;
 
 export type CiteSourceOutcome = {
-  source: "website" | "regulator" | "production" | "provider" | "recognition";
+  source: "website" | "regulator" | "independent_production" | "production" | "provider" | "recognition";
   status: "verified" | "observed" | "unsupported" | "unavailable" | "mismatch";
   label: string;
   url?: string;
@@ -150,6 +150,7 @@ export type CiteSourceOutcome = {
 export type CiteLockScanRecord = {
   id: string;
   subjectFingerprint: string;
+  agentName: string;
   website: string;
   jurisdiction: CiteJurisdiction;
   evaluatedAt: string;

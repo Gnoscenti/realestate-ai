@@ -17,7 +17,7 @@ import {
   type GroundedCitation,
 } from "./evaluate";
 import { summarizeExpertise, TOPIC_PATTERNS, type ExpertiseEvidence, type PageObservation } from "./expertise";
-import type { ExtractedEntity, GroundedSource } from "./providers.server";
+import type { ExtractedEntity, GroundedSource, ProviderFailureDetails } from "./providers.server";
 
 export const REPORT_ALGORITHM_VERSION = "visibility-2.3" as const;
 
@@ -33,6 +33,7 @@ export type VisibilityRun = {
   returnedModel?: string;
   status: "pending" | "running" | "ok" | "failed";
   errorCode?: string;
+  providerFailure?: Omit<ProviderFailureDetails, "evidence"> & { httpStatus?: number };
   answerText?: string;
   citations: GroundedCitation[];
   sources?: GroundedSource[];

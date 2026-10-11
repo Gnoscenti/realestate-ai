@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { CiteProperty } from "@/lib/aieo/provenance";
 import { scoreAieo } from "@/lib/aieo/score";
 import {
+  ATTESTED_AT,
+  attestedEvidence,
+  attestedProfile,
+  attestedProperties,
+} from "../fixtures/citelock-provider-attestation";
+import {
   PILOT_AUDIT_AT,
   pilotEvidence,
   pilotProfile,
@@ -23,7 +29,7 @@ describe("CiteLock v2", () => {
     expect(report.recognition).toBeNull();
   });
 
-  it("keeps verified identity but blocks unresolved claims and listing roles", () => {
+  it("reproduces the real Julie pilot while failing closed on trust gaps", () => {
     const report = scoreAieo({
       profile: pilotProfile,
       properties: pilotProperties,
@@ -31,7 +37,30 @@ describe("CiteLock v2", () => {
       evaluatedAt: PILOT_AUDIT_AT,
     });
 
-    expect(report.readiness.status).toBe("blocked");
+    expect(report.total).toBe(71);
+    expect(report.grade).toBe("C");
+    expect(report.readiness).toMatchObject({
+      status: "blocked",
+      confidence: 35,
+      evidenceCoverage: 70,
+    });
+    expect(pilotProfile).toMatchObject({
+      name: "Julie Pierce Casey",
+      brokerage: "Pacific Sotheby's International Realty",
+      responsibleBrokerName: "Real Estate of the Pacific Inc",
+      responsibleBrokerLicense: "01767484",
+      license: "01224815",
+    });
+    expect(pilotProperties).toHaveLength(3);
+    for (const property of pilotProperties) {
+      expect(property.source).toMatchObject({
+        kind: "website",
+        evidenceLevel: "site_published",
+      });
+      expect(property.source?.trust).toBeUndefined();
+      expect(property.source?.attestationId).toBeUndefined();
+      expect(property.representation?.role).toBe("unknown");
+    }
     expect(report.conflicts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -46,15 +75,13 @@ describe("CiteLock v2", () => {
     expect(
       report.gates.find((gate) => gate.id === "production-claims")?.status,
     ).toBe("block");
-    expect(report.listingBlurbs.map((blurb) => blurb.id)).toEqual([
-      "coastal",
-      "grove",
-    ]);
+    expect(report.listingBlurbs).toHaveLength(0);
     expect(report.recognition).toBeNull();
     expect(report.jsonLd["@graph"]).toEqual([]);
     expect(JSON.stringify(report.faqs).toLowerCase()).not.toContain("best realtor");
-    expect(JSON.stringify(report.faqs)).not.toContain("$20M");
-    expect(JSON.stringify(report.faqs)).not.toContain("$18M");
+    expect(JSON.stringify(report.faqs)).not.toContain("$44M");
+    expect(JSON.stringify(report.faqs)).not.toContain("$33.61M");
+    expect(JSON.stringify(report.faqs)).not.toContain("$56M");
   });
 
   it("models the person and responsible brokerage as separate linked entities", () => {
@@ -68,19 +95,19 @@ describe("CiteLock v2", () => {
     const person = graph.find((node) => node["@type"] === "Person");
     const brokerage = graph.find((node) => node["@type"] === "Organization");
 
-    expect(person?.["@id"]).toBe("https://agent.example#person");
+    expect(person?.["@id"]).toBe("https://juliepiercecasey.com#person");
     expect(brokerage?.["@id"]).toBe(
-      "https://agent.example#responsible-broker",
+      "https://juliepiercecasey.com#responsible-broker",
     );
     expect(person?.worksFor).toEqual({
-      "@id": "https://agent.example#responsible-broker",
+      "@id": "https://juliepiercecasey.com#responsible-broker",
     });
     expect(person?.["@type"]).not.toBe("RealEstateAgent");
-    expect(brokerage?.identifier).toBe("01999999");
+    expect(brokerage?.identifier).toBe("01767484");
   });
 
   it("fails closed for legacy, website, office, market, pending, and sold inventory", () => {
-    const base = pilotProperties[0]!;
+    const base = attestedProperties[0]!;
     const cases: CiteProperty[] = [
       { ...base, id: "legacy", listingSide: undefined, source: undefined, representation: undefined },
       {
@@ -89,7 +116,7 @@ describe("CiteLock v2", () => {
         source: {
           kind: "website",
           url: "https://example.com/listing",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
           evidenceLevel: "site_published",
         },
         representation: { role: "unknown" },
@@ -100,10 +127,10 @@ describe("CiteLock v2", () => {
       { ...base, id: "sold", status: "sold" },
     ];
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: cases,
-      evidence: pilotEvidence.filter((item) => item.field !== "transaction_volume"),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evidence: attestedEvidence.filter((item) => item.field !== "transaction_volume"),
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.listingBlurbs).toHaveLength(0);
@@ -112,7 +139,7 @@ describe("CiteLock v2", () => {
   });
 
   it("blocks expired regulator credentials and removes them from answers and schema", () => {
-    const evidence = pilotEvidence
+    const evidence = attestedEvidence
       .filter((item) => item.field !== "transaction_volume")
       .map((item) =>
         item.field === "license"
@@ -120,10 +147,10 @@ describe("CiteLock v2", () => {
           : item,
       );
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence,
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
     const graph = report.jsonLd["@graph"] as Array<Record<string, unknown>>;
     const person = graph.find((node) => node["@type"] === "Person");
@@ -134,7 +161,7 @@ describe("CiteLock v2", () => {
   });
 
   it("requires an explicit active regulator status", () => {
-    const evidence = pilotEvidence
+    const evidence = attestedEvidence
       .filter((item) => item.field !== "transaction_volume")
       .map((item) =>
         item.field === "license"
@@ -142,10 +169,10 @@ describe("CiteLock v2", () => {
           : item,
       );
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence,
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.gates.find((gate) => gate.id === "license")?.status).toBe(
@@ -164,22 +191,22 @@ describe("CiteLock v2", () => {
       sourceTier: "first_party" as const,
       status: "published" as const,
       sourceUrl: "https://agent.example/listings/test",
-      observedAt: PILOT_AUDIT_AT,
+      observedAt: ATTESTED_AT,
     };
-    const baseEvidence = pilotEvidence.filter(
+    const baseEvidence = attestedEvidence.filter(
       (item) => item.field !== "transaction_volume",
     );
     const withoutProvider = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [...baseEvidence, siteStatus],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
     const withProvider = scoreAieo({
-      profile: pilotProfile,
-      properties: [pilotProperties[0]!],
+      profile: attestedProfile,
+      properties: [attestedProperties[0]!],
       evidence: [...baseEvidence, siteStatus],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(
@@ -193,10 +220,10 @@ describe("CiteLock v2", () => {
 
   it("does not require role proof for a non-active website observation", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "site:listing:0:status:0",
           subject: "listing",
@@ -207,10 +234,10 @@ describe("CiteLock v2", () => {
           sourceTier: "first_party",
           status: "published",
           sourceUrl: "https://agent.example/listings/test",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.gates.find((gate) => gate.id === "listing-role")?.status).toBe(
@@ -219,7 +246,7 @@ describe("CiteLock v2", () => {
   });
 
   it("keeps a date-only regulator credential valid through its local expiration day", () => {
-    const evidence = pilotEvidence
+    const evidence = attestedEvidence
       .filter((item) => item.field !== "transaction_volume")
       .map((item) =>
         item.field === "license"
@@ -232,7 +259,7 @@ describe("CiteLock v2", () => {
           : item,
       );
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence,
       evaluatedAt: "2026-08-20T02:00:00.000Z",
@@ -245,10 +272,10 @@ describe("CiteLock v2", () => {
 
   it("compares production claims only within the same period", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "volume:2025",
           subject: "agent",
@@ -258,7 +285,7 @@ describe("CiteLock v2", () => {
           sourceTier: "independent",
           status: "verified",
           sourceUrl: "https://ranking.example/2025",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
         {
           id: "volume:h1-2026",
@@ -269,10 +296,10 @@ describe("CiteLock v2", () => {
           sourceTier: "independent",
           status: "verified",
           sourceUrl: "https://ranking.example/h1-2026",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.conflicts.some((item) => item.field === "transaction_volume")).toBe(false);
@@ -280,10 +307,10 @@ describe("CiteLock v2", () => {
 
   it("normalizes equivalent production-value formats within one period", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "volume:short",
           subject: "agent",
@@ -294,7 +321,7 @@ describe("CiteLock v2", () => {
           sourceTier: "first_party",
           status: "published",
           sourceUrl: "https://agent.example/production",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
         {
           id: "volume:long",
@@ -306,10 +333,10 @@ describe("CiteLock v2", () => {
           sourceTier: "independent",
           status: "verified",
           sourceUrl: "https://ranking.example/production",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(
@@ -318,7 +345,7 @@ describe("CiteLock v2", () => {
   });
 
   it("suppresses a listing answer when public sources conflict on current status", () => {
-    const active = pilotProperties[0]!;
+    const active = attestedProperties[0]!;
     const sold: CiteProperty = {
       ...active,
       id: "coastal-sold-source",
@@ -329,12 +356,12 @@ describe("CiteLock v2", () => {
       },
     };
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [active, sold],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.conflicts).toEqual(
@@ -351,13 +378,13 @@ describe("CiteLock v2", () => {
 
   it("matches structured and provider addresses when no MLS number exists", () => {
     const active: CiteProperty = {
-      ...pilotProperties[0]!,
+      ...attestedProperties[0]!,
       id: "address-provider",
       mlsNumber: undefined,
       address: "1 Test Way",
       city: "Solana Beach",
       source: {
-        ...pilotProperties[0]!.source!,
+        ...attestedProperties[0]!.source!,
         url: "https://provider.example/listing/address-provider",
         attestationId: "provider:address-provider",
       },
@@ -371,18 +398,18 @@ describe("CiteLock v2", () => {
       source: {
         kind: "website",
         url: "https://agent.example/listings/address-site",
-        observedAt: PILOT_AUDIT_AT,
+        observedAt: ATTESTED_AT,
         evidenceLevel: "site_published",
       },
       representation: { role: "unknown" },
     };
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [active, sold],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.conflicts).toEqual(
@@ -397,7 +424,7 @@ describe("CiteLock v2", () => {
   });
 
   it("blocks a sale-versus-lease disagreement for the same MLS record", () => {
-    const sale = pilotProperties[0]!;
+    const sale = attestedProperties[0]!;
     const leaseObservation: CiteProperty = {
       ...sale,
       id: "coastal-lease-observation",
@@ -407,18 +434,18 @@ describe("CiteLock v2", () => {
       source: {
         kind: "website",
         url: "https://agent.example/listings/coastal-lease",
-        observedAt: PILOT_AUDIT_AT,
+        observedAt: ATTESTED_AT,
         evidenceLevel: "site_published",
       },
       representation: { role: "unknown" },
     };
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [sale, leaseObservation],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.conflicts).toEqual(
@@ -436,21 +463,21 @@ describe("CiteLock v2", () => {
 
   it("rejects a provider role attestation for a different agent", () => {
     const otherAgent: CiteProperty = {
-      ...pilotProperties[0]!,
+      ...attestedProperties[0]!,
       representation: {
         role: "listing",
         matchedAgentId: "OTHER123",
         matchedAgentName: "Different Agent",
-        verifiedAt: PILOT_AUDIT_AT,
+        verifiedAt: ATTESTED_AT,
       },
     };
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [otherAgent],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.listingBlurbs).toHaveLength(0);
@@ -463,10 +490,10 @@ describe("CiteLock v2", () => {
     const secretUrl =
       "https://portal.example/agents/pilot?access-token=supersecret&view=public#bio";
     const report = scoreAieo({
-      profile: { ...pilotProfile, sameAs: [secretUrl] },
+      profile: { ...attestedProfile, sameAs: [secretUrl] },
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "site:public-profile",
           subject: "agent",
@@ -476,10 +503,10 @@ describe("CiteLock v2", () => {
           sourceTier: "first_party",
           status: "published",
           sourceUrl: secretUrl,
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
     const serialized = JSON.stringify(report);
 
@@ -491,10 +518,10 @@ describe("CiteLock v2", () => {
 
   it("blocks conflicting brokerage brands instead of exporting one arbitrarily", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "site:brand",
           subject: "brokerage",
@@ -504,7 +531,7 @@ describe("CiteLock v2", () => {
           sourceTier: "first_party",
           status: "published",
           sourceUrl: "https://agent.example/",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
         {
           id: "brokerage:brand",
@@ -515,10 +542,10 @@ describe("CiteLock v2", () => {
           sourceTier: "brokerage",
           status: "verified",
           sourceUrl: "https://brokerage.example/agents/pilot",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.conflicts).toEqual(
@@ -534,10 +561,10 @@ describe("CiteLock v2", () => {
 
   it("omits conflicted legal identity fields from the export graph", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
       evidence: [
-        ...pilotEvidence.filter((item) => item.field !== "transaction_volume"),
+        ...attestedEvidence.filter((item) => item.field !== "transaction_volume"),
         {
           id: "regulator:conflicting-license",
           subject: "agent",
@@ -547,11 +574,11 @@ describe("CiteLock v2", () => {
           sourceTier: "regulator",
           status: "verified",
           sourceUrl: "https://regulator.example/licenses/09999999",
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
           validThrough: "2029-01-01",
         },
       ],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
     const graph = report.jsonLd["@graph"] as Array<Record<string, unknown>>;
     const person = graph.find((node) => node["@type"] === "Person");
@@ -562,9 +589,9 @@ describe("CiteLock v2", () => {
 
   it("blocks regulator evidence that is older than the verification window", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
       evaluatedAt: "2026-12-01T12:00:00.000-08:00",
@@ -579,9 +606,9 @@ describe("CiteLock v2", () => {
 
   it("blocks a stale site audit even when the historic page was indexable", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
       evaluatedAt: "2026-09-25T12:00:00.000-07:00",
@@ -595,20 +622,20 @@ describe("CiteLock v2", () => {
 
   it("exports only the service area selected by sufficient public evidence", () => {
     const profile = {
-      ...pilotProfile,
+      ...attestedProfile,
       areaOfOperations: "Rancho Santa Fe, San Diego County, and Nationwide",
       serviceAreas: [
-        ...(pilotProfile.serviceAreas || []),
+        ...(attestedProfile.serviceAreas || []),
         { name: "Nationwide", kind: "state" as const, countryCode: "US" },
       ],
     };
     const report = scoreAieo({
       profile,
       properties: [],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
     const exported = JSON.stringify(report.jsonLd);
     const areaAnswer = report.faqs.find((faq) =>
@@ -622,20 +649,20 @@ describe("CiteLock v2", () => {
 
   it("never trusts a provider attestation copied into browser inventory", () => {
     const forgedClientProperty: CiteProperty = {
-      ...pilotProperties[0]!,
+      ...attestedProperties[0]!,
       source: {
-        ...pilotProperties[0]!.source!,
+        ...attestedProperties[0]!.source!,
         trust: "client_import",
         attestationId: "client-forged",
       },
     };
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [forgedClientProperty],
-      evidence: pilotEvidence.filter(
+      evidence: attestedEvidence.filter(
         (item) => item.field !== "transaction_volume",
       ),
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
     });
 
     expect(report.listingBlurbs).toHaveLength(0);
@@ -663,9 +690,9 @@ describe("CiteLock v2", () => {
 
   it("labels a small recognition sample as insufficient instead of ranking the agent", () => {
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
       recognitionRuns: [
         {
           id: "one",
@@ -676,7 +703,7 @@ describe("CiteLock v2", () => {
           correctIdentity: true,
           correctBrokerage: true,
           citations: ["https://agent.example/"],
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
         {
           id: "two",
@@ -687,7 +714,7 @@ describe("CiteLock v2", () => {
           correctIdentity: false,
           correctBrokerage: false,
           citations: [],
-          observedAt: PILOT_AUDIT_AT,
+          observedAt: ATTESTED_AT,
         },
       ],
     });
@@ -710,12 +737,12 @@ describe("CiteLock v2", () => {
       correctIdentity: true,
       correctBrokerage: true,
       citations: ["https://agent.example/"],
-      observedAt: PILOT_AUDIT_AT,
+      observedAt: ATTESTED_AT,
     }));
     const report = scoreAieo({
-      profile: pilotProfile,
+      profile: attestedProfile,
       properties: [],
-      evaluatedAt: PILOT_AUDIT_AT,
+      evaluatedAt: ATTESTED_AT,
       recognitionRuns: duplicateRuns,
     });
 
