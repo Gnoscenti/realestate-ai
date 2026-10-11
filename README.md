@@ -15,7 +15,7 @@ Readiness and schema exports support this loop. Sales price and transaction volu
 
 The integrated branch also retains the authenticated Gateway assistant, authorized Closed/Sold imports, reviewed outreach, and actual-photo studio with durable private uploads and PNG export. Social Desk connects retained media to independent fact/rights approval. Paid Orshot rendering and scheduler publication require separately verified provider configuration.
 
-See `docs/INTEGRATION-2026-09-26.md` for current integration/migration evidence. Earlier release reports retain their original dates and are not fresh deployment acceptance.
+See [the October 11 production release report](docs/PRODUCTION-RELEASE-2026-10-11.md) for the verified merge, deployment and live workflow results. `docs/INTEGRATION-2026-09-26.md` retains integration/migration evidence. Earlier reports retain their original dates.
 
 ## Run locally
 

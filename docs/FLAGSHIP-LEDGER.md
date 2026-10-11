@@ -1183,3 +1183,35 @@ Current local browser verification PASS: homepageHTTP200, login rendered, no Vit
 PR41 at3dfc017 had successful test/PostgreSQL/Vercel checks and was mergeable. These checks predate the dependency fixes; a new commit and fresh CI are required. No schema changes relative to main. Existing production startup baseline /api/auth/get-session returned200.
 
 Final local production build PASS after the compatible security updates. Tracked source scan against configured local secret values and the private production beta fixture found zero matches; only secret names/counts were emitted. The production test will redeem the already-configured beta code through the regular UI; no direct DB entitlement grant or auth bypass is planned.
+
+### Session9 main merge and deployed candidate
+PR41 merged normally as a21a91dbb3f52dabc415e8e9dcc33774fdc12221, with expected-head SHA7b6e5ac pinned in the merge request. Current main ancestry preserved; local main fast-forwarded to origin/main and was clean. No force or admin bypass.
+Fresh CI38154539355 on7b6e5ac PASS:439unit/integration tests across56files;57nativePG tests across8files;20desktop/mobile browser workflows;2development auth scenarios;3compiled-production/nativePG auth scenarios. Vercel Preview also succeeded. No new migration/schema change.
+Vercel Git integration created production dpl_FD1eSrNpaPcFCyHma1Ha32XKu6SW for main a21a91d. Authenticated CLI inspection confirmed cloud-realtor.vercel.app now aliases this exact READY production deployment. Previous production dpl_FVv2XdSUcp7j2KZfccPEjMmj7cUJ remains the application rollback reference. Live production acceptance is starting.
+
+### Session9 completed production acceptance
+Production acceptance on canonical https://cloud-realtor.vercel.app, deployment dpl_FD1eSrNpaPcFCyHma1Ha32XKu6SW at a21a91d, passed all nine scenarios between 2026-10-11T16:18:45Z and16:19:40Z. Used a synthetic account and the existing beta code through normal UI redemption. Private credentials, beta values, raw logs and browser fixtures remain ignored under tmp; no customer account was modified.
+
+1. Anonymous homepage200, null auth session and authenticated-route redirect.
+2. Real signup, reload, logout and email login; secure/httpOnly __Host session cookie and stable user identity.
+3. Julie Pierce Casey / Rancho Santa Fe source-backed free guide from the personal about page and RealTrends agent profile. Both returned identity matches; three actionable steps, saved progress after reload and Markdown export passed.
+4. Normal server entitlement redemption unlocked the nine-step full guide and advanced workspace, retaining existing progress and enabling full export.
+5. Advanced brokerage subject persisted through reload.
+6. One real xAI Social Desk request produced a175-character caption; UI identified grok-4.3 and the supplied facts used.
+7. An existing repository photo uploaded to a synthetic listing, produced a retained1080x1080 PNG, returned authenticatedHTTP200/private cache headers, and attached to the draft.
+8. Draft saved, explicitly reviewed/approved, downloaded and handed off manually; after reload the revision3 draft, caption and approved private image remained available. No public receipt was fabricated.
+9. Unrelated-Origin signin rejected403, signout cleared the session, anonymous private-image access rejected401 and Social Desk returned to login.
+
+Zero uncaught page errors and zero same-originHTTP5xx during these scenarios. Desktop1440 and mobile390 screenshots were visually inspected; no horizontal overflow on mobile. This verifies source-backed guidance and manual social delivery, not measured ranking improvement or external publishing.
+
+The actual guide qualified the ranking: “Julie Pierce Casey ranked No. 1 by transaction sides among RealTrends-ranked agents in Rancho Santa Fe, based on 2025 sales data.” It also identified conflicting 2025 sales volume figures ($44M personal site versus $33.61M RealTrends) and advised checking scope, credit and cutoff before comparison. MLS authority was not required.
+
+Bounded Vercel error-log review returned five entries: the deliberate foreign-origin403 and four pg-connection-string warnings on successful200 responses. No application request failure was present in this sample. The driver currently treats sslmode=require as verify-full; explicitly selecting verify-full before a future pg major upgrade is a maintenance item, not an observed loss of certificate verification. No log suppression, relaxed TLS or security bypass was applied.
+
+Main-commit CI38154825743 at a21a91d also completed successfully. Prior fresh branch CI38154539355 and all local gate results above remain linked to their exact source.
+
+### Session9 delivery decisions and remaining risks
+D-026: Record this evidence in docs/PRODUCTION-RELEASE-2026-10-11.md, commit/push the documentation-only closeout, then verify its production deployment and reread the existing synthetic guide/draft/image across that deployment. Keep application code, dependencies and migrations identical to the fully tested a21a91d release. Do not claim final alias/status until that last check completes.
+Remaining operational acceptance: no external Postiz publication, Stripe charge, paid multi-engine visibility baseline, native iOS archive or measured GEO uplift was performed in this release. One synthetic account and its guide/listing/image/draft are intentionally retained for reproducible acceptance. Current provider backup retention/PITR was not re-audited; September26 logical restore evidence is historical. User's local8131server remains running after its verified fresh restart.
+
+Final documentation-inclusive secret scan:343files, zero matches. README links the dated report. These three documentation files are the only post-acceptance changes.
