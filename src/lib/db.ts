@@ -3,10 +3,8 @@ export type DbSource = "neon" | "pglite";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const rawDatabaseUrl = typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+const databaseUrl = rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -15,6 +13,22 @@ const databaseUrl =
  * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
+// An ephemeral process-local database is never a production persistence layer.
+if (typeof process !== "undefined" && process.env.NODE_ENV === "production" && !databaseUrl) {
+  throw new Error("DATABASE_URL is required in production. Ephemeral storage is refused.");
+}
+
+// Production must never run on the in-memory fallback: every deploy would start
+// with an empty database and lose accounts, scans, and drafts (ledger D-009).
+if (
+  typeof process !== "undefined" &&
+  process.env.NODE_ENV === "production" &&
+  dbSource === "pglite"
+) {
+  throw new Error(
+    "DATABASE_URL is required in production. Refusing to start on the ephemeral PGLite fallback.",
+  );
+}
 
 /**
  * Minimal shared SQL surface, satisfied by both Neon and PGLite. Both the
@@ -25,6 +39,8 @@ export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
  *   const rows2 = await sql.query("select * from todos where id = $1", [id]);
  */
 export interface Sql {
+  /** Runs all statements on one connection; failure rolls the complete unit back. */
+  transaction<T>(work: (sql: Sql) => Promise<T>): Promise<T>;
   <T = Record<string, unknown>>(
     strings: TemplateStringsArray,
     ...values: unknown[]
@@ -68,7 +84,7 @@ const identity = (v: string) => v;
 type Run = <T>(text: string, params: unknown[]) => Promise<T[]>;
 
 /** Wrap a query runner in the tagged-template + `.query()` `Sql` surface. */
-function toSql(run: Run): Sql {
+function toSql(run: Run, transaction?: Sql["transaction"]): Sql {
   const sql = (async <T = Record<string, unknown>>(
     strings: TemplateStringsArray,
     ...values: unknown[]
@@ -78,6 +94,7 @@ function toSql(run: Run): Sql {
     for (let i = 0; i < values.length; i += 1) text += `$${i + 1}${strings[i + 1]}`;
     return run<T>(text, values);
   }) as unknown as Sql;
+  sql.transaction = transaction || (async () => { throw new Error("Nested transactions are not supported"); });
   sql.query = <T = Record<string, unknown>>(text: string, params: unknown[] = []) =>
     run<T>(text, params);
   return sql;
@@ -95,6 +112,18 @@ function createNeonSql(): Promise<Sql> {
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
+    }, async <T>(work: (sql: Sql) => Promise<T>) => {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const result = await work(toSql(async <R>(text: string, params: unknown[]) =>
+          (await client.query(text, params)).rows as R[]));
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally { client.release(); }
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
@@ -105,11 +134,22 @@ function createNeonSql(): Promise<Sql> {
 
 async function createPgliteSql(): Promise<Sql> {
   // Embedded Postgres, imported on demand so it never loads on the Neon path.
-  // One in-memory instance per process, shared across HMR module instances, so
-  // data survives source edits (it resets on dev-server restart).
+  // Local disk persists across restarts; isolated tests explicitly use memory.
   globalRef.__pgliteInstance__ ??= (async () => {
+    const dataDir = process.env.VITEST || process.env.PGLITE_IN_MEMORY === "1"
+      ? undefined
+      : (process.env.PGLITE_DATA_DIR || ".local-data/pglite");
+    if (dataDir) {
+      // PGlite creates its data directory, but requires its ancestors to exist.
+      const [{ mkdir }, { dirname }] = await Promise.all([
+        import("node:fs/promises"),
+        import("node:path"),
+      ]);
+      await mkdir(dirname(dataDir), { recursive: true });
+    }
     const { PGlite } = await import("@electric-sql/pglite");
     const pg = new PGlite({
+      dataDir,
       parsers: {
         [OID_INT8]: Number,
         [OID_DATE]: identity,
@@ -138,13 +178,9 @@ async function createPgliteSql(): Promise<Sql> {
       import: "default",
       eager: true,
     }) as Record<string, string>;
-    const doneRows = await pg.query<{ name: string }>(
-      "select name from _migrations",
-    );
+    const doneRows = await pg.query<{ name: string }>("select name from _migrations");
     const done = new Set(doneRows.rows.map((r) => r.name));
-    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) =>
-      a.localeCompare(b),
-    )) {
+    for (const [path, text] of Object.entries(migrations).sort(([a], [b]) => a.localeCompare(b))) {
       const name = path.split("/").pop() as string;
       if (done.has(name)) continue;
       // Apply + record atomically (parity with scripts/migrate.mjs) so a failed
@@ -164,7 +200,10 @@ async function createPgliteSql(): Promise<Sql> {
   return toSql(async <T>(text: string, params: unknown[]) => {
     const result = await pg.query<T>(text, params);
     return result.rows;
-  });
+  }, <T>(work: (sql: Sql) => Promise<T>) => pg.transaction(tx =>
+    work(toSql(async <R>(text: string, params: unknown[]) =>
+      (await tx.query<R>(text, params)).rows))));
+
 }
 
 let sqlPromise: Promise<Sql> | null = null;
@@ -183,8 +222,8 @@ async function createSql(): Promise<Sql> {
  * Get the shared, **server-only** SQL client. Neon when `DATABASE_URL` is set,
  * otherwise the local PGLite fallback. Memoized — safe to call per request.
  *
- * Schema comes from `migrations/*.sql`, auto-applied before the first query on
- * both backends — define tables there, never inline in server functions.
+ * Schema comes from `migrations/*.sql`. Local PGLite applies it automatically;
+ * production requires `npm run db:migrate` before release. Define tables there.
  */
 export function getSql(): Promise<Sql> {
   sqlPromise ??= createSql().catch((err) => {
@@ -212,7 +251,7 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
 /**
  * Finish DB bootstrap before the server handles traffic.
  *
- * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
+ * - **PGLite** (preview / no `DATABASE_URL`): open the local embedded DB and apply
  *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
  * - **Neon**: no-op (pool is created lazily on first query).
  *

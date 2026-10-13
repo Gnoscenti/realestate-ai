@@ -362,7 +362,7 @@ export function learnFromLead(lead: Lead): MemorySignal {
 
 export function parseRememberCommand(text: string): string | null {
   const m = text.match(
-    /^(?:remember(?:\s+that)?|note that|always remember)\s*[:\-]?\s*(.+)$/i,
+    /^(?:remember(?:\s+that)?|note that|always remember)\s*[:-]?\s*(.+)$/i,
   );
   return m?.[1]?.trim() || null;
 }

@@ -11,6 +11,7 @@ import {
   Zap,
   BookOpen,
   Calendar,
+  Radar,
 } from "lucide-react";
 import {
   Card,
@@ -33,12 +34,21 @@ const modules = [
     highlight: true,
   },
   {
+    to: "/aieo",
+    title: "CiteLock",
+    description:
+      "Where AI answer engines send your clients, who they name instead, and drafted fixes you approve.",
+    icon: Radar,
+    features: ["Visibility", "Sources", "Fixes"],
+    highlight: true,
+  },
+  {
     to: "/calendar",
     title: "Calendar & Contractors",
     description:
-      "Google/Apple/Outlook sync, AI reminders, and vendors by trade with a Common list.",
+      "Your appointments and vendors by trade with a Common list. No external calendar is imported.",
     icon: Calendar,
-    features: ["Sync", "Reminders", "Vendors"],
+    features: ["Appointments", "Reminders", "Vendors"],
     highlight: true,
   },
   {
@@ -52,20 +62,20 @@ const modules = [
   },
   {
     to: "/cma",
-    title: "CMA Studio",
+    title: "Comparison Planning",
     description:
-      "One-click comps, list-price guidance, and value scripts for listing presentations.",
+      "Review saved properties and learn what verified sold data is still required.",
     icon: BarChart3,
-    features: ["Comps", "List price", "Value script"],
+    features: ["Saved records", "Source checks", "Workflow"],
     highlight: true,
   },
   {
     to: "/marketing",
-    title: "Social Content Agent",
+    title: "Social Desk",
     description:
-      "Agentic multi-platform campaigns: strategy, posts, reels, calendar, publish queue.",
+      "Use actual listing photos, review sourced drafts, approve the exact revision and export or hand off.",
     icon: Megaphone,
-    features: ["Agentic", "Multi-platform", "Calendar"],
+    features: ["Facts first", "Review", "Publish"],
     highlight: true,
   },
   {
@@ -86,19 +96,19 @@ const modules = [
   },
   {
     to: "/market",
-    title: "Market & Valuation",
+    title: "Market Data Setup",
     description:
-      "Hybrid AVM, forecasts, and renovation what-if scenarios.",
+      "Prepare authorized Closed/Sold sources before client-facing valuation work.",
     icon: TrendingUp,
-    features: ["AVM", "Forecast", "What-if"],
+    features: ["Source checks", "MLS data", "Broker review"],
   },
   {
     to: "/transactions",
     title: "Transaction Hub",
     description:
-      "Document AI review, e-sign tracking, and deal milestones.",
+      "Deal milestones you track by hand. Document review and e-sign are not connected.",
     icon: FileText,
-    features: ["Docs AI", "Pipeline", "Risks"],
+    features: ["Milestones", "Risks"],
   },
   {
     to: "/properties",

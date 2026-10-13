@@ -2,6 +2,7 @@
  * Parse agent-owned data (CSV / TSV / paste) — never invent fake clients or listings.
  */
 import type { Lead, LeadSource, Property } from "@/data/seed";
+import type { CiteProperty } from "@/lib/aieo/provenance";
 import { calculateLeadScore, heatFromScore } from "@/data/seed";
 import { uid } from "@/lib/utils";
 
@@ -252,10 +253,11 @@ export function parseListingsCsv(
     };
   }
 
-  const items: Property[] = [];
+  const items: CiteProperty[] = [];
   let skipped = 0;
   const cityDefault = opts?.defaultCity?.split(",")[0]?.trim() || "Market";
   const agent = opts?.agentName?.trim() || "Listing agent";
+  const importedAt = new Date().toISOString();
 
   for (let i = start; i < lines.length; i++) {
     const row = splitRow(lines[i]!);
@@ -293,12 +295,24 @@ export function parseListingsCsv(
             ? "coming_soon"
             : "active";
     const sideRaw = cell(row, map, "listing_side").toLowerCase();
+    const representationRole =
+      /co[-_ ]list/.test(sideRaw)
+        ? "co_listing"
+        : sideRaw === "mine" || sideRaw.includes("listing agent")
+          ? "listing"
+          : sideRaw.includes("office")
+            ? "office"
+            : sideRaw.includes("market") || sideRaw.includes("comp")
+              ? "market"
+              : "unknown";
     const listingSide: Property["listingSide"] =
-      sideRaw.includes("office")
-        ? "office"
-        : sideRaw.includes("market") || sideRaw.includes("comp")
-          ? "market"
-          : "mine";
+      representationRole === "listing" || representationRole === "co_listing"
+        ? "mine"
+        : representationRole === "office"
+          ? "office"
+          : representationRole === "market"
+            ? "market"
+            : undefined;
     const ppsf = sqft > 0 ? Math.round(price / sqft) : 0;
     const features = cell(row, map, "features")
       .split(/[|;/]/)
@@ -325,7 +339,7 @@ export function parseListingsCsv(
       features: features.length ? features : ["Imported listing"],
       description:
         cell(row, map, "description") ||
-        `Imported listing at ${address}. Owned by your book — not sample data.`,
+        `Imported listing at ${address}.`,
       lat: 0,
       lng: 0,
       pricePerSqft: ppsf,
@@ -334,7 +348,26 @@ export function parseListingsCsv(
       pattern: (items.length % 5) + 1,
       mlsNumber: cell(row, map, "mls_number") || undefined,
       listingSide,
-      listAgentName: listingSide === "mine" ? agent : undefined,
+      listAgentName:
+        representationRole === "listing" || representationRole === "co_listing"
+          ? agent
+          : undefined,
+      source: {
+        kind: "csv",
+        observedAt: importedAt,
+        evidenceLevel:
+          representationRole === "listing" || representationRole === "co_listing"
+            ? "user_declared"
+            : "inferred",
+      },
+      representation: {
+        role: representationRole,
+        matchedAgentName:
+          representationRole === "listing" || representationRole === "co_listing"
+            ? agent
+            : undefined,
+      },
+      visibility: "public",
     });
   }
 
@@ -352,28 +385,11 @@ export const LISTING_CSV_TEMPLATE = `Address,Price,Beds,Baths,Sqft,City,Neighbor
 123 Example Lane,4250000,5,5.5,5200,Rancho Santa Fe,The Covenant,SDP1234567,active,house,mine
 `;
 
-/** Detect classic seed/demo rows so we can purge them from tester devices */
+/** Only identifiers assigned to bundled fixtures can identify sample records. */
 export function looksLikeSeedLead(l: Lead): boolean {
-  if (/^lead_\d+$/.test(l.id)) return true;
-  if (/@email\.com$/i.test(l.email)) return true;
-  if (/\(555\)/.test(l.phone)) return true;
-  const seedNames = [
-    "Sarah Johnson",
-    "Mike Chen",
-    "Emily Rodriguez",
-    "David Park",
-    "Jessica Williams",
-    "Robert Kim",
-  ];
-  return seedNames.includes(l.name);
+  return /^lead_\d+$/.test(l.id);
 }
 
 export function looksLikeSeedProperty(p: Property): boolean {
-  if (/^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id)) return true;
-  if (p.description?.includes("Seed") || p.description?.includes("sample market"))
-    return true;
-  // Generated MLS pull used synthetic mls numbers with SDP + random
-  if (p.listAgentName && /Market Agent|Office Peer/i.test(p.listAgentName))
-    return true;
-  return false;
+  return /^prop_\d+$/.test(p.id) || /^mls_gen_/.test(p.id);
 }

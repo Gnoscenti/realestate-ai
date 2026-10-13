@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildDemoInboxScan,
   classifyEmail,
-  messagesToAlerts,
-  unreadCount,
 } from "@/lib/email-alerts";
 import type { Lead } from "@/data/seed";
 
@@ -51,13 +48,4 @@ describe("email alert classifier", () => {
     expect(a.leadId).toBe("l1");
   });
 
-  it("builds demo scan with docusign + client", () => {
-    const msgs = buildDemoInboxScan([lead], "agent@broker.com");
-    const alerts = messagesToAlerts(msgs, [lead], "gmail");
-    expect(alerts.some((x) => x.kind === "docusign")).toBe(true);
-    expect(alerts.some((x) => x.kind === "client")).toBe(true);
-    expect(unreadCount(alerts.map((a) => ({ ...a, read: false })))).toBe(
-      alerts.length,
-    );
-  });
 });

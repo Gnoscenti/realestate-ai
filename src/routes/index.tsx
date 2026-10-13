@@ -90,7 +90,7 @@ const FIRST_TASKS = [
   {
     to: "/mls",
     label: "Connect listings",
-    help: "Bring in inventory from MLS, a website, or CSV.",
+    help: "Bring in inventory from your website or a CSV.",
     icon: Link2,
   },
   {
@@ -146,8 +146,8 @@ function FreshWorkspaceGuide({ hasProfile }: { hasProfile: boolean }) {
         </div>
         <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-[var(--color-fg-muted)]">
-            Profile, market, and MLS details can be added whenever they become
-            useful.
+            Profile, market, and website details can be added whenever they
+            become useful.
           </p>
           <Button
             type="button"
@@ -375,7 +375,7 @@ function DashboardPage() {
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
                     {isFreshWorkspace
                       ? "Add one real lead, listing, or appointment above. Your ranked next action will appear here."
-                      : "Queue clear — great work. Reset done items or sync calendars for new prep tasks."}
+                      : "Queue clear. Reset done items or add an appointment for new preparation tasks."}
                   </CardContent>
                 </Card>
               )}
@@ -504,7 +504,6 @@ function EdgeBriefBar() {
   const leads = useAppStore((s) => s.leads);
   const properties = useAppStore((s) => s.properties);
   const deals = useAppStore((s) => s.deals);
-  const mlsConnections = useAppStore((s) => s.mlsConnections);
   const brief = buildDailyEdgeBrief({
     agentName: profile?.name,
     newLeadCount: leads.filter((l) => l.status === "new").length,
@@ -513,9 +512,7 @@ function EdgeBriefBar() {
       ["active", "coming_soon", "pending"].includes(p.status),
     ).length,
     openDealCount: deals.filter((d) => d.stage !== "closed").length,
-    hasMlsConnection: mlsConnections.some(
-      (c) => c.status === "connected" || c.hasCredentials,
-    ),
+    hasMlsConnection: false,
     hasWebsite: Boolean(profile?.website),
   });
   return (

@@ -2,7 +2,7 @@
 /**
  * Deploy-time database migrator (node-postgres, `pg`).
  *
- * Runs during `npm run build` — on every Vercel deploy — applying pending files
+ * Run explicitly with `npm run db:migrate` — on every Vercel deploy — applying pending files
  * in ../migrations to DATABASE_URL. Each file is applied in one transaction and
  * recorded in a `_migrations` table, so it runs once and is safe to re-run.
  *
@@ -28,6 +28,7 @@ async function main() {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
   try {
+    await client.query("select pg_advisory_lock(71920260908)");
     await client.query(
       "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
     );
@@ -67,6 +68,7 @@ async function main() {
     }
     console.log(count ? `[migrate] done — ${count} migration(s) applied.` : "[migrate] up to date.");
   } finally {
+    await client.query("select pg_advisory_unlock(71920260908)").catch(() => undefined);
     client.release();
     await pool.end();
   }

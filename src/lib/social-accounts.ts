@@ -1,5 +1,6 @@
 /**
- * Connected social accounts + per-network auto-post control (agent discretion).
+ * Legacy browser-only planning handles. `connected` means a handle was saved;
+ * it does not represent provider OAuth, and no publishing API is wired.
  */
 
 export type SocialNetworkId =
@@ -13,10 +14,10 @@ export type SocialNetworkId =
 export type SocialAccountConnection = {
   id: SocialNetworkId;
   label: string;
-  /** Connected handle / page name */
+  /** Locally saved handle / page name */
   handle: string;
   connected: boolean;
-  /** Agent toggle: when on, approved posts may auto-queue/publish */
+  /** Legacy local preference; ignored while publishing is unavailable. */
   autoPost: boolean;
   connectedAt?: string;
   lastPostAt?: string;

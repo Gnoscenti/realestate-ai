@@ -350,64 +350,6 @@ export function messagesToAlerts(
 }
 
 /** Demo / sandbox scan grounded in the agent’s real lead book */
-export function buildDemoInboxScan(leads: Lead[], agentEmail?: string): RawEmailMessage[] {
-  const now = Date.now();
-  const msgs: RawEmailMessage[] = [
-    {
-      id: "demo_ds_1",
-      from: "DocuSign <dse_na4@docusign.net>",
-      subject: "Complete with DocuSign: Residential Purchase Agreement",
-      snippet:
-        "Please DocuSign Residential Purchase Agreement. The envelope is waiting for your review.",
-      date: new Date(now - 12 * 60000).toISOString(),
-    },
-    {
-      id: "demo_esc_1",
-      from: "Coastal Escrow <closings@coastalescrow.example>",
-      subject: "Escrow update — wire instructions & CD timeline",
-      snippet: "Closing disclosure target set. Confirm buyer wire instructions.",
-      date: new Date(now - 55 * 60000).toISOString(),
-    },
-    {
-      id: "demo_insp_1",
-      from: "Premier Home Inspection <reports@premierinspect.example>",
-      subject: "Inspection report ready — 18422 Via de Fortuna",
-      snippet: "PDF report attached. Summary: minor items, no termite evidence.",
-      date: new Date(now - 3 * 3600000).toISOString(),
-    },
-    {
-      id: "demo_show_1",
-      from: "ShowingTime <notifications@showingtime.com>",
-      subject: "Showing request: tomorrow 4:00 PM",
-      snippet: "Buyer agent requested a showing. Confirm or propose a new time.",
-      date: new Date(now - 6 * 3600000).toISOString(),
-    },
-  ];
-
-  // One alert per real lead email (client replies)
-  for (const lead of leads.slice(0, 4)) {
-    if (!lead.email) continue;
-    msgs.push({
-      id: `demo_lead_${lead.id}`,
-      from: `${lead.name} <${lead.email}>`,
-      subject: `Re: homes in ${lead.location || "your area"}`,
-      snippet: `Hi — still interested. Can we tour this weekend? Budget around my range.`,
-      date: new Date(now - (20 + leads.indexOf(lead) * 15) * 60000).toISOString(),
-    });
-  }
-
-  if (agentEmail) {
-    msgs.push({
-      id: "demo_cal_1",
-      from: "Google Calendar <calendar-notification@google.com>",
-      subject: `Accepted: Listing consult with client @ ${agentEmail}`,
-      snippet: "Calendar event accepted for tomorrow morning.",
-      date: new Date(now - 90 * 60000).toISOString(),
-    });
-  }
-
-  return msgs;
-}
 
 export function unreadCount(alerts: EmailAlert[]): number {
   return alerts.filter((a) => !a.read).length;

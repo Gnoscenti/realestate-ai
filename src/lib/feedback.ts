@@ -57,7 +57,7 @@ export const FEEDBACK_SECTIONS: {
   {
     id: "cma",
     label: "CMA Studio",
-    hint: "Comps, AVM, presentation polish",
+    hint: "Comparison data, source clarity, presentation polish",
   },
   {
     id: "marketing",

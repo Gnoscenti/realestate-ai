@@ -4,7 +4,7 @@ import {
   appointmentsNeedingAttention,
   formatApptWhen,
 } from "@/lib/calendar";
-import { suggestContentGap } from "@/lib/social-agent";
+import { suggestContentGap } from "@/lib/social-desk/suggest";
 import { formatCurrency } from "@/lib/utils";
 
 export type PriorityKind =
@@ -40,7 +40,7 @@ export type PriorityItem = {
 
 /**
  * Daily action queue ranked by industry pain points:
- * - Inman 2025: avg lead response 917 min; sub-5-min wins
+ * - Respond to recent inquiries using the recorded last-contact timestamp
  * - AI first-touch +40% lead capture
  * - 66% adopt tech to save time; follow-up is #1 leakage
  * - Post-NAR: prove value via prep, CMA, agreements
@@ -73,7 +73,7 @@ export function buildPriorityQueue(ctx: {
         title: `Respond to ${lead.name} now`,
         reason: `New lead · last touch ${Math.max(0, Math.round(hoursSince))}h ago · score ${lead.score}`,
         researchNote:
-          "Inman: average agent responds in ~15 hours. Sub-5-minute replies win the majority of conversions.",
+          "A prompt, useful reply gives this inquiry a clear next step. Priority uses the recorded contact time, not a predicted conversion rate.",
         leadId: lead.id,
         actionLabel: "Open action pack",
         href: `/outreach?lead=${lead.id}&mode=instant`,
@@ -196,7 +196,7 @@ export function buildPriorityQueue(ctx: {
     }
   }
 
-  // Calendar prep from connected calendars
+  // Preparation for appointments saved on this device
   for (const apt of appointmentsNeedingAttention(ctx.appointments ?? [], 36)) {
     const id = `cal_${apt.id}`;
     if (done.has(id)) continue;
@@ -208,7 +208,7 @@ export function buildPriorityQueue(ctx: {
       title: `Prep: ${apt.title}`,
       reason: `${formatApptWhen(apt.start)} · ${apt.reminders[0] ?? apt.kind}`,
       researchNote:
-        "Agents lose deals when calendar prep is tribal knowledge — AI surfaces reminders from connected calendars.",
+        "Review the notes and preparation suggestions for this saved appointment before it starts.",
       actionLabel: "Open calendar",
       href: "/calendar",
       score: 920 - hours * 2,

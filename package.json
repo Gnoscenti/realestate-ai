@@ -4,15 +4,19 @@
   "sideEffects": false,
   "type": "module",
   "overrides": {
-    "nf3": "0.3.17"
+    "nf3": "0.3.17",
+    "xcode": {
+      "uuid": "11.1.1"
+    }
   },
   "scripts": {
     "dev": "vite dev --host 0.0.0.0 --port 8080",
-    "build": "vite build && npm run db:migrate",
+    "build": "vite build",
     "db:migrate": "node scripts/migrate.mjs",
     "build:dev": "vite build --mode development",
-    "preview": "vite preview --host 0.0.0.0 --port 8080",
+    "preview": "nitro preview --host 127.0.0.1 --port 8080",
     "typecheck": "tsc --noEmit",
+    "typecheck:aieo": "tsc --noEmit --project tsconfig.aieo-tests.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "cap:prepare": "node scripts/prepare-capacitor.mjs",
@@ -25,7 +29,11 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:smoke": "node scripts/browser-smoke.mjs http://127.0.0.1:8080/",
-    "ci": "npm run typecheck && npm run test:unit && npm run build && npm run test:e2e"
+    "ci": "npm run typecheck && npm run lint -- --max-warnings=0 && npm run test:unit && npm run build && npm run test:e2e && npm run test:auth",
+    "test:calendar:cold": "playwright test --config playwright.calendar.config.ts --retries=0",
+    "test:auth": "playwright test --config playwright.auth.config.ts",
+    "test:postgres": "node scripts/test-postgres.mjs",
+    "test:restore": "node scripts/verify-postgres-restore.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",
@@ -38,6 +46,7 @@
     "@capacitor/status-bar": "^8.0.3",
     "@electric-sql/pglite": "^0.5.3",
     "@hookform/resolvers": "^5.0.0",
+    "@perplexity-ai/perplexity_ai": "^0.38.5",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -61,10 +70,12 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.1.0",
     "@tanstack/react-query": "^5.90.0",
-    "@tanstack/react-router": "^1.160.0",
-    "@tanstack/react-start": "^1.160.0",
+    "@tanstack/react-router": "^1.170.41",
+    "@tanstack/react-start": "^1.168.60",
     "@tanstack/react-table": "^8.21.0",
-    "@tanstack/router-plugin": "^1.160.0",
+    "@tanstack/router-plugin": "^1.168.42",
+    "@vercel/blob": "^2.8.0",
+    "@vercel/oidc": "3.8.6",
     "better-auth": "^1.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -79,8 +90,9 @@
     "react-hook-form": "^7.54.0",
     "react-resizable-panels": "^4.6.5",
     "recharts": "^2.13.0",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.7",
-    "stripe": "^22.4.0",
+    "stripe": "^22.6.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.1.0",
     "tw-animate-css": "^1.3.4",
@@ -90,7 +102,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
-    "@capacitor/ios": "^8.5.0",
+    "@capacitor/ios": "^8.5.3",
     "@eslint/js": "^9.20.0",
     "@playwright/test": "^1.52.0",
     "@types/node": "^22.16.5",
@@ -111,11 +123,11 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.1.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22.0.0",
-    "npm": ">=12.0.0"
+    "npm": ">=10.9.8"
   },
-  "packageManager": "npm@12.0.0"
+  "packageManager": "npm@10.9.8"
 }

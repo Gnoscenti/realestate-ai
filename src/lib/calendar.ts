@@ -1,4 +1,4 @@
-/** Calendar providers, appointments, and AI reminder extraction */
+/** Local appointments and deterministic preparation suggestions. */
 
 export type CalendarProviderId =
   | "google"
@@ -50,7 +50,7 @@ export interface CalendarAppointment {
   clientName?: string;
   propertyLabel?: string;
   notes?: string;
-  /** AI-extracted prep / follow-up reminders */
+  /** User notes and rule-based prep suggestions */
   reminders: string[];
   contractorId?: string;
   dealId?: string;
@@ -120,192 +120,6 @@ export const APPOINTMENT_KIND_LABEL: Record<AppointmentKind, string> = {
   other: "Other",
 };
 
-function hoursFromNow(h: number): string {
-  return new Date(Date.now() + h * 3600000).toISOString();
-}
-
-function hoursSpan(startH: number, durationH: number): { start: string; end: string } {
-  const start = hoursFromNow(startH);
-  const end = hoursFromNow(startH + durationH);
-  return { start, end };
-}
-
-/** Demo import pack — realistic RE appointments relative to "now" */
-export function buildImportedAppointments(
-  area = "Rancho Santa Fe",
-  agentName = "Agent",
-): CalendarAppointment[] {
-  const now = new Date().toISOString();
-  const a = (partial: Omit<CalendarAppointment, "id" | "importedAt"> & { id?: string }) =>
-    ({
-      id: partial.id ?? `apt_${Math.random().toString(36).slice(2, 9)}`,
-      importedAt: now,
-      ...partial,
-    }) as CalendarAppointment;
-
-  const t0 = hoursSpan(2, 1);
-  const t1 = hoursSpan(5, 1.5);
-  const t2 = hoursSpan(26, 2);
-  const t3 = hoursSpan(30, 1);
-  const t4 = hoursSpan(48, 3);
-  const t5 = hoursSpan(52, 1);
-  const t6 = hoursSpan(72, 1);
-  const t7 = hoursSpan(96, 2);
-
-  return [
-    a({
-      id: "apt_show_1",
-      source: "google",
-      externalId: "gcal_evt_1001",
-      title: `Buyer tour — Covenant estate`,
-      kind: "showing",
-      status: "confirmed",
-      ...t0,
-      location: `El Camino Real, ${area}`,
-      clientName: "Jordan Lee",
-      propertyLabel: "Covenant Estate with Guest Casita",
-      notes: "Gate code in CRM. Clients want casita + trail access.",
-      reminders: [
-        "Confirm gate code with listing agent 30 min prior",
-        "Bring buyer agreement copy (post-NAR)",
-        "Pull 2 backup inventory options under budget",
-      ],
-    }),
-    a({
-      id: "apt_insp_1",
-      source: "apple",
-      externalId: "icloud_evt_88",
-      title: "Home inspection — pending sale",
-      kind: "inspection",
-      status: "scheduled",
-      ...t1,
-      location: `Via de la Valle, ${area}`,
-      clientName: "The Nguyen family",
-      propertyLabel: "Fairbanks Ranch Acreage Compound",
-      notes: "Buyer-paid inspection. Termite separate.",
-      reminders: [
-        "Confirm inspector arrival window with buyer",
-        "Schedule termite re-inspect if needed",
-        "Block 20 min after for repair summary call",
-      ],
-      contractorId: "ctr_insp_01",
-    }),
-    a({
-      id: "apt_list_1",
-      source: "google",
-      externalId: "gcal_evt_1002",
-      title: "Listing presentation — seller",
-      kind: "listing_appointment",
-      status: "needs_prep",
-      ...t2,
-      location: `The Bridges, ${area}`,
-      clientName: "Morgan Hale",
-      propertyLabel: "Bridges golf-adjacent contemporary",
-      notes: "Pre-list CMA + marketing plan deck",
-      reminders: [
-        "Print CMA Studio package",
-        "Confirm photographer availability next week",
-        "Review HOA / Bridges docs checklist",
-      ],
-    }),
-    a({
-      id: "apt_photo_1",
-      source: "outlook",
-      externalId: "ol_evt_441",
-      title: "Twilight photos + drone",
-      kind: "photo_staging",
-      status: "scheduled",
-      ...t3,
-      location: `Linea del Cielo, ${area}`,
-      propertyLabel: "Coming Soon Covenant Classic",
-      reminders: [
-        "Lights on + staging reset by 5:30p",
-        "Notify neighbors about drone",
-      ],
-      contractorId: "ctr_photo_01",
-    }),
-    a({
-      id: "apt_oh_1",
-      source: "google",
-      externalId: "gcal_evt_1003",
-      title: "Broker open / private tours",
-      kind: "open_house",
-      status: "scheduled",
-      ...t4,
-      location: `${area} Covenant`,
-      propertyLabel: "Covenant Estate with Guest Casita",
-      notes: "Private-tour culture — limited broker preview",
-      reminders: [
-        "Prep feature sheets + QR to site",
-        "Have contractor referral list ready (termite, electrical)",
-      ],
-    }),
-    a({
-      id: "apt_term_1",
-      source: "apple",
-      externalId: "icloud_evt_91",
-      title: "Termite inspection",
-      kind: "contractor",
-      status: "scheduled",
-      ...t5,
-      location: `Fairbanks Ranch, ${area}`,
-      clientName: "The Nguyen family",
-      propertyLabel: "Fairbanks Ranch Acreage Compound",
-      reminders: [
-        "Send clearance report to escrow when complete",
-        "If Section 1 findings, get 2 bids within 48h",
-      ],
-      contractorId: "ctr_term_01",
-    }),
-    a({
-      id: "apt_esc_1",
-      source: "outlook",
-      externalId: "ol_evt_450",
-      title: "Escrow status call",
-      kind: "escrow",
-      status: "confirmed",
-      ...t6,
-      clientName: "Rivera / Chen",
-      notes: "Appraisal contingency expires tomorrow",
-      reminders: [
-        "Confirm appraisal ordered",
-        "Update clients on contingency clock",
-      ],
-    }),
-    a({
-      id: "apt_close_1",
-      source: "google",
-      externalId: "gcal_evt_1010",
-      title: "Closing — final walkthrough",
-      kind: "closing",
-      status: "scheduled",
-      ...t7,
-      location: `Title office · ${area}`,
-      clientName: "Rivera / Chen",
-      reminders: [
-        "Final walkthrough checklist",
-        "Confirm wire instructions verbally (not email-only)",
-        `Bring ${agentName} business cards for notary packet`,
-      ],
-    }),
-    a({
-      id: "apt_consult_1",
-      source: "manual",
-      title: "Buyer consult — coastal vs Covenant",
-      kind: "buyer_consult",
-      status: "needs_prep",
-      ...hoursSpan(8, 1),
-      location: "Video call",
-      clientName: "Priya Shah",
-      notes: "Comparing Del Mar lifestyle vs RSF land",
-      reminders: [
-        "Open RSF knowledge talk track: Covenant vs coastal",
-        "Have 3 inventory examples ready",
-      ],
-    }),
-  ];
-}
-
 export function appointmentsNeedingAttention(
   appointments: CalendarAppointment[],
   withinHours = 48,
@@ -373,7 +187,7 @@ export function detectKindFromTitle(title: string): AppointmentKind {
   return "other";
 }
 
-/** AI-style reminder extraction from free-text calendar notes */
+/** Rule-based preparation suggestions from free-text calendar notes */
 export function extractRemindersFromNotes(
   title: string,
   notes?: string,

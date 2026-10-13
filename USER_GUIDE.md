@@ -1,206 +1,76 @@
-# RealEstate AI — Simple User Guide for Realtors
+# RealEstate AI — User Guide
 
-**Who this is for:** agents who want to get value fast without tech jargon.  
-**What the app is:** your daily work desk — leads, listings, calendar, CMAs, and marketing content in one place. It uses **your** data (your website, your MLS connection, or what you import). It does **not** invent fake clients or fake homes.
+Citelock helps you **get discovered for the work you do best** by connecting supported expertise to sampled AI answers, useful improvements and follow-up observations.
 
----
+## Start with real work
 
-## Part 1 — First-time setup (about 10–15 minutes)
+Sign in with email/password and redeem the beta code your team supplied. Access follows your account. Stripe checkout requires deployment configuration. Add an accurate profile when ready; profile and CRM notes currently remain in that browser.
 
-Follow these steps in order the first time you open the app.
+Open **CiteLock → Supported expertise**. Select agent, team or brokerage, enter its exact name, HTTPS website and market area, then **Save subject**. These identities follow your account across devices independently of the browser-local CRM profile. Saved details collapse into a summary; use **Edit saved subject** to change them. Save edits before running observations or adding evidence.
 
-### Step 1 — Open the app
-1. Open the link your team sent you (or the app icon if you saved it to your phone Home Screen).
-2. Wait for the setup screens. You should see something like **“Set up your Agent OS.”**
+Each entity has separate identity details and evidence. If another session changed the identity, reload the saved version before editing again. Changing a name, website or license can select a different evidence history; previous records are retained.
 
-### Step 2 — Tell us who you are
-1. Enter **your full name** (how clients know you).
-2. Enter **brokerage** if you want it on content and CMAs.
-3. Tap **Continue**.
+- **Inspect public page** fetches one text-accessible page with a timestamp and digest. A name plus local/affiliation context is needed before suggesting attributable passages.
+- Add an exact short passage from the observed page, permitted client report or authorized case material. Record date, URL where applicable, permission basis and any contrary evidence.
+- Explicitly check identity/storage rights. Publication permission is separate and unchecked by default. A declaration alone cannot establish expertise.
+- **Withdraw evidence or permission** when rights or attribution change. History is retained; the source cannot support new approvals.
 
-### Step 3 — Your market
-1. Enter **area of operations** (examples: “Rancho Santa Fe, CA” or “La Jolla & Del Mar”).
-2. Paste your **public website** if you have one (this is very helpful).
-3. Tap **Continue**.
+Missing evidence means unknown. Selected reviews do not prove overall quality. Price and transaction volume do not make one agent better than another.
 
-### Step 4 — Your MLS board
-1. Choose the **MLS board** you work under (example: Sandicor for San Diego).
-2. This labels your workspace correctly. Live MLS pull is set up later in **MLS Hub**.
-3. Tap **Continue**.
+## Discovery and useful improvements
 
-### Step 5 — Pull your real info (highly recommended)
-**If you entered a website:**
-1. Tap **Scan website**.
-2. Wait until you see your **photo, phone, license/MLS #**, and any **listings** the site shows.
-3. Check that the preview looks like *you* (not a stranger).
-4. Tap **Launch workspace**.
+**Run visibility batch** asks seven base questions plus up to three supported expertise questions. Unbranded client questions contain geography and needs, not your name or biography. Reputation questions stay separate. Stop after the current probes and resume stored work later.
 
-**If you don’t have a website yet:**
-1. Skip scan and **Launch workspace**.
-2. You’ll start with an **empty book** (no fake leads). That’s normal and good.
+**Where you show up** separates mentions, recommendations, grounded citations, negative mentions, ambiguous identities and failures. Inspect the actual prompt, answer, returned model and sample sizes. Provider API observations do not reproduce consumer applications.
 
-### Step 6 — Unlock access
-You’ll see billing / access options.
+**What to fix** requires supported publishable expertise, observed public-page coverage and a relevant grounded answer recommending alternatives. Every eligible opportunity includes its question, evidence, gap, improvement, hypothesis and test plan. Missing inputs require more evidence rather than generic advice.
 
-**Pick one:**
-- **Beta code** (if you were given one) — paste it and redeem.  
-- **$9.99 intro** (30 days, then monthly Pro) — start trial / checkout when ready.
+Draft a **web page or FAQ**. The package contains exact permitted passages and attribution, placement/internal-link instructions and interview questions for missing case detail. Edit without adding unsupported claims. Explicitly review facts and rights before approval. An edit invalidates approval.
 
-You only need this once. After unlock, you’ll land on the **Command Center**.
+Publish through your authorized website/brokerage editor. Paste the HTTPS URL on the approved website. CiteLock checks the subject and every substantive approved passage. **Publication reported** means the text was not fully confirmed. **Verified** confirms public text at that time, not indexing or visibility lift.
 
-### Step 7 — Optional but powerful (same day if you can)
-Do these when you have 10 more minutes:
+Create the **linked social draft** from an approved package. It opens in Social Desk with source notes and a link to the improvement. It needs independent review.
 
-| Goal | Where | What to do |
-|------|--------|------------|
-| Get real listings | **MLS Hub** | Connect your board’s data service (or keep using website) |
-| Get real clients | **Lead Intelligence** | Import a simple list (name, email, phone) or add one lead |
-| Get appointments | **Calendar & Vendors** | Connect a calendar and sync |
-| Get marketing | **Content Agent** | Pick a listing → generate a post pack |
+Use **Repeat this basket** after follow-through. Comparison keeps question, requested/returned model, provider, subject, API surface and method compatible. Same-day reruns and changed configurations are not presented as lift. The citation-boundary correction uses measurement method expertise-v2.1; older methods require a new baseline. Small samples, failed requests and lack of referral attribution remain explicit.
 
----
+## Social Desk
 
-## Part 2 — Best way to use the system every day
+1. Start from a Citelock improvement or enter source/fact notes. Choose the platform and write a caption; optional AI drafting uses supplied facts.
+2. Review claims, housing-language findings, attribution and media rights. Access to an aggregator photo is not reuse permission.
+3. Save and explicitly approve that revision. Editing returns it to draft.
+4. **Manual handoff:** copy/share/download, post through your authorized account and record the URL. **Posted (reported)** is your receipt.
+5. **Postiz:** connect your authorized scheduler, choose the matching channel and dispatch/schedule. Credentials are encrypted. Live account validation remains necessary for your deployment.
+6. Unknown dispatch outcomes freeze the draft to prevent duplicate posts. Inspect Postiz before taking another action. Refresh can reconcile a known scheduler post ID; a timeout is not proof of failure.
 
-Think of the app like a morning briefing + work desk.
+## Property data and supporting tools
 
-### Morning routine (10–15 minutes)
-1. Open **Command Center**.
-2. Look at the **Action Desk** — ranked things to do today (hot leads, follow-ups, calendar prep, CMAs).
-3. Open the **#1 item** and do what it says (call/text/email script is often ready for you).
-4. Mark it done when finished so the list stays clean.
-5. Glance at **Calendar & Vendors** for today’s showings / inspections.
+**Listings & Data** and **Market data & scenarios** expose third-party property observations via RapidAPI. Representation and redistribution rights remain unverified. A displayed price does not prove a personally completed sale. Missing sale periods, buyer/seller roles, individual/team attribution or closed-price statistics remain unknown.
 
-### When a new lead comes in
-1. Go to **Instant Response** first (speed wins).
-2. Send a quick, professional first reply.
-3. Open **Lead Intelligence** and make sure the person is saved with phone, budget, and neighborhood.
-4. Return to **Command Center** — they should surface as a priority if they’re hot.
+The market calculator requires all six assumptions, including explicit zeroes. It shows arithmetic and formulas, not an appraisal, forecast or predicted return.
 
-### When you’re listing or promoting a home
-1. Confirm the home is in **Property Mgmt** (from website scan, MLS Hub, or import).
-2. Open **Content Agent**.
-3. Choose that listing → generate social posts / campaign.
-4. Copy the text into Instagram, Facebook, LinkedIn, email, etc.
-5. Use **CMA Studio** if a seller wants comps and a value story.
+Calendar appointments, vendor lists, local CRM and manual milestones support daily work. Calendar “connect” imports nothing. Document review and e-signature are not connected. Email scanning requires a session token.
 
-### When you’re preparing for a showing or listing appointment
-1. Check **Calendar & Vendors** for time and type of appointment.
-2. Open **Market Knowledge** (especially useful in Rancho Santa Fe–area context) for talking points.
-3. Open **CMA Studio** or **Market & Valuation** if numbers matter in the meeting.
-4. Use **Instant Response** templates if you need a confirm / reminder text.
+## Storage and measurement
 
-### End of day (5 minutes)
-1. Update lead status if someone went cold or under contract.
-2. Log any contractor you used under **Calendar & Vendors** (termite, inspection, etc.) so next time they’re one tap away.
-3. Clear finished items from the Action Desk.
+Citelock identities, sources, observations, interventions, social drafts and grants persist on the server under the signed-in workspace. Local development uses disk PGLite; production requires PostgreSQL. Browser-local profile/CRM/calendar data is separate.
 
----
+Batches reserve a bounded retry budget. Known rate-limit rejections may retry once; ambiguous paid timeouts are retained rather than replayed. A stored answer or retry never counts twice.
 
-## Part 3 — Tips & tricks
+**Readiness** offers supporting site/schema/license diagnostics. It cannot replace a supported opportunity, usable improvement and measured follow-through.
 
-### Data (so the app feels “yours”)
-- **Never rely on sample/demo people.** If you see names that aren’t your clients, clear and re-onboard or import your own list.
-- **Website first, MLS when ready.** Website scan gets you live-looking fast. MLS Hub is the long-term accurate feed.
-- **Agent MLS ID matters.** In MLS Hub, your personal agent ID helps mark *your* listings as yours.
-- **Import is your friend.** A simple spreadsheet (Name, Email, Phone, Area, Budget) beats an empty pipeline.
+## Manual calendar
+Open Calendar, choose Add appointment, enter a title and a start/end in the displayed device timezone, then save. Preparation notes combine your notes with labeled rule-based suggestions. Records stay in this browser; they do not sync across devices. Export calendar downloads an .ics event you can import into Google, Apple or Outlook. Export does not send an invitation. Done retains the event as completed and removes it from upcoming preparation notes. No calendar OAuth, live sync or background reminders are connected.
 
-### Phone / iPhone
-- Add the app to your **Home Screen** (Share → Add to Home Screen) so it feels like a real app.
-- Use the **bottom tabs** on phone for the main areas; use the menu for everything else.
-- Big buttons are intentional — easy to tap between showings.
+Property search uses local matching rules over your saved listing book. Download property summary exports the selected record as text; it does not certify availability, representation or completeness.
 
-### Speed to lead
-- Treat **Instant Response** as your first stop when a notification or form lead hits.
-- Keep the first message short: thank them, confirm the property/area, offer two times to talk.
-- Log the lead in **Lead Intelligence** so the Action Desk doesn’t forget them tomorrow.
 
-### Marketing without writer’s block
-- Always generate content **from a real listing** in your book.
-- Edit one personal detail (a local note, a showing time) before you post — sounds more like you.
-- Save phrases that work; the app learns your style a bit more the more you use it.
+## Free and full Citelock guides
 
-### Calendar & vendors
-- Connect the calendar you actually live in (Google / Apple / Outlook when available).
-- After inspections, **mark the contractor “common use”** so termite / home inspector / electrician stay at the top.
-- Use AI reminders from appointments so prep work shows up on the Action Desk.
+1. Sign in and choose **Try the free Citelock visibility guide** at the access gate, or open CiteLock from the workspace.
+2. Enter your public name, target locale and website. Add exact broker, ranking and additional evidence pages when available.
+3. Choose **Build my visibility guide**. Review the source findings first. Unreadable pages are marked unavailable; identity mismatches and conflicting figures are not treated as verified facts.
+4. Follow the numbered instructions. Each action has an owner, effort estimate and completion criterion. You make and approve all publication changes yourself.
+5. Mark actions complete to save progress, and use **Export guide** to download the instructions as Markdown.
+6. Free access includes three initial actions. Full access unlocks six additional steps on the same saved guide, plus the advanced measurement workspace and Social Desk. A paid provider batch is optional, not a prerequisite for getting useful advice.
 
-### Trust & access
-- **Beta codes** unlock full use + **Feedback Board** so you can tell us what to fix before full launch.
-- Billing is under **Billing & Access** if you need to restart intro or check plan.
-- Tokens and passwords for MLS stay on your device; only used when you sync.
-
-### Common mistakes to avoid
-- Skipping website/MLS and expecting a full book of “example” listings — we won’t invent those.
-- Ignoring the Action Desk and only browsing menus — the desk is the optimized path.
-- Putting wrong market area in setup — CMAs and knowledge work best when the area is real.
-
----
-
-## Part 4 — What each section does (1–2 sentences)
-
-### Command Center  
-Your home screen. It ranks what matters today and opens action packs with suggested wording so you don’t start from a blank page.
-
-### Instant Response  
-Fast first-contact tools when a lead comes in. Helps you answer quickly with clear, professional language.
-
-### Lead Intelligence  
-Your client and prospect list: heat scores, notes, budgets, and neighborhoods. Import real people here so priorities are based on your book.
-
-### Smart Search  
-Find homes and match criteria without digging through clutter. Use it when a buyer says “show me options like this.”
-
-### CMA Studio  
-Comparable sales and value story for listings and listing appointments. Best when your inventory and market area are set correctly.
-
-### Market Knowledge  
-Local talking points and market context (strong for Rancho Santa Fe and nearby areas). Use it to sound sharp in client conversations.
-
-### Calendar & Vendors  
-Appointments (showings, inspections, closings) plus a directory of contractors by type (termite, inspection, electrician, etc.). Common-used vendors stay easy to find.
-
-### Market & Valuation  
-Broader market and value views for pricing conversations. Pair with CMA Studio when a seller needs numbers and context.
-
-### Transaction Hub  
-Track deals from offer toward close. Keep status and next steps visible so nothing falls through after acceptance.
-
-### Property Mgmt  
-Your listing book: active, pending, and related inventory. This feeds marketing, CMAs, and daily priorities.
-
-### MLS Hub  
-Where you connect real MLS data services (or fall back to your website). Use this so listings are live and accurate—not placeholders.
-
-### Content Agent  
-Social and marketing content built from your real listings. Generates post packs you can copy into the platforms you already use.
-
-### Feedback Board  
-For beta users: leave comments on what works and what doesn’t so the product can improve before full launch.
-
-### Billing & Access  
-Trial, subscription, and free access codes. This is where you unlock the full workspace or manage your plan.
-
----
-
-## Part 5 — 30-day “get good at this” plan
-
-| When | Do this |
-|------|--------|
-| **Day 1** | Finish setup, scan website, unlock access, open Command Center |
-| **Day 2** | Import or add at least 5 real leads |
-| **Day 3** | Connect calendar; add 2–3 trusted vendors |
-| **Week 1** | Connect MLS Hub *or* confirm website listings look right |
-| **Week 1** | Generate one Content Agent campaign for a real listing and post it |
-| **Week 2** | Run one CMA for a real seller conversation |
-| **Ongoing** | Start every workday on Command Center → clear top 3 actions |
-
----
-
-## Need help in one line?
-
-**Setup:** Name → Area → Website scan → Board → Launch → Unlock.  
-**Daily:** Command Center → do top actions → Instant Response for new leads → Content Agent for listings.  
-**Data:** Your website, your MLS Hub connection, or your imports — never fake filler.
-
-Welcome aboard. Make the book yours, then let the Action Desk run your day.
+A ranking is not a service-quality claim. Retain its publisher, year, category and population. For example, transaction sides must not become a claim to have handled more unique transactions than every agent in a town. Resolve differing volume totals with the source owners before reusing them.

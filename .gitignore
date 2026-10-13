@@ -45,3 +45,6 @@ coverage/
 .project_id
 artifacts/
 Beta comments/.counter
+
+# Local durable development database (never commit accounts/evidence).
+.local-data/

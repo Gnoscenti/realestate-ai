@@ -16,13 +16,12 @@ export const PLAN = {
   introLabel: "$9.99",
   introPeriod: "30 days of access",
   features: [
-    "Command Center + ranked daily action packs",
-    "CMA Studio & RSF market knowledge",
-    "Content Agent (social campaigns)",
-    "Calendar sync + contractor directory",
-    "Adaptive AI that learns your book",
+    "CiteLock visibility batches across configured answer engines",
+    "Ranked fixes with drafted pages, FAQs, and profile checklists",
+    "Social Desk: facts-first drafts, fair-housing review, Postiz publishing or handoff",
+    "Command Center, instant-response scripts, CMA notes, calendar and vendors",
     "Priority support during beta",
-    "Persistent Suggest drawer → Beta comments for Grok",
+    "Suggest drawer → engineering feedback",
   ],
 } as const;
 

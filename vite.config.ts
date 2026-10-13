@@ -126,6 +126,7 @@ function authPopupPlugin(): Plugin {
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command }) => ({
   server: {
+    watch: { ignored: ["**/tmp/**", "**/test-results/**", "**/playwright-report/**"] },
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,
@@ -136,7 +137,11 @@ export default defineConfig(({ command }) => ({
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
     tailwindcss(),
-    tanstackStart(),
+    // The root document links the sole stylesheet explicitly (styles.css?url).
+    // Automatic dev SSR style discovery traverses Vite's merged module graph
+    // and introduces server-only dependencies into the client optimizer, which
+    // can reload the page after a user has opened a form.
+    tanstackStart({ dev: { ssrStyles: { enabled: false } } }),
     ...(command === "build" ? [nitro({ preset: "vercel" })] : []),
     viteReact(),
   ],

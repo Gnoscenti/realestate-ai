@@ -41,28 +41,13 @@ const STAGE_LABEL: Record<string, string> = {
 function TransactionsPage() {
   const deals = useAppStore((s) => s.deals);
   const advanceDeal = useAppStore((s) => s.advanceDeal);
-  const reviewDocument = useAppStore((s) => s.reviewDocument);
-  const pushActivity = useAppStore((s) => s.pushActivity);
   const [selectedDealId, setSelectedDealId] = useState(deals[0]?.id ?? "");
   const deal = deals.find((d) => d.id === selectedDealId) ?? deals[0];
 
-  const simulateUpload = () => {
-    if (!deal) return;
-    toast.success("Document uploaded — AI review queued");
-    pushActivity({
-      type: "document",
-      title: "Document uploaded",
-      description: `New file attached to ${deal.propertyTitle}`,
-      badge: "Upload",
-    });
-    const pending = deal.documents.find((d) => d.status === "pending");
-    if (pending) {
-      setTimeout(() => {
-        reviewDocument(deal.id, pending.id);
-        toast.message("AI review complete");
-      }, 900);
-    }
-  };
+  // Document upload, AI review, and e-signature are not connected in this
+  // release. The buttons say so instead of inventing a result (ledger A-022).
+  const notConnected = (feature: string) =>
+    toast.message(`${feature} is not connected in this release. Track the milestone here; keep documents in your transaction platform.`);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -72,12 +57,12 @@ function TransactionsPage() {
             Transaction hub
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Document AI, e-sign tracking, and deal milestones
+            Deal milestones you track by hand. Document review and e-signature are not connected.
           </p>
         </div>
-        <Badge variant="warning">
+        <Badge variant="secondary">
           <Clock className="h-3 w-3" />
-          Pipeline live
+          Manual tracking
         </Badge>
       </div>
 
@@ -98,13 +83,13 @@ function TransactionsPage() {
                     Upload & analyze
                   </CardTitle>
                   <CardDescription>
-                    Drop contracts for AI review (demo simulates analysis)
+                    Not connected in this release — no file is uploaded and no review runs.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <button
                     type="button"
-                    onClick={simulateUpload}
+                    onClick={() => notConnected("Document upload and AI review")}
                     className="flex w-full flex-col items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] px-6 py-10 text-center transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-soft)]/20"
                   >
                     <Upload className="mb-3 h-10 w-10 text-[var(--color-fg-subtle)]" />
@@ -116,7 +101,7 @@ function TransactionsPage() {
                     </p>
                     <span className="mt-4 inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-warning-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-warning)]">
                       <Zap className="h-3.5 w-3.5" />
-                      Run demo upload
+                      Not connected
                     </span>
                   </button>
                 </CardContent>
@@ -165,14 +150,8 @@ function TransactionsPage() {
                           </span>
                         )}
                         {doc.status === "pending" && (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              reviewDocument(deal.id, doc.id);
-                              toast.success("AI review complete");
-                            }}
-                          >
-                            Run AI review
+                          <Button size="sm" variant="outline" onClick={() => notConnected("AI document review")}>
+                            Review not connected
                           </Button>
                         )}
                       </div>
@@ -260,22 +239,10 @@ function TransactionsPage() {
                         </p>
                       </div>
                       {doc.status === "signed" ? (
-                        <Badge variant="success">Signed</Badge>
+                        <Badge variant="secondary">Marked signed by you</Badge>
                       ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            useAppStore.getState().updateDeal(d.id, {
-                              documents: d.documents.map((x) =>
-                                x.id === doc.id
-                                  ? { ...x, status: "signed" as const }
-                                  : x,
-                              ),
-                            });
-                            toast.success("Signature request sent");
-                          }}
-                        >
-                          Request sign
+                        <Button size="sm" variant="outline" onClick={() => notConnected("E-signature")}>
+                          E-sign not connected
                         </Button>
                       )}
                     </CardContent>

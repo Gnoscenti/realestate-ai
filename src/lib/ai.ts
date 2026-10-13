@@ -1,9 +1,5 @@
 import type { AgentProfile, Deal, Lead, Property, RentalUnit } from "@/data/seed";
-import {
-  isRsfCorridor,
-  RSF_MARKET_META,
-  searchKnowledge,
-} from "@/data/rsf-knowledge";
+import { isRsfCorridor, RSF_MARKET_META, searchKnowledge } from "@/data/rsf-knowledge";
 import {
   formatRetrievedKnowledge,
   parseRememberCommand,
@@ -30,9 +26,15 @@ function topLeads(leads: Lead[], n = 5) {
   return [...leads].sort((a, b) => b.score - a.score).slice(0, n);
 }
 
+const STEERING_TERM_PATTERN =
+  /\b(famil(?:y|ies)|schools?|crime|safe(?:ty)?|religion|church|synagogue|mosque|ethnic(?:ity)?|race|racial)\b/i;
+
 function matchProperties(query: string, properties: Property[]): Property[] {
   const q = query.toLowerCase();
-  const tokens = q.split(/[^a-z0-9.$]+/).filter(Boolean);
+  const tokens = q
+    .split(/[^a-z0-9.$]+/)
+    .filter(Boolean)
+    .filter((token) => !STEERING_TERM_PATTERN.test(token));
 
   const budgetMatch = q.match(/under\s*\$?([\d.]+)\s*(k|m)?/i);
   let maxBudget: number | null = null;
@@ -47,19 +49,19 @@ function matchProperties(query: string, properties: Property[]): Property[] {
   return properties
     .map((p) => {
       let score = 0;
-      const hay = `${p.title} ${p.address} ${p.neighborhood} ${p.city} ${p.type} ${p.features.join(" ")} ${p.description}`.toLowerCase();
+      const hay =
+        `${p.title} ${p.address} ${p.neighborhood} ${p.city} ${p.type} ${p.features.join(" ")} ${p.description}`.toLowerCase();
       for (const t of tokens) {
         if (hay.includes(t)) score += 8;
       }
-      if (q.includes("luxury") && (p.price >= 1000000 || p.features.some((f) => /view|pool|concierge/i.test(f))))
+      if (
+        q.includes("luxury") &&
+        (p.price >= 1000000 || p.features.some((f) => /view|pool|concierge/i.test(f)))
+      )
         score += 20;
       if (q.includes("investment") || q.includes("rental") || q.includes("roi")) {
         if (p.type === "multi" || p.capRate) score += 25;
         if (p.features.some((f) => /adu|rental|duplex/i.test(f))) score += 15;
-      }
-      if (q.includes("family") || q.includes("school")) {
-        if (p.beds >= 3) score += 12;
-        if (p.features.some((f) => /school|yard|family/i.test(f))) score += 15;
       }
       if (q.includes("adu") && p.features.some((f) => /adu/i.test(f))) score += 30;
       if (q.includes("ocean") || q.includes("coast") || q.includes("beach")) {
@@ -84,7 +86,10 @@ function matchProperties(query: string, properties: Property[]): Property[] {
     .map((x) => x.p);
 }
 
-export function searchProperties(query: string, properties: Property[]): {
+export function searchProperties(
+  query: string,
+  properties: Property[],
+): {
   results: Property[];
   interpretation: string;
 } {
@@ -96,11 +101,14 @@ export function searchProperties(query: string, properties: Property[]): {
   }
   const results = matchProperties(query, properties);
   const top = results.slice(0, 12);
+  const steeringNote = STEERING_TERM_PATTERN.test(query)
+    ? "Protected-class and neighborhood-steering terms were ignored; results use objective property facts. "
+    : "";
   return {
     results: top.length ? top : properties.filter((p) => p.status === "active").slice(0, 6),
     interpretation: top.length
-      ? `Matched ${top.length} properties for “${query.trim()}”. Ranked by AI relevance.`
-      : `No strong matches — showing active inventory. Try neighborhoods, beds, budget, or features like ADU.`,
+      ? `${steeringNote}Matched ${top.length} properties for “${query.trim()}”. Ranked by saved-field relevance.`
+      : `${steeringNote}No strong matches — showing active inventory. Try location, beds, budget, property type, or objective features like ADU.`,
   };
 }
 
@@ -110,94 +118,6 @@ export function propertyMatchScore(property: Property, query: string): number {
   if (!ranked.length) return 42;
   const base = 55 + Math.min(40, property.features.length * 4);
   return Math.min(99, base + (property.status === "active" ? 5 : 0));
-}
-
-export function generateAvm(input: {
-  address: string;
-  type: string;
-  sqft: number;
-  beds: number;
-  baths: number;
-  yearBuilt: number;
-  condition: number;
-}): {
-  value: number;
-  low: number;
-  high: number;
-  confidence: number;
-  ppsf: number;
-  comps: { address: string; price: number; sqft: number; distance: string; days: number }[];
-  insight: string;
-} {
-  const isRsf =
-    /rancho|rsf|fairbanks|bridges|covenant|del mar|solana/i.test(input.address);
-  const basePpsf = isRsf
-    ? 950
-    : input.type.toLowerCase().includes("condo")
-      ? 620
-      : input.type.toLowerCase().includes("town")
-        ? 480
-        : input.type.toLowerCase().includes("multi")
-          ? 550
-          : 520;
-
-  const ageAdj = Math.max(0.85, 1 - Math.max(0, 2026 - input.yearBuilt - 20) * 0.003);
-  const sizeAdj = input.sqft > 2500 ? 0.97 : input.sqft < 900 ? 1.06 : 1;
-  const bedAdj = 1 + (input.beds - 3) * 0.02;
-  const bathAdj = 1 + (input.baths - 2) * 0.015;
-  const condAdj = 0.9 + input.condition * 0.04;
-
-  const ppsf = Math.round(basePpsf * ageAdj * sizeAdj * bedAdj * bathAdj * condAdj);
-  const value = Math.round((ppsf * input.sqft) / 1000) * 1000;
-  const confidence = Math.min(
-    96,
-    72 +
-      (input.address.length > 8 ? 8 : 0) +
-      (input.sqft > 0 ? 6 : 0) +
-      (input.yearBuilt > 1900 ? 4 : 0) +
-      input.condition * 2,
-  );
-  const spread = 0.04 + (100 - confidence) * 0.0015;
-
-  const comps = [
-    {
-      address: input.address
-        ? input.address.replace(/\d+/, (n) => String(parseInt(n, 10) + 12))
-        : "6122 El Apajo",
-      price: Math.round(value * 0.98),
-      sqft: Math.round(input.sqft * 0.96),
-      distance: "0.4 mi",
-      days: 15,
-    },
-    {
-      address: isRsf ? "Nearby Covenant comparable" : "Nearby comparable B",
-      price: Math.round(value * 1.04),
-      sqft: Math.round(input.sqft * 1.05),
-      distance: "0.7 mi",
-      days: 8,
-    },
-    {
-      address: isRsf ? "Fairbanks Ranch estate comp" : "Nearby comparable C",
-      price: Math.round(value * 0.95),
-      sqft: Math.round(input.sqft * 0.92),
-      distance: "1.2 mi",
-      days: 22,
-    },
-  ];
-
-  return {
-    value,
-    low: Math.round(value * (1 - spread)),
-    high: Math.round(value * (1 + spread)),
-    confidence,
-    ppsf,
-    comps,
-    insight: isRsf
-      ? "RSF corridor: weight lot, association (Covenant vs Bridges vs non-assoc), and guest house quality over raw $/sf."
-      : input.condition >= 4
-        ? "Condition premium supported by recent renovated sales within 0.3 mi."
-        : "Value sensitive to finish quality — renovations could lift mid-band estimate 4–7%.",
-  };
 }
 
 export function generateListingCopy(opts: {
@@ -231,7 +151,7 @@ export function generateListingCopy(opts: {
     Investors:
       "Strong fundamentals for yield-focused buyers: demand drivers, rental depth, and value-add levers.",
     Families:
-      "Space to gather, rooms that work hard, and a location that fits school runs and weekends alike.",
+      "Space to gather, rooms that work hard, and a location that supports daily routines and weekends alike.",
   };
 
   const body = `${toneOpen[opts.tone] || toneOpen.Professional}
@@ -288,7 +208,7 @@ Thanks for connecting — I wanted to get back to you quickly while inventory is
 
 Based on what you shared (${pref}, ${lead.location}, budget ${budget}), I'll curate a short list of fits and any below-market opportunities.
 
-Next step: reply with your preferred tour windows (weekday evening / weekend morning), and whether schools, outdoor space, or privacy matter most.
+Next step: reply with your preferred tour windows (weekday evening / weekend morning), and whether commute, outdoor space, accessibility, or privacy matter most.
 
 I'll send 2–3 matches within a few hours.
 
@@ -297,19 +217,11 @@ Best regards${profile?.name ? `,\n${profile.name}` : ""}`,
   };
 }
 
-export function generateClientBrief(
-  lead: Lead,
-  properties: Property[],
-  deals: Deal[],
-): string {
+export function generateClientBrief(lead: Lead, properties: Property[], deals: Deal[]): string {
   const matches = properties
     .filter((p) => {
-      if (p.price < lead.budgetMin * 0.85 || p.price > lead.budgetMax * 1.1)
-        return false;
-      if (
-        lead.location &&
-        p.neighborhood.toLowerCase().includes(lead.location.toLowerCase())
-      )
+      if (p.price < lead.budgetMin * 0.85 || p.price > lead.budgetMax * 1.1) return false;
+      if (lead.location && p.neighborhood.toLowerCase().includes(lead.location.toLowerCase()))
         return true;
       return p.status === "active";
     })
@@ -336,7 +248,7 @@ Notes
 ${lead.notes}
 
 Local knowledge
-${kb || "• Pull corridor KB entry for schools / association before tour"}
+${kb || "• Pull public amenity and association facts from approved sources before tour"}
 
 Talk tracks
 1. Confirm timeline and financing status in first 2 minutes.
@@ -444,91 +356,54 @@ export function generateBuyerAgreementOutline(): {
   };
 }
 
-export function generateCmaReport(
-  subject: Property,
-  inventory: Property[],
-): {
-  headline: string;
-  subjectSummary: string;
-  suggestedList: number;
-  comps: {
-    title: string;
-    address: string;
-    price: number;
-    sqft: number;
-    ppsf: number;
-    beds: number;
-    baths: number;
-    dom: number;
-    adj: string;
-  }[];
-  strategy: string[];
-  buyerValueScript: string;
-} {
+/** Bounded comparison of supplied inventory, never a valuation or verified sale comp. */
+export function generateCmaReport(subject: Property, inventory: Property[]) {
+  const city = subject.city.trim().toLowerCase();
+  const hasSubjectArea = Number.isFinite(subject.sqft) && subject.sqft > 0;
   const comps = inventory
-    .filter((p) => p.id !== subject.id)
-    .map((p) => {
-      let score = 0;
-      if (p.neighborhood === subject.neighborhood) score += 40;
-      if (p.type === subject.type) score += 25;
-      const sizeDiff = Math.abs(p.sqft - subject.sqft) / Math.max(subject.sqft, 1);
-      score += Math.max(0, 25 - sizeDiff * 40);
-      if (Math.abs(p.price - subject.price) / subject.price < 0.25) score += 10;
-      return { p, score };
-    })
-    .sort((a, b) => b.score - a.score)
+    .filter(
+      (property) =>
+        property.id !== subject.id &&
+        city &&
+        property.city.trim().toLowerCase() === city &&
+        property.type === subject.type &&
+        Number.isFinite(property.price) &&
+        property.price > 0 &&
+        Number.isFinite(property.sqft) &&
+        property.sqft > 0 &&
+        Number.isFinite(property.price / property.sqft),
+    )
+    .sort((a, b) =>
+      hasSubjectArea ? Math.abs(a.sqft - subject.sqft) - Math.abs(b.sqft - subject.sqft) : 0,
+    )
     .slice(0, 5)
-    .map(({ p }) => {
-      const ppsf = Math.round(p.price / p.sqft);
-      const subPpsf = Math.round(subject.price / subject.sqft);
-      const adj =
-        ppsf > subPpsf * 1.05
-          ? "Superior finish / location — adjust down for subject"
-          : ppsf < subPpsf * 0.95
-            ? "Inferior condition/lot — subject premium supported"
-            : "In-band comparable";
-      return {
-        title: p.title,
-        address: p.address,
-        price: p.price,
-        sqft: p.sqft,
-        ppsf,
-        beds: p.beds,
-        baths: p.baths,
-        dom: p.daysOnMarket,
-        adj,
-      };
-    });
-
-  const avgPpsf =
-    comps.reduce((s, c) => s + c.ppsf, 0) / Math.max(1, comps.length) ||
-    subject.pricePerSqft;
-  const suggestedList = Math.round((avgPpsf * subject.sqft) / 5000) * 5000;
-  const rsf = /rancho|fairbanks|bridges|covenant|del mar/i.test(
-    `${subject.neighborhood} ${subject.city}`,
-  );
-
+    .map((property) => ({
+      title: property.title,
+      address: property.address,
+      price: property.price,
+      sqft: property.sqft,
+      ppsf: Math.round(property.price / property.sqft),
+      beds: property.beds,
+      baths: property.baths,
+      dom: property.daysOnMarket,
+      status: property.status,
+      adj: "Condition, concessions and transaction terms not verified",
+    }));
   return {
-    headline: `CMA · ${subject.title}`,
-    subjectSummary: `${subject.address}, ${subject.neighborhood} · ${subject.beds}bd/${subject.baths}ba · ${subject.sqft.toLocaleString()} sqft · ${subject.daysOnMarket} DOM${subject.mlsNumber ? ` · MLS# ${subject.mlsNumber}` : ""}`,
-    suggestedList,
+    headline: "Listing comparison notes · " + subject.title,
+    subjectSummary: [subject.address, subject.city].filter(Boolean).join(", "),
+    // Preserve the explicit abstention contract: saved inventory is not an
+    // authorized, broker-reviewed comparable-sale matcher.
+    suggestedList: null,
     comps,
-    strategy: rsf
-      ? [
-          "Match association type before sqft (Covenant vs Bridges vs non-assoc).",
-          "Lead listing media with lot, trail/golf, and guest house if present.",
-          "Use private-tour culture over high-traffic open houses when privacy is the brand.",
-          "Weekly seller brief: feedback themes + three-band pricing recommendation.",
-        ]
-      : [
-          "Price at mid-band of adjusted comps for 14–21 day attention window.",
-          "Refresh media if DOM > 21 with no offer path.",
-          "Pre-list inspection summary reduces renegotiation risk.",
-          "Launch social + email to sphere same day as MLS live.",
-        ],
-    buyerValueScript: rsf
-      ? `In the ${RSF_MARKET_META.primary} corridor, portal estimates miss association, lot usability, and guest-house quality. My role is hyper-local comps, off-market access, and a clear fee for a defined marketing + negotiation plan — not a lockbox and a listing link.`
-      : `Post-NAR, buyers need clarity: I earn my fee by filtering inventory, running true comps, negotiating repairs/credits, and managing timelines so you don't overpay or miss contingencies.`,
+    strategy: [
+      `These are saved records in the same city and property type${hasSubjectArea ? ", ordered by size proximity" : "; subject area is unavailable, so source order is retained"}; they are not verified comparable sales.`,
+      "Verify sale versus lease, currency, price basis, status and source date before interpreting any recorded price or price per square foot.",
+      "Review authorized Closed/Sold records with the responsible broker and verify closed price/date, condition, concessions and representation details before recommending a list price.",
+      "Review each candidate's neighborhood, lot, tenure and property condition. Price differences alone do not establish superior or inferior condition.",
+    ],
+    buyerValueScript:
+      "These records are a starting point for a discussion. I will confirm the source details and transaction terms with the responsible broker before using them to support pricing advice.",
   };
 }
 
@@ -602,9 +477,7 @@ export function answerAssistant(
   },
 ): string {
   const q = question.toLowerCase();
-  const activeLeads = ctx.leads.filter(
-    (l) => !["closed_won", "closed_lost"].includes(l.status),
-  );
+  const activeLeads = ctx.leads.filter((l) => !["closed_won", "closed_lost"].includes(l.status));
   const hot = activeLeads.filter((l) => l.heat === "hot");
   const pipelineValue = ctx.deals.reduce((s, d) => s + d.value, 0);
   const activeListings = ctx.properties.filter((p) => p.status === "active");
@@ -628,10 +501,7 @@ export function answerAssistant(
   }
 
   const kbHits = retrieveMarketKnowledge(question, ctx.profile, ctx.memory);
-  const knowledgeBlock =
-    rsf || kbHits.length
-      ? formatRetrievedKnowledge(kbHits.slice(0, 2))
-      : "";
+  const knowledgeBlock = rsf || kbHits.length ? formatRetrievedKnowledge(kbHits.slice(0, 2)) : "";
 
   // Calendar / appointments / reminders
   if (
@@ -654,9 +524,7 @@ export function answerAssistant(
           `• ${formatApptWhen(a.start)} — ${a.title} (${APPOINTMENT_KIND_LABEL[a.kind]}${a.status === "needs_prep" ? ", needs prep" : ""})`,
       )
       .join("\n");
-    const remLines = rems
-      .map((r) => `• [${formatApptWhen(r.when)}] ${r.reminder}`)
-      .join("\n");
+    const remLines = rems.map((r) => `• [${formatApptWhen(r.when)}] ${r.reminder}`).join("\n");
     return withPersonalization(
       `Calendar brief${first ? ` for ${first}` : ""}\n\nUpcoming appointments\n${lines}\n\nAI reminders picked up\n${remLines || "• No open prep items"}\n\nOpen Calendar Hub to mark done or re-sync providers.`,
       { profile: ctx.profile, memory: ctx.memory },
@@ -701,12 +569,7 @@ export function answerAssistant(
     );
   }
 
-  if (
-    /knowledge|rancho|rsf|covenant|fairbanks|bridges|what do you know about/.test(
-      q,
-    ) &&
-    rsf
-  ) {
+  if (/knowledge|rancho|rsf|covenant|fairbanks|bridges|what do you know about/.test(q) && rsf) {
     const hits = searchKnowledge(question, 3);
     const body =
       hits.length > 0
@@ -726,10 +589,9 @@ export function answerAssistant(
 
   if (/respond|speed|first.?touch|instant|sms|text back/.test(q)) {
     const newest = [...activeLeads].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )[0];
-    const body = `Speed-to-lead is the highest-ROI AI use case in 2025–26 surveys (Inman: avg response ~15 hours; sub-5-min wins).\n\nOpen Instant Response to draft SMS/email for ${newest?.name ?? "your newest lead"} in one click${
+    const body = `A prompt, useful reply gives a new inquiry a clear next step.\n\nOpen Instant Response to draft SMS/email for ${newest?.name ?? "your newest lead"} in one click${
       newest ? ` (${newest.location})` : ""
     }.`;
     return withPersonalization(body, {
@@ -768,9 +630,7 @@ export function answerAssistant(
     const listing = activeListings[0];
     const voice = ctx.memory?.preferredVoice;
     const body = `Social Content Agent builds full multi-platform packs.${
-      listing
-        ? ` Suggested: Just Listed for ${listing.title} in ${listing.neighborhood}.`
-        : ""
+      listing ? ` Suggested: Just Listed for ${listing.title} in ${listing.neighborhood}.` : ""
     }${voice ? ` Voice: ${voice}.` : ""}`;
     return withPersonalization(body, {
       profile: ctx.profile,
@@ -793,11 +653,7 @@ export function answerAssistant(
     );
   }
 
-  if (
-    /propert|listing|home|condo|house|search|find|luxury|investment|adu|estate|acre/.test(
-      q,
-    )
-  ) {
+  if (/propert|listing|home|condo|house|search|find|luxury|investment|adu|estate|acre/.test(q)) {
     const results = matchProperties(question, ctx.properties).slice(0, 4);
     if (!results.length) {
       return withPersonalization(
@@ -820,8 +676,7 @@ export function answerAssistant(
 
   if (/market|trend|avm|valu|forecast|price|ppsf|comp|inventory/.test(q)) {
     const avgPpsf = Math.round(
-      activeListings.reduce((s, p) => s + p.pricePerSqft, 0) /
-        Math.max(1, activeListings.length),
+      activeListings.reduce((s, p) => s + p.pricePerSqft, 0) / Math.max(1, activeListings.length),
     );
     const body = `Market brief${area ? ` · ${area}` : ""}\n\nActive: ${activeListings.length} · PPSF ~${formatCurrency(avgPpsf)} · pipeline ${formatCurrency(pipelineValue, true)}\n\n${
       rsf ? RSF_MARKET_META.priceContext2026 : "Use Market or CMA Studio for client packages."
@@ -859,9 +714,7 @@ export function answerAssistant(
     const upcoming = appointmentsNeedingAttention(appointments, 24);
     return withPersonalization(
       `Command Center ranks speed-to-lead, follow-ups, deal risk, content, CMA, compliance${
-        upcoming.length
-          ? `, plus ${upcoming.length} calendar item(s) in the next 24h`
-          : ""
+        upcoming.length ? `, plus ${upcoming.length} calendar item(s) in the next 24h` : ""
       }. Open the home Action Desk for full packs.`,
       { profile: ctx.profile, memory: ctx.memory },
     );

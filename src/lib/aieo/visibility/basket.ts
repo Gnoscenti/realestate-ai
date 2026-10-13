@@ -1,0 +1,186 @@
+import { EXPERTISE_TOPICS, type EntityKind, type ExpertiseEvidence } from "./expertise";
+import { NON_LISTING_INSTRUCTION, type RecognitionSourceSettings } from "./source-policy";
+/**
+ * Versioned client-intent prompt basket for CiteLock Visibility.
+ *
+ * Unbranded clusters never contain the agent's name, brokerage, or website —
+ * they simulate what a prospective client would actually ask an answer engine.
+ * Branded prompts are kept in a separate family so identity accuracy is never
+ * mixed into discovery rates. The basket is versioned; changing prompt text
+ * starts a new comparison series.
+ */
+
+export const BASKET_VERSION = "v2-expertise" as const;
+
+export type VisibilityCluster = {
+  id: string;
+  label: string;
+  /** What a client is trying to do when they ask this. */
+  intent: string;
+  branded: boolean;
+};
+
+export type VisibilityPrompt = {
+  id: string;
+  clusterId: string;
+  branded: boolean;
+  text: string;
+};
+
+export type VisibilitySubject = RecognitionSourceSettings & {
+  /** Exact person name as verified/declared. */
+  name: string;
+  /** Explicit alternate names declared for this identity, not inferred name fragments. */
+  nameAliases?: string[];
+  entityKind?: EntityKind;
+  expertise?: ExpertiseEvidence[];
+  expertiseTopics?: (keyof typeof EXPERTISE_TOPICS)[];
+  /** Free-text market, e.g. "Rancho Santa Fe, CA". */
+  area: string;
+  /** Website host (no www.), when known. */
+  websiteHost?: string;
+  /** Exact public website; a non-root path never owns the whole brokerage domain. */
+  websiteUrl?: string;
+  /** Marketing brokerage brand, when known. */
+  brokerage?: string;
+  /** License number, used only for branded trust evaluation. */
+  license?: string;
+  /** Public profile URLs the subject controls (sameAs, directories). */
+  profileUrls: string[];
+};
+
+export function basketVersionForSubject(subject: VisibilitySubject): string {
+  return subject.sourcePolicy === "non_listing" ? "v2-expertise-nonlisting-v1" : BASKET_VERSION;
+}
+export function methodVersionForSubject(subject: VisibilitySubject): string {
+  return subject.nameAliases?.length || subject.sourcePolicy ? "expertise-v2.2" : "expertise-v2.1";
+}
+/** Evaluation settings are part of comparison identity even when prompt text is unchanged. */
+export function recognitionSettingsKey(subject: VisibilitySubject): string {
+  return JSON.stringify({ nameAliases: [...new Set(subject.nameAliases || [])].sort(),
+    sourcePolicy: subject.sourcePolicy || null, sourceUrls: [...new Set(subject.sourceUrls || [])].sort() });
+}
+
+export const VISIBILITY_CLUSTERS: VisibilityCluster[] = [
+  {
+    id: "choose_agent",
+    label: "Choosing an agent",
+    intent: "A buyer asks which agents to work with in the market.",
+    branded: false,
+  },
+  {
+    id: "sell_home",
+    label: "Selling a home",
+    intent: "A seller asks which listing agents to interview.",
+    branded: false,
+  },
+  {
+    id: "relocation",
+    label: "Relocating",
+    intent: "An out-of-area mover asks how to pick a local agent and who to call.",
+    branded: false,
+  },
+  {
+    id: "property_process",
+    label: "Property due diligence",
+    intent: "A client asks about property-specific due diligence support.",
+    branded: false,
+  },
+  {
+    id: "brokerage",
+    label: "Brokerage presence",
+    intent: "A client asks which brokerages are established locally.",
+    branded: false,
+  },
+  {
+    id: "branded_identity",
+    label: "Who is (branded)",
+    intent: "A client checks who the agent is after hearing the name.",
+    branded: true,
+  },
+  {
+    id: "branded_trust",
+    label: "License and affiliation (branded)",
+    intent: "A client checks licensing and brokerage before engaging.",
+    branded: true,
+  },
+];
+
+function cleanArea(area: string): string {
+  return area.replace(/\s+/g, " ").trim() || "the local market";
+}
+
+/** Deterministic prompt list for a subject. Order is stable. */
+export function buildVisibilityBasket(subject: VisibilitySubject): VisibilityPrompt[] {
+  const area = cleanArea(subject.area);
+  const name = subject.name.replace(/\s+/g, " ").trim();
+  const prompts: VisibilityPrompt[] = [
+    {
+      id: "choose_agent.buyer",
+      clusterId: "choose_agent",
+      branded: false,
+      text: `I'm planning to buy a home in ${area}. Which real estate agents or teams would you recommend, and why? Name specific people and cite your sources.`,
+    },
+    {
+      id: "sell_home.listing_agent",
+      clusterId: "sell_home",
+      branded: false,
+      text: `I want to sell my house in ${area}. Which listing agents should I consider interviewing? Name specific agents and cite sources.`,
+    },
+    {
+      id: "relocation.pick_local",
+      clusterId: "relocation",
+      branded: false,
+      text: `I'm relocating to ${area} from out of state. How should I choose a local real estate agent, and can you name a few well-regarded ones with sources?`,
+    },
+    {
+      id: "property_process.due_diligence",
+      clusterId: "property_process",
+      branded: false,
+      text: `Which real estate agents in ${area} can help a buyer understand property inspections and due diligence? Name specific agents and cite sources.`,
+    },
+    {
+      id: "brokerage.local_presence",
+      clusterId: "brokerage",
+      branded: false,
+      text: `Which real estate brokerages and teams have the strongest local presence in ${area}? Name them and cite sources.`,
+    },
+    {
+      id: "branded_identity.who_is",
+      clusterId: "branded_identity",
+      branded: true,
+      text: `Who is ${name}, the real estate agent in ${area}? Summarize what you can verify and cite sources.`,
+    },
+    {
+      id: "branded_trust.license_brokerage",
+      clusterId: "branded_trust",
+      branded: true,
+      text: `Is ${name} a licensed real estate agent in ${area}, and which brokerage are they with? Cite sources.`,
+    },
+  ];
+  for (const topic of [...new Set(subject.expertiseTopics || [])].sort().slice(0,3)) {
+    prompts.push({
+      id: "expertise." + topic, clusterId: "expertise." + topic, branded: false,
+      text: `I need help with ${EXPERTISE_TOPICS[topic].toLowerCase()} when buying or selling property in ${area}. Which real estate ${subject.entityKind === "brokerage" ? "brokerages" : subject.entityKind === "team" ? "teams" : "agents"} should I consider, and what sources support that recommendation?`,
+    });
+  }
+  if (subject.entityKind && subject.entityKind !== "agent") {
+    for (const prompt of prompts) prompt.text=prompt.text
+      .replace(/\bagents or teams\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
+      .replace(/\bagents\b/g,subject.entityKind === "brokerage" ? "brokerages" : "teams")
+      .replace(/\bagent\b/g,subject.entityKind === "brokerage" ? "brokerage" : "team");
+  }
+  if (subject.sourcePolicy === "non_listing") {
+    for (const prompt of prompts) prompt.text += " " + NON_LISTING_INSTRUCTION;
+  }
+  return prompts;
+}
+
+export function clusterById(id: string): VisibilityCluster | undefined {
+  const fixed = VISIBILITY_CLUSTERS.find((cluster) => cluster.id === id);
+  if (fixed) return fixed;
+  const topic = id.replace("expertise.", "") as keyof typeof EXPERTISE_TOPICS;
+  return id.startsWith("expertise.") && EXPERTISE_TOPICS[topic] ? {
+    id, label:EXPERTISE_TOPICS[topic], intent:"Designed research question based on supported expertise; not measured demand.", branded:false,
+  } : undefined;
+}

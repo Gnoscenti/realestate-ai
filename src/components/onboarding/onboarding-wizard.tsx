@@ -219,7 +219,7 @@ export function OnboardingWizard({
                 {mode === "edit" ? "Update your profile" : "Finish your profile"}
               </h1>
               <p className="text-sm text-[var(--color-fg-muted)]">
-                Optional setup for profile, market, website, and MLS.
+                Optional setup for profile, market, website, and MLS label.
               </p>
             </div>
           </div>
@@ -245,8 +245,8 @@ export function OnboardingWizard({
           <div className="mb-5 flex gap-2 rounded-[var(--radius-md)] border border-[color-mix(in_oklab,var(--color-primary)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-primary-soft)_80%,transparent)] px-3 py-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
             <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
             <span>
-              Add only what helps your work. Website and MLS can be connected
-              later; nothing here blocks the workspace.
+              Add only what helps your work. Your website can be added later;
+              nothing here blocks the workspace.
             </span>
           </div>
 
@@ -368,7 +368,7 @@ export function OnboardingWizard({
                 </SelectContent>
               </Select>
               <p className="mt-1.5 text-[11px] text-[var(--color-fg-subtle)]">
-                Live MLS connect is in MLS Hub after launch.
+                Labels your market only. A licensed MLS feed is not connected in this release; listings come from your website, CSV, or labeled observations.
               </p>
             </div>
 

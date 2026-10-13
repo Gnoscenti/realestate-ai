@@ -69,36 +69,30 @@ function AlertsPage() {
       toast.error("Enter the inbox email address");
       return;
     }
+    if (!token.trim()) {
+      toast.error("A Gmail access token is required to scan. Nothing is invented when no token is present.");
+      return;
+    }
     connectEmail(provider, email.trim());
-    if (token.trim()) {
-      sessionStorage.setItem("realestate-ai-email-token", token.trim());
-      localStorage.setItem("realestate-ai-email-token", token.trim());
-    }
+    // The token lives only in this component's memory for this scan. It is
+    // never written to browser storage (see ledger A-020).
     setBusy(true);
-    const r = await scanEmailInbox({
-      accessToken: token.trim() || undefined,
-      forceDemo: !token.trim(),
-    });
+    const r = await scanEmailInbox({ accessToken: token.trim() });
     setBusy(false);
-    if (r.mode.startsWith("demo")) {
-      toast.message(
-        r.error
-          ? "Live token unavailable — showing rule-based scan (DocuSign, clients, escrow…)"
-          : "Inbox connected · smart scan loaded (DocuSign, clients, escrow…)",
-      );
-    } else {
-      toast.success(`Scanned live inbox · ${r.added} new alert(s)`);
-    }
-    setToken("");
+    if (r.error) toast.error(`Inbox scan failed: ${r.error}`);
+    else toast.success(`Scanned live inbox · ${r.added} new alert(s), ${r.total} unread`);
   };
 
   const rescan = async () => {
+    if (!token.trim()) {
+      toast.error("Paste a current Gmail access token to rescan; tokens are not stored.");
+      return;
+    }
     setBusy(true);
-    const r = await scanEmailInbox({});
+    const r = await scanEmailInbox({ accessToken: token.trim() });
     setBusy(false);
-    toast.success(
-      r.added ? `${r.added} new alert(s)` : `Scan complete · ${r.total} unread`,
-    );
+    if (r.error) toast.error(`Inbox scan failed: ${r.error}`);
+    else toast.success(r.added ? `${r.added} new alert(s)` : `Scan complete · ${r.total} unread`);
   };
 
   return (
