@@ -16,6 +16,7 @@
     "build:dev": "vite build --mode development",
     "preview": "nitro preview --host 127.0.0.1 --port 8080",
     "typecheck": "tsc --noEmit",
+    "typecheck:aieo": "tsc --noEmit --project tsconfig.aieo-tests.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "cap:prepare": "node scripts/prepare-capacitor.mjs",

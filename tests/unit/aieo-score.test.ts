@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AgentProfile, Property } from "@/data/seed";
 import type { CiteProperty } from "@/lib/aieo/provenance";
 import { scoreAieo } from "@/lib/aieo/score";
 import {
@@ -13,6 +14,100 @@ import {
   pilotProfile,
   pilotProperties,
 } from "../fixtures/citelock-san-diego-pilot";
+
+const profile: AgentProfile = {
+  name: "CiteLock Test Agent",
+  areaOfOperations: "Rancho Santa Fe",
+  website: "https://agent.example/",
+  mls: "SDMLS",
+  brokerage: "Test Brokerage",
+  onboardedAt: ATTESTED_AT,
+  license: "01234567",
+  bio: "Synthetic agent profile for the Property input contract regression.",
+  lastWebsiteScrapeAt: ATTESTED_AT,
+};
+
+const listing = (overrides: Partial<Property> = {}): Property => ({
+  id: "property-contract",
+  title: "1 Test Way",
+  address: "1 Test Way",
+  city: "Rancho Santa Fe",
+  neighborhood: "Covenant",
+  price: 6_900_000,
+  beds: 5,
+  baths: 6,
+  sqft: 7_200,
+  yearBuilt: 2000,
+  status: "active",
+  type: "house",
+  mlsNumber: "TEST001",
+  photoUrls: ["https://cdn.example.com/property-contract.jpg"],
+  features: ["guest house", "grove", "tennis"],
+  daysOnMarket: 12,
+  description: "Synthetic property with a guest house and grove.",
+  lat: 33.02,
+  lng: -117.2,
+  pricePerSqft: 6_900_000 / 7_200,
+  estimatedValue: 6_900_000,
+  accent: "#5b8def",
+  pattern: 1,
+  ...overrides,
+});
+
+describe("CiteLock Property input contract", () => {
+  it("accepts a complete base Property without treating declarations as verification", () => {
+    const report = scoreAieo({
+      profile,
+      properties: [listing()],
+      voice: "Quiet luxury, no hype",
+      evaluatedAt: ATTESTED_AT,
+    });
+
+    expect(report.algorithmVersion).toBe("2.0");
+    expect(report.total).toBeLessThan(70);
+    expect(report.readiness.status).toBe("blocked");
+    expect(report.gates.find((gate) => gate.id === "license")?.status).toBe("block");
+    expect(report.recognition).toBeNull();
+    expect(report.listingBlurbs).toEqual([]);
+    expect(report.jsonLd["@graph"]).toEqual([]);
+  });
+
+  it("does not invent imagery or credentials when optional Property evidence is absent", () => {
+    const report = scoreAieo({
+      profile: { ...profile, bio: "", website: "", license: undefined },
+      properties: [
+        listing({ photoUrls: [], imageUrl: undefined, mlsNumber: undefined }),
+      ],
+      evaluatedAt: ATTESTED_AT,
+    });
+
+    expect(report.gaps.some((gap) => /license/i.test(gap.issue))).toBe(true);
+    expect(report.total).toBeLessThan(70);
+    expect(report.listingBlurbs).toEqual([]);
+    expect(report.jsonLd["@graph"]).toEqual([]);
+    expect(JSON.stringify(report)).not.toMatch(/https?:[^\s"]+\.(?:jpg|png|webp)/i);
+  });
+
+  it("names the supplied agent and market while keeping unsupported FAQs in draft", () => {
+    const report = scoreAieo({
+      profile,
+      properties: [listing()],
+      evaluatedAt: ATTESTED_AT,
+    });
+    const answers = report.faqs
+      .map((faq) => `${faq.question} ${faq.answer}`)
+      .join(" ");
+
+    expect(answers).toContain(profile.name);
+    expect(answers).toContain(profile.areaOfOperations);
+    expect(report.faqs).toHaveLength(2);
+    expect(
+      report.faqs.every(
+        (faq) => !faq.publishable && faq.reviewStatus === "needs_sources",
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("CiteLock v2", () => {
   it("awards no baseline points when no public evidence exists", () => {
