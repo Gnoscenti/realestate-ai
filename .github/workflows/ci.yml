@@ -39,11 +39,17 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Calendar on three cold starts (no retries)
+        run: |
+          for run in 1 2 3; do
+            npm run test:calendar:cold
+          done
+
       - name: Production build
         run: npm run build
 
       - name: E2E (Playwright)
-        run: npm run test:e2e
+        run: npm run test:e2e -- --retries=0
         env:
           CI: true
           VITE_AUTH_ENABLED: "false"
@@ -61,6 +67,7 @@ jobs:
             test-results
             screenshots
             tmp/auth-e2e-results
+            tmp/calendar-cold-start
           if-no-files-found: ignore
 
 
