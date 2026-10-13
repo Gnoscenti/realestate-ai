@@ -1245,3 +1245,19 @@ Temporary broad-suite wrapper initially had the wrong web-server cwd, then omitt
 Corrected complete browser suite PASS20/20 with retries=0 in2.2minutes. The calendar regression also passed within that first-load full-suite run. Final TypeScript and zero-warning ESLint PASS. Secret scan345tracked/new source files found zero configured private values. Remote main still7e1c3a9, no divergence. Current Vercel production/rollback remains dpl_HWpqbQbuDQLzhwZdq4j8sGUZTM4Z; no deployment or migration has occurred yet. Production build/authenticated-browser and remote release checks follow.
 
 Production build PASS. Authenticated development browser checks PASS2/2 with retries=0; the compiled-only origin check is intentionally covered by the native-PostgreSQL production CI job, not the dev server. Final local gates complete. Use a separate fix branch and normal PR CI before merging into latest main. No production credentials, migrations, external publications or payment actions are needed.
+
+### Session10 release and production acceptance — completed
+Fix commit12ca1eeda0a0d8769f73b8ef061fcf576001fc8f passed CI38342829223 (https://github.com/Gnoscenti/realestate-ai/actions/runs/38342829223):439unit/integration tests,57nativePG tests, three independent cold-start calendar runs (11.4s,11.0s,11.9s total each),20browser workflows,2development auth and3compiled-production/nativePG auth scenarios. Calendar and general E2E retries were zero; no flaky retries, weaker assertions or increased timeouts. Vercel Preview passed. No review comments or newer main changes appeared before merge.
+
+PR43 (https://github.com/Gnoscenti/realestate-ai/pull/43) merged normally, pinned to the tested head, as7c2472e3e7e281e6dc12dfca94258b1ae33eb7f8. Both prior main7e1c3a9 and fix12ca1ee remain ancestors. Local main fast-forwarded without force/reset; all newer work retained.
+
+Vercel production dpl_6PsN6dDGZcodwNU61tNGGqKhpftu is READY and authenticated CLI inspection confirmed https://cloud-realtor.vercel.app aliases that exact deployment. Five actual production checks passed using the existing synthetic account:
+- StartupHTTP200 and real email login.
+- Previous full CiteLock guide, progress, subject and entitlement retained.
+- Previous handed-off Social Desk revision/caption and identical private image SHA256 retained.
+- Calendar invalid-time validation, save, reload, ICS export, completion and deletion all passed. Synthetic appointment removed.
+- Logout cleared the session and private image returned401.
+
+Zero uncaught browser errors and zero same-originHTTP5xx. Bounded new-deployment log sample:four existing pg SSL future-major-version warnings on successful requests, zeroHTTP5xx and no other error entries. No production credentials, dependencies, migrations, customer records, external publications or payments changed. The existing synthetic acceptance account/media remain as documented in Session9.
+
+The cold-start bug is resolved and has a permanent no-retry CI gate. Explicit root CSS must remain linked; if additional route stylesheets are introduced, link them explicitly and preserve the cold-start regression. Source details and unsuccessful experiments are retained above. Final documentation-only closeout contains this evidence; its deployment serves identical application code. Final alias/persistence and CI receipt is retained under ignored tmp/session10/final-release-receipt.json and reported in the delivery response.
