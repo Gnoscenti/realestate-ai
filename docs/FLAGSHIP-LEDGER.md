@@ -1215,3 +1215,33 @@ D-026: Record this evidence in docs/PRODUCTION-RELEASE-2026-10-11.md, commit/pus
 Remaining operational acceptance: no external Postiz publication, Stripe charge, paid multi-engine visibility baseline, native iOS archive or measured GEO uplift was performed in this release. One synthetic account and its guide/listing/image/draft are intentionally retained for reproducible acceptance. Current provider backup retention/PITR was not re-audited; September26 logical restore evidence is historical. User's local8131server remains running after its verified fresh restart.
 
 Final documentation-inclusive secret scan:343files, zero matches. README links the dated report. These three documentation files are the only post-acceptance changes.
+
+## Session 10 — 2026-10-12: calendar flake root cause and release
+### Repo map and conventions
+Started clean on main7e1c3a9, fetched origin and confirmed zero divergence. Read prior Session9 notes, calendar route/spec, Playwright setup, app-shell auth/access gates and workspace hydration. Existing runtime is TanStack Start/Vite; use isolated development cache and in-memory database for cold-start reproduction.
+### Audit findings / blocker register
+Final prior CI38155439228 timed out waiting for Starts after the title field had been filled. Unchanged retry and direct production calendar check passed. No root cause was established in Session9. Hypotheses: development full-page reload versus workspace remount; do not change selectors, sleeps, assertions or timeouts to hide the failure.
+### Citelock/GEO intent
+Preserve current source-backed free/full guides and durable Social Desk. This change targets lifecycle/test reliability, not product scope or provider behavior.
+### Decisions made and why
+D-027: User authorizes root-cause correction, verification without retries, commit/push and production deployment. Preserve newer main ancestry. Instrument a cold development server with private test artifacts, zero live provider keys and isolated storage; retain all existing calendar assertions.
+### Verification results / open items
+Root-cause reproduction, regression/fix, zero-retry repeated runs, final checks, commit/push, exact deployment and production workflow verification pending.
+
+### Session10 reproduction
+Unchanged calendar spec failed on the first isolated cold start with retries=0. Trace showed an unsolicited navigation back to /calendar after Add appointment; the form was absent afterward. Vite logged optimizer dependency discovery and full-page reloads at the same time. The scanner initially skipped framework dependencies; late discovery included Better Auth and TanStack router serialization dependencies. Primary Vite documentation confirms missing late imports can cause rebundling/page reload (https://vite.dev/guide/dep-pre-bundling). Testing explicit browser entry prebundling, not an assertion/sleep workaround. Baseline trace/log: ignored tmp/session10/baseline-1-*.
+
+### Session10 refined cause
+Explicit browser prebundling and narrowing Better Auth's exclusion did not eliminate late reloads; discarded both experiments. Trace shows no browser requests for newly discovered server-only h3/auth dependencies. Installed Start collectDevStyles walks the legacy moduleGraph (merged SSR/client importedModules); this app has one stylesheet, already explicitly linked in __root.tsx via styles.css?url. Disable only redundant dev SSR style discovery using its supported option, then verify visible styling and cold-start behavior. No framework exclusions or dependency allowlist changes are retained.
+
+### Session10 root-cause fix verified
+Final implementation changes only tanstackStart dev.ssrStyles.enabled=false. Root CSS remains the explicit styles.css?url link. All three isolated empty-cache runs of the unchanged calendar workflow passed with retries=0 (12.6s,9.5s,11.9s); no new-dependency discovery or optimizer-reload log messages in any run. Removed both earlier prebundling/exclusion experiments.
+
+Permanent regression adds assertions for real CSS layout, unchanged document identity during form editing, and zero Vite full-reload websocket messages. Calendar spec explicitly disables retries. A dedicated config creates a fresh cache/artifact directory and in-memory database per invocation; CI runs it three times and runs the general browser suite with retries=0. First-failure trace/screenshots retained for diagnosis. Final strengthened regression and broader verification pending.
+
+Final permanent cold-start checks passed3/3 with zero retries, including CSS and no-reload assertions (8.8s,14.7s,19.7s). TypeScript/ESLint passed. Unit/integration56files/439tests passed. Mobile screenshot visually confirms styled, usable calendar at390px.
+Temporary broad-suite wrapper initially had the wrong web-server cwd, then omitted the existing test-only ALLOW_PRIVATE_SCRAPE_FOR_TESTS flag required by the localhost website fixture. Corrected those isolated harness settings; neither production SSRF policy nor test expectations changed. First started broad run19/20 passed, with localhost scrape correctly rejected. Repeating the full suite with its original fixture permission and retries=0.
+
+Corrected complete browser suite PASS20/20 with retries=0 in2.2minutes. The calendar regression also passed within that first-load full-suite run. Final TypeScript and zero-warning ESLint PASS. Secret scan345tracked/new source files found zero configured private values. Remote main still7e1c3a9, no divergence. Current Vercel production/rollback remains dpl_HWpqbQbuDQLzhwZdq4j8sGUZTM4Z; no deployment or migration has occurred yet. Production build/authenticated-browser and remote release checks follow.
+
+Production build PASS. Authenticated development browser checks PASS2/2 with retries=0; the compiled-only origin check is intentionally covered by the native-PostgreSQL production CI job, not the dev server. Final local gates complete. Use a separate fix branch and normal PR CI before merging into latest main. No production credentials, migrations, external publications or payment actions are needed.

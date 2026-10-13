@@ -29,6 +29,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:smoke": "node scripts/browser-smoke.mjs http://127.0.0.1:8080/",
     "ci": "npm run typecheck && npm run lint -- --max-warnings=0 && npm run test:unit && npm run build && npm run test:e2e && npm run test:auth",
+    "test:calendar:cold": "playwright test --config playwright.calendar.config.ts --retries=0",
     "test:auth": "playwright test --config playwright.auth.config.ts",
     "test:postgres": "node scripts/test-postgres.mjs",
     "test:restore": "node scripts/verify-postgres-restore.mjs"

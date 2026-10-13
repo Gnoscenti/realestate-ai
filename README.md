@@ -38,6 +38,8 @@ Without `DATABASE_URL`, accounts and server data persist in ignored `.local-data
 
 After switching branches or reinstalling dependencies, restart the Vite process before testing the app. A running server can retain incompatible modules and report a missing TanStack export even when the installed dependency tree is correct.
 
+The root document explicitly links the global stylesheet. Redundant development SSR stylesheet discovery is disabled because traversing the merged server/client module graph can trigger optimizer reloads that discard open forms. Run `npm run test:calendar:cold` to verify a fresh Vite cache, isolated in-memory database, visible styling, and the complete calendar workflow with zero retries. CI runs this on three separate cold starts. Keep new route styles explicitly linked if adding stylesheets.
+
 See `.env.example`. xAI and the default Perplexity Agent configuration have been verified live; other adapters retain explicit verification limitations. Failed observations are stored and excluded from successful-answer denominators.
 
 ## Native PostgreSQL verification
