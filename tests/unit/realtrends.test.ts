@@ -4,6 +4,7 @@ import {
   fetchRealTrendsProduction,
   parseRealTrendsProduction,
 } from "@/lib/aieo/realtrends.server";
+import { getSql } from "@/lib/db";
 import { scoreAieo } from "@/lib/aieo/score";
 import type { CiteEvidence } from "@/lib/aieo/types";
 
@@ -21,6 +22,43 @@ const PROFILE_HTML = `
 </body></html>`;
 
 describe("RealTrends production parser", () => {
+  it("keeps performance sides separate from rank ordinals and unrelated page years", () => {
+    const observations = parseRealTrendsProduction(`
+      <footer>Copyright 2026</footer>
+      <div>Latest Volume</div><div>$33.61M</div>
+      <div>Latest Transactions</div><div>20</div>
+      <h2>RealTrends Verified Performance</h2>
+      <div>Based On 2025 Sales Data</div>
+      <div>Sides</div><div>20</div><div>Volume</div><div>$33.61M</div>
+      <div>National</div><div>Volume Rank</div><div>2901</div>
+      <div>Sides Rank</div><div>-</div>
+      <div>State</div><div>Volume Rank</div><div>853</div>
+      <div>Sides Rank</div><div>-</div>
+      <div>City</div><div>Volume Rank</div><div>5</div>
+      <div>Sides Rank</div><div>1</div>
+      <div>Market Update for October 14, 2026</div><div>$7,650,000</div>
+    `);
+    expect(observations).toEqual([
+      { claimScope: "sales-sides:2025:full-year", field: "transaction_sides", value: "20 sides in 2025" },
+      { claimScope: "sales-volume:2025:full-year", field: "transaction_volume", value: "$33,610,000 in 2025" },
+    ]);
+  });
+
+  it("does not borrow a copyright year or parse a rank as production", () => {
+    expect(parseRealTrendsProduction(`
+      <div>Copyright 2026</div><div>Volume</div><div>$44M</div>
+      <div>2025 Rankings</div><div>Sides Rank 1</div>
+      <div>Volume Rank</div><div>$33.61M</div>
+    `)).toEqual([]);
+  });
+
+  it("suppresses conflicting duplicate production metrics within one source", () => {
+    expect(parseRealTrendsProduction(`
+      <div>Based On 2025 Sales Data</div>
+      <div>Sides</div><div>20</div><div>Sides</div><div>1</div>
+    `)).toEqual([]);
+  });
+
   it("extracts year-scoped volume and sides deterministically", () => {
     const observations = parseRealTrendsProduction(PROFILE_HTML);
     expect(observations).toEqual([
@@ -58,6 +96,34 @@ describe("RealTrends production parser", () => {
 });
 
 describe("RealTrends production adapter", () => {
+  it("refetches legacy cache rows and reuses only qualified production observations", async () => {
+    const url = `${PROFILE_URL}?legacy=${randomUUID()}`;
+    const sql = await getSql();
+    await sql.query(
+      `insert into citelock_production_observations
+       (id, profile_url, source_label, claim_scope, field, value, note, observed_at, expires_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [randomUUID(), url, "RealTrends Verified", "sales-sides:2025:full-year",
+        "transaction_sides", "1 sides in 2025", null,
+        "2026-10-14T00:00:00.000Z", "2026-10-15T00:00:00.000Z"],
+    );
+    let fetches = 0;
+    const dependencies = {
+      sql,
+      now: () => "2026-10-14T15:00:00.000Z",
+      fetchText: async () => { fetches += 1; return PROFILE_HTML; },
+    };
+    const first = await fetchRealTrendsProduction({ profileUrl: url }, dependencies);
+    const second = await fetchRealTrendsProduction({ profileUrl: url }, dependencies);
+    for (const result of [first, second]) {
+      expect(result.evidence.find((item) => item.field === "transaction_sides")?.value)
+        .toBe("20 sides in 2025");
+      expect(result.evidence.every((item) => item.note?.includes("RealTrends-reported")))
+        .toBe(true);
+    }
+    expect(fetches).toBe(1);
+  });
+
   it("fetches live figures once and then serves the durable cache", async () => {
     const url = `${PROFILE_URL}?case=${randomUUID()}`;
     let fetches = 0;
@@ -209,3 +275,4 @@ describe("independent production conflict gating", () => {
     expect(gate?.status).toBe("pass");
   });
 });
+
