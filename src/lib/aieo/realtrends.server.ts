@@ -23,122 +23,16 @@ import { isRealTrendsProfileUrl, sanitizeCiteLockPublicUrl } from "./scan-types"
 const SOURCE_LABEL = "RealTrends Verified";
 const DEFAULT_CACHE_HOURS = 24;
 
-export type ProductionObservation = {
-  claimScope: string;
-  field: "transaction_volume" | "transaction_sides";
-  value: string;
-  note?: string;
-};
+import { parseRealTrendsProduction, type ProductionObservation } from "./realtrends-parser";
+export { parseRealTrendsProduction } from "./realtrends-parser";
+export type { ProductionObservation } from "./realtrends-parser";
+
+const OBSERVATION_NOTE = "CiteLock production parser v2: source-reported figures; reporting scope and attribution are publisher-defined. Retrieval does not verify a competing total or measure AI visibility.";
 
 export type ProductionFetchResult = {
   evidence: CiteEvidence[];
   outcomes: CiteSourceOutcome[];
 };
-
-function moneyToNumber(raw: string, unit?: string): number {
-  const amount = Number(raw.replace(/,/g, ""));
-  if (!Number.isFinite(amount)) return Number.NaN;
-  const multiplier = /^(?:b|bn|billion)$/i.test(unit || "")
-    ? 1_000_000_000
-    : /^(?:m|mm|million)$/i.test(unit || "")
-      ? 1_000_000
-      : /^(?:k|thousand)$/i.test(unit || "")
-        ? 1_000
-        : 1;
-  return Math.round(amount * multiplier);
-}
-
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
-}
-
-function htmlLines(html: string): string[] {
-  return decodeHtml(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<\/?(?:tr|td|th|div|p|br|li|h\d|span|section)[^>]*>/gi, "\n")
-      .replace(/<[^>]+>/g, " "),
-  )
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-/**
- * Parse year-scoped production figures from a RealTrends Verified profile.
- * Only figures with an unambiguous year and dollar amount are emitted; a page
- * we cannot read deterministically yields no observations at all.
- */
-export function parseRealTrendsProduction(
-  html: string,
-): ProductionObservation[] {
-  const lines = htmlLines(html);
-  const observations = new Map<string, ProductionObservation>();
-  const sidesByYear = new Map<string, number>();
-  let contextYear: string | undefined;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!;
-    const yearMatch = line.match(/\b(20\d{2})\b/);
-    if (yearMatch) contextYear = yearMatch[1];
-
-    if (/(?:sales\s*)?volume/i.test(line)) {
-      const window = [line, lines[index + 1] || "", lines[index + 2] || ""].join(
-        " ",
-      );
-      const amount = window.match(
-        /\$\s*([\d][\d,.]*)\s*(billion|million|thousand|bn|mm|[bmk])?\b/i,
-      );
-      const year =
-        window.match(/\b(20\d{2})\b/)?.[1] || (yearMatch ? yearMatch[1] : contextYear);
-      if (amount && year) {
-        const numeric = moneyToNumber(amount[1]!, amount[2]);
-        if (Number.isFinite(numeric) && numeric > 0) {
-          const scope = `sales-volume:${year}:full-year`;
-          observations.set(scope, {
-            claimScope: scope,
-            field: "transaction_volume",
-            value: `$${numeric.toLocaleString("en-US")} in ${year}`,
-          });
-        }
-      }
-    }
-
-    if (/(?:transaction\s*)?sides/i.test(line)) {
-      const window = [line, lines[index + 1] || ""].join(" ");
-      const year = window.match(/\b(20\d{2})\b/)?.[1] || contextYear;
-      // Years and dollar figures must never be misread as a sides count.
-      const sides = window
-        .replace(/\b20\d{2}\b/g, " ")
-        .replace(/\$\s*[\d,.]+/g, " ")
-        .match(/\b(\d{1,4}(?:\.\d)?)\b(?!\s*%)/);
-      if (sides && year) {
-        const count = Number(sides[1]);
-        if (Number.isFinite(count) && count > 0 && count < 10_000)
-          sidesByYear.set(year, count);
-      }
-    }
-  }
-
-  for (const [year, count] of sidesByYear) {
-    const scope = `sales-sides:${year}:full-year`;
-    observations.set(scope, {
-      claimScope: scope,
-      field: "transaction_sides",
-      value: `${count} sides in ${year}`,
-    });
-  }
-  return [...observations.values()].sort((a, b) =>
-    a.claimScope.localeCompare(b.claimScope),
-  );
-}
 
 function parseEnterprisePayload(payload: unknown): ProductionObservation[] {
   const entries = Array.isArray(payload)
@@ -292,9 +186,9 @@ export async function fetchRealTrendsProduction(
   const cached = await sql.query<CachedRow>(
     `select claim_scope, field, value, note, observed_at
        from citelock_production_observations
-      where profile_url = $1 and expires_at > $2
+      where profile_url = $1 and expires_at > $2 and note = $3
       order by observed_at desc, claim_scope`,
-    [profileUrl, nowIso],
+    [profileUrl, nowIso, OBSERVATION_NOTE],
   );
   if (cached.length) {
     const latest = new Map<string, CachedRow>();
@@ -358,6 +252,8 @@ export async function fetchRealTrendsProduction(
     };
   }
 
+  observations = observations.map(observation => ({ ...observation, note: OBSERVATION_NOTE }));
+
   if (!observations.length) {
     return {
       evidence: [],
@@ -408,3 +304,4 @@ export async function fetchRealTrendsProduction(
     ],
   };
 }
+

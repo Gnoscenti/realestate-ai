@@ -37,7 +37,7 @@ export function readRealTrendsRanking(input: GuideInput, url: string, text: stri
 
 export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideSource["role"]; url: string; text?: string; error?: boolean }>, observedAt: string): GuideAnalysis {
   let ranking: RankingFact | null = null;
-  const annualClaims: Array<{ amount: number; year: number; url: string }> = [];
+  const annualClaims: Array<{ amount: number; year: number; url: string; qualifier: string }> = [];
   const sources = pages.map((page): GuideSource => {
     if (!page.text) return { role: page.role, url: page.url, status: "unavailable", observedAt, facts: [], note: "Could not read this public page. Check the URL and access permissions, then retry. No claims were inferred." };
     const text = page.text.replace(/\s+/g, " ");
@@ -53,11 +53,12 @@ export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideS
         facts.push(`RealTrends reports city sides rank ${parsed.citySidesRank}, ${parsed.sides} sides and $${parsed.volumeMillions}M volume, based on ${parsed.year} sales data.`);
       }
       // Only a directly attached annual claim. Do not total listing prices or merge quarters/years.
-      for (const match of text.matchAll(/\$([\d.]+)\s*(?:million|M)\s+(?:in\s+(?:sales\s+in\s+)?|for\s+)(20\d{2})\b/gi)) {
-        const amount = Number(match[1]), year = Number(match[2]);
+      for (const match of text.matchAll(/(?:(\bover|\bmore than|\bat least)\s+)?\$([\d.]+)\s*(?:million|M)\s+(?:in\s+(?:sales\s+in\s+)?|for\s+)(20\d{2})\b/gi)) {
+        const amount = Number(match[2]), year = Number(match[3]);
+        const qualifier = match[1] ? match[1].toLowerCase() + " " : "";
         if (amount > 0 && year <= new Date().getUTCFullYear() && !annualClaims.some(c => c.url === page.url && c.year === year && c.amount === amount)) {
-          annualClaims.push({ amount, year, url: page.url });
-          facts.push(`This page states $${amount}M for ${year}; attribution and coverage need confirmation.`);
+          annualClaims.push({ amount, year, url: page.url, qualifier });
+          facts.push(`This page states ${qualifier}$${amount}M for ${year}; attribution and coverage need confirmation.`);
         }
       }
     }
@@ -68,7 +69,7 @@ export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideS
   // Assignment occurs inside the map; explicitly narrow the collected result.
   const rank = ranking as RankingFact | null;
   const conflicts = rank ? annualClaims.filter(c => c.year === rank.year && rank.volumeMillions !== undefined && Math.abs(c.amount - rank.volumeMillions) > 0.01)
-    .map(c => `${c.url} states $${c.amount}M for ${c.year}; RealTrends reports $${rank.volumeMillions}M. Confirm reporting scope, credit, and cutoff before publishing a volume comparison.`) : [];
+    .map(c => `${c.url} states ${c.qualifier}$${c.amount}M for ${c.year}; RealTrends reports $${rank.volumeMillions}M. This difference does not establish an error in either source. Confirm reporting scope, credit, categories, and cutoff before publishing a volume comparison.`) : [];
   return { input, sources, ranking: rank, conflicts, version: "guide-1.0",
     recommendedClaim: rank ? `${input.name} ranked No. ${rank.citySidesRank} by transaction sides among RealTrends-ranked agents in ${rank.city}, based on ${rank.year} sales data.` : null };
 }
@@ -261,3 +262,4 @@ export async function getGuide(userId: string, workspaceId: string, id: string, 
   if(!rows[0]) throw new Error("Guide not found");
   return view(userId,workspaceId,rows[0],sql);
 }
+
