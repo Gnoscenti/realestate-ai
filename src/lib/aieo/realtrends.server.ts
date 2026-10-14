@@ -102,6 +102,10 @@ export function parseRealTrendsProduction(
       contextYear = heading[1] || heading[2];
       continue;
     }
+    if (/^(?:National|State|City|Awards|Market Update\b|Copyright\b|©)/i.test(line)) {
+      contextYear = undefined;
+      continue;
+    }
     const metric = line.match(
       /^(?:(20\d{2})\s+)?(Sales Volume|Volume|Transaction Sides|Sides)(?:\s+(.+))?$/i,
     );
@@ -119,7 +123,7 @@ export function parseRealTrendsProduction(
         record({
           claimScope: `sales-volume:${year}:full-year`,
           field: "transaction_volume",
-          value: `$${numeric.toLocaleString("en-US")} in ${year}`,
+          value: `${value} in ${year}`,
         });
     } else if (/^\d{1,4}(?:\.\d)?$/.test(value)) {
       const count = Number(value);

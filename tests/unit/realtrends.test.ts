@@ -36,11 +36,11 @@ describe("RealTrends production parser", () => {
       <div>Sides Rank</div><div>-</div>
       <div>City</div><div>Volume Rank</div><div>5</div>
       <div>Sides Rank</div><div>1</div>
-      <div>Market Update for October 14, 2026</div><div>$7,650,000</div>
+      <div>Market Update for October 14, 2026</div><div>Volume</div><div>$7,650,000</div>
     `);
     expect(observations).toEqual([
       { claimScope: "sales-sides:2025:full-year", field: "transaction_sides", value: "20 sides in 2025" },
-      { claimScope: "sales-volume:2025:full-year", field: "transaction_volume", value: "$33,610,000 in 2025" },
+      { claimScope: "sales-volume:2025:full-year", field: "transaction_volume", value: "$33.61M in 2025" },
     ]);
   });
 
@@ -113,8 +113,8 @@ describe("RealTrends production adapter", () => {
       now: () => "2026-10-14T15:00:00.000Z",
       fetchText: async () => { fetches += 1; return PROFILE_HTML; },
     };
-    const first = await fetchRealTrendsProduction({ profileUrl: url }, dependencies);
-    const second = await fetchRealTrendsProduction({ profileUrl: url }, dependencies);
+    const first = await fetchRealTrendsProduction({ profileUrl: url, observedAt: "2026-10-14T15:00:00.000Z" }, dependencies);
+    const second = await fetchRealTrendsProduction({ profileUrl: url, observedAt: "2026-10-14T15:00:00.000Z" }, dependencies);
     for (const result of [first, second]) {
       expect(result.evidence.find((item) => item.field === "transaction_sides")?.value)
         .toBe("20 sides in 2025");
