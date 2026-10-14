@@ -470,7 +470,7 @@ function findConflicts(items: CiteEvidence[]): CiteConflict[] {
             : "warning",
         message:
           field === "transaction_volume"
-            ? `Published production figures disagree for ${scope.replace(/:/g, " ")}. Keep methodologies separate until a human verifies them.`
+            ? `Published production figures disagree for ${scope.replace(/:/g, " ")}. This does not establish an error in either source. Confirm methodology, transaction credit, categories and reporting cutoff before reusing a combined or comparative claim.`
             : `Public sources disagree about ${field.replace(/_/g, " ")}${scope === "default" ? "" : ` for ${scope}`}.`,
       });
     }
@@ -1207,3 +1207,4 @@ export const AIEO_PILLAR_LABEL: Record<AieoPillarId, string> = {
   technical: "Technical retrievability",
   freshness: "Freshness & consistency",
 };
+

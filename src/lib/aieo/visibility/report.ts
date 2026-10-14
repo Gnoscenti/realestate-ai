@@ -334,6 +334,7 @@ export function buildVisibilityReport(
   const limits: string[] = [
     "API observations of provider web-grounded surfaces; not measurements of the consumer ChatGPT, Gemini, or Grok apps.",
     "Prompts are designed research questions, not measured search demand.",
+    "Successful source retrieval is not evidence of improved AI-search visibility. A single answer or before/after change does not establish CiteLock causation, cross-platform reproducibility, or client referrals.",
     "Opportunity priority measures evidence sufficiency and actionable fit, never agent quality, sales volume or predicted lift.",
     "Review evidence is client-reported; selected sources may be biased, incomplete or contradictory. Missing evidence is unknown.",
     "Competitor names are model-extracted from answer text and labeled as such; subject mention/citation is deterministic.",
@@ -369,3 +370,4 @@ export function buildVisibilityReport(
 export function clusterLabel(id: string): string {
   return clusterById(id)?.label || id;
 }
+

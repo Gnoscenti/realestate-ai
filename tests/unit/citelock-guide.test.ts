@@ -26,7 +26,9 @@ describe("source-backed instructional guide",()=>{
     expect(analysis.ranking).toMatchObject({year:2025,citySidesRank:1,sides:20,volumeMillions:33.61});
     expect(analysis.recommendedClaim).toBe("Julie Pierce Casey ranked No. 1 by transaction sides among RealTrends-ranked agents in Rancho Santa Fe, based on 2025 sales data.");
     expect(analysis.conflicts).toHaveLength(1);
-    expect(analysis.conflicts[0]).toContain("$44M");
+    expect(analysis.conflicts[0]).toContain("over $44M");
+    expect(analysis.conflicts[0]).toContain("does not establish an error");
+    expect(analysis.sources[0].facts.join(" ")).toContain("over $44M for 2025");
     expect(analysis.conflicts[0]).toContain("$33.61M");
     expect(analysis.conflicts.join("")).not.toContain("$56M");
   });
@@ -86,3 +88,4 @@ describe("source-backed instructional guide",()=>{
     expect(await listGuides(userId,workspace.id)).toHaveLength(3);
   });
 });
+
