@@ -15,7 +15,7 @@ const PROFILE_HTML = `
 <html><body>
   <h1>Julie Pierce Casey</h1>
   <section>
-    <h2>2025 Rankings</h2>
+    <h2>Based On 2025 Sales Data</h2>
     <div><span>Sales Volume</span><span>$33,614,777</span></div>
     <div><span>Transaction Sides</span><span>20</span></div>
   </section>
@@ -42,6 +42,13 @@ describe("RealTrends production parser", () => {
       { claimScope: "sales-sides:2025:full-year", field: "transaction_sides", value: "20 sides in 2025" },
       { claimScope: "sales-volume:2025:full-year", field: "transaction_volume", value: "$33.61M in 2025" },
     ]);
+  });
+
+  it("does not treat the ranking edition year as a sales-data year", () => {
+    expect(parseRealTrendsProduction(`
+      <h2>2026 Rankings</h2>
+      <div>Volume</div><div>$33.61M</div><div>Sides</div><div>20</div>
+    `)).toEqual([]);
   });
 
   it("does not borrow a copyright year or parse a rank as production", () => {

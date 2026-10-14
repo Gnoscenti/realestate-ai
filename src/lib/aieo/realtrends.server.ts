@@ -96,7 +96,7 @@ export function parseRealTrendsProduction(
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
     const heading = line.match(
-      /^(?:Based on (20\d{2}) Sales Data|(20\d{2}) (?:Rankings|Sales Data|Performance))$/i,
+      /^(?:Based on (20\d{2}) Sales Data|(20\d{2}) (?:Sales Data|Performance))$/i,
     );
     if (heading) {
       contextYear = heading[1] || heading[2];
