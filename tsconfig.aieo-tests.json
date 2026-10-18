@@ -1,4 +1,8 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["tests/unit/aieo-score.test.ts"]
+  "include": [
+    "tests/unit/aieo-score.test.ts",
+    "tests/unit/realtrends.test.ts",
+    "tests/unit/citelock-guide.test.ts"
+  ]
 }
