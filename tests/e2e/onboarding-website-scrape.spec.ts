@@ -113,8 +113,9 @@ test.describe("website and brokerage onboarding", () => {
     await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
     await page.getByRole("link", { name: "Try a sample inquiry", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Try a sample inquiry", exact: true }),
+      page.getByRole("button", { name: /Try a sample inquiry|Scan sample inbox again/ }),
     ).toBeVisible();
+    await expect(page.getByText("Synthetic leads and appointments only.", { exact: false })).toBeVisible();
   });
 
   test("editing the URL while a source is pending discards the late result", async ({ page }) => {
