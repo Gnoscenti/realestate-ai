@@ -96,7 +96,7 @@ function instant(value: string): number {
 }
 
 function identifier(value: string): string {
-  if (!value || value !== value.trim() || value.length > 240 || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (!value || value !== value.trim() || value.length > 240 || [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
     throw new Error("Invalid owner or message identifier");
   }
   return value;
@@ -112,7 +112,11 @@ export function normalizeDemoEmail(value: string): string {
 
 function boundedText(value: string, max: number, label: string): string {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(trimmed)) {
+  const invalidControl = [...trimmed].some((character) => {
+    const code = character.charCodeAt(0);
+    return code === 127 || (code < 32 && ![9, 10, 13].includes(code));
+  });
+  if (!trimmed || trimmed.length > max || invalidControl) {
     throw new Error(`Invalid ${label}`);
   }
   return trimmed;

@@ -60,7 +60,10 @@ function AccountInboxDemo({ ownerId }: { ownerId: string }) {
     } catch (cause) {
       if (!active.current || request !== requestId.current) return;
       const message = cause instanceof Error ? cause.message : "The demo could not be updated.";
-      setError(`${message} Reload the saved demo before trying again. Nothing was sent.`);
+      const recovery = /calendar snapshot|timezone|working window/i.test(message)
+        ? "Choose Start a fresh sample to rebuild the synthetic calendar."
+        : "Reload the saved demo before trying again.";
+      setError(`${message} ${recovery} Nothing was sent.`);
     } finally {
       if (active.current && request === requestId.current) {
         operationPending.current = false;

@@ -77,5 +77,6 @@ describe("authenticated-owner inbox draft persistence", () => {
     const state = await mutateInboxDemo(owner, { kind: "scan" }, NOW);
     const sql = await getSql();
     await expect(sql`insert into inbox_draft_demo (user_id, state) values (${`other-${owner}`}, ${JSON.stringify(state)}::jsonb)`).rejects.toThrow();
+    await expect(sql`insert into inbox_draft_demo (user_id, state) values (${`missing-${owner}`}, ${JSON.stringify({ version: 1 })}::jsonb)`).rejects.toThrow();
   });
 });
