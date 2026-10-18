@@ -150,3 +150,26 @@ For manual acceptance on an entitled fresh local account:
 7. Repeat the first-use flow at an iPhone-sized viewport using keyboard focus,
    Escape, and the restart-tip control. Try the sample inquiry and confirm its
    visibly synthetic, unsent behavior.
+
+
+## Production release hold after PR integration
+
+Automatic Vercel deployment from `main` is temporarily disabled in `vercel.json`.
+The PRs can merge without releasing the onboarding UI before its database is
+ready. The existing production deployment remains available.
+
+The Neon production path does not apply migrations at runtime, and the Vercel
+build runs only `npm run build`. Before releasing this integration, an authorized
+operator must inspect the target database's `_migrations` history, apply the
+pending repository migrations using `npm run db:migrate` against the intended
+production database, and verify that `0019_workspace_onboarding.sql` is recorded
+and its three tables exist. Do not assume a successful application build applied
+this migration. The local migration runner applies all pending files, so review
+the full pending set before execution.
+
+Then remove the `main: false` entry from `git.deploymentEnabled`, deploy the
+reviewed revision, and verify authenticated profile save/reload and isolation
+between two agents on a phone-sized viewport. These are release steps, not
+proof already obtained by CI. If onboarding cannot load its server state, the
+app preserves the existing workspace and shows retry/skip controls; new profile
+scanning and saving remain unavailable until the database is ready.
