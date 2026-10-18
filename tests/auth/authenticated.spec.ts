@@ -9,8 +9,38 @@ async function signUp(page:Page) {
   await page.locator("#login-name").fill("Isolated Browser Agent");
   await page.locator("#login-email").fill("browser-"+randomUUID()+"@example.test");
   await page.locator("#login-password").fill("Test!"+randomUUID());
-  await page.getByRole("button",{name:"Create account with email"}).click();
-  await expect(page.locator("#access-code")).toBeVisible();
+  const submit = page.getByRole("button", { name: "Create account with email" });
+  let waitedMs = 0;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const responsePromise = page.waitForResponse(response =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/auth/sign-up/email",
+    );
+    await submit.click();
+    const response = await responsePromise;
+    if (response.status() !== 429) {
+      expect(response.ok(), `Email signup returned HTTP ${response.status()}`).toBe(true);
+      await expect(page.locator("#access-code")).toBeVisible();
+      return;
+    }
+
+    // Production Better Auth 1.6 uses a 3-request/10-second signup limit and
+    // returns X-Retry-After in seconds. Tests share its real per-path bucket.
+    // Honor that signal (or standard Retry-After) without weakening the gate.
+    const headers = response.headers();
+    const retryAfter = headers["retry-after"] ?? headers["x-retry-after"];
+    const seconds = retryAfter?.trim() ? Number(retryAfter) : Number.NaN;
+    const retryAt = Number.isFinite(seconds)
+      ? Date.now() + seconds * 1_000
+      : Date.parse(retryAfter ?? "");
+    const waitMs = Math.max(0, retryAt - Date.now()) + 250;
+    if (attempt === 2 || !Number.isFinite(waitMs) || waitedMs + waitMs > 30_000) {
+      throw new Error(`Email signup remained rate-limited or returned an invalid/excessive retry delay: ${retryAfter ?? "missing"}`);
+    }
+    waitedMs += waitMs;
+    await expect(submit).toBeEnabled();
+    await page.waitForTimeout(waitMs);
+  }
 }
 async function unlock(page:Page) {
   await page.locator("#access-code").fill("TEST-ACCESS-NOT-PRODUCTION");
