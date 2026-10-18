@@ -59,7 +59,7 @@ describe("authenticated-owner inbox draft persistence", () => {
     });
     const sql = await getSql();
     await sql`update inbox_draft_demo set state = ${JSON.stringify(busy)}::jsonb where user_id = ${owner}`;
-    await expect(mutateInboxDemo(owner, { kind: "approve", draftId: draft.id, expectedRevision: draft.revision }, NOW)).rejects.toThrow(/available|calendar|conflict|options changed/i);
+    await expect(mutateInboxDemo(owner, { kind: "approve", draftId: draft.id, expectedRevision: draft.revision }, NOW)).rejects.toThrow("Appointment availability changed; refresh and review the draft");
     expect((await getInboxDemo(owner))?.drafts[0].approval).toBeUndefined();
   });
 
