@@ -17,9 +17,6 @@ import {
   Package,
   RefreshCw,
   Scale,
-  UserPlus,
-  Link2,
-  Settings2,
   Sparkles,
   Zap,
   Calendar,
@@ -51,6 +48,7 @@ import {
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { buildDailyEdgeBrief } from "@/lib/competitors";
+import { BusinessStart } from "@/components/onboarding/business-start";
 
 export const Route = createFileRoute("/")({
   component: DashboardPage,
@@ -79,94 +77,6 @@ const ARTIFACT_ICON: Record<CommandArtifact["kind"], typeof Package> = {
   social: Megaphone,
   brief: Sparkles,
 };
-
-const FIRST_TASKS = [
-  {
-    to: "/leads",
-    label: "Add a lead",
-    help: "Start with one real contact and get the next follow-up.",
-    icon: UserPlus,
-  },
-  {
-    to: "/mls",
-    label: "Connect listings",
-    help: "Bring in inventory from your website or a CSV.",
-    icon: Link2,
-  },
-  {
-    to: "/calendar",
-    label: "Add appointment",
-    help: "Put the next client event where the workspace can prepare it.",
-    icon: Calendar,
-  },
-] as const;
-
-function FreshWorkspaceGuide({ hasProfile }: { hasProfile: boolean }) {
-  return (
-    <Card
-      className="border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))]"
-      data-testid="fresh-workspace-guide"
-    >
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="accent">Start here</Badge>
-          <span className="text-xs text-[var(--color-fg-subtle)]">
-            Setup is optional
-          </span>
-        </div>
-        <CardTitle>Choose one real task</CardTitle>
-        <CardDescription>
-          Your workspace is ready. Add the item you already have in front of
-          you; RealEstate AI will build the next actions from it.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {FIRST_TASKS.map((task) => {
-            const Icon = task.icon;
-            return (
-              <Button
-                key={task.to}
-                asChild
-                variant="outline"
-                className="h-auto min-h-[72px] justify-start whitespace-normal p-3 text-left"
-              >
-                <Link to={task.to}>
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>
-                    <span className="block font-semibold">{task.label}</span>
-                    <span className="mt-0.5 block text-xs font-normal text-[var(--color-fg-muted)]">
-                      {task.help}
-                    </span>
-                  </span>
-                </Link>
-              </Button>
-            );
-          })}
-        </div>
-        <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-[var(--color-fg-muted)]">
-            Profile, market, and website details can be added whenever they
-            become useful.
-          </p>
-          <Button
-            type="button"
-            variant="ghost"
-            className="min-h-[44px] justify-start sm:shrink-0"
-            onClick={() =>
-              window.dispatchEvent(
-                new Event("realestate-ai:open-profile-setup"),
-              )
-            }
-          >
-            <Settings2 className="h-4 w-4" />
-            {hasProfile ? "Review profile" : "Add profile (optional)"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 async function copyText(text: string) {
   try {
@@ -284,7 +194,7 @@ function DashboardPage() {
       </div>
 
       {isFreshWorkspace ? (
-        <FreshWorkspaceGuide hasProfile={Boolean(profile)} />
+        <BusinessStart />
       ) : (
         <>
           <QuickStats />
@@ -374,7 +284,7 @@ function DashboardPage() {
                 <Card>
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
                     {isFreshWorkspace
-                      ? "Add one real lead, listing, or appointment above. Your ranked next action will appear here."
+                      ? "Choose a business outcome above. Your real client work will appear here when available."
                       : "Queue clear. Reset done items or add an appointment for new preparation tasks."}
                   </CardContent>
                 </Card>

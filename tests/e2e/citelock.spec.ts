@@ -6,7 +6,12 @@ test.beforeEach(async ({ page }) => {
   await grantTestAccess(page);
 });
 
-test("CiteLock explains what it measures and asks for a profile before running anything", async ({ page }) => {
+test("CiteLock requires a usable public source before scanning or publishing", async ({ page }) => {
+  // resetApp clears browser storage, while the shared dev identity keeps its
+  // durable profile. Explicitly establish the missing-source case through UI.
+  await completeOnboarding(page, { name: "No Source Agent", area: "", website: "" });
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Confirm your business profile" })).toHaveCount(0);
   const link = page.getByRole("link", { name: "CiteLock", exact: true });
   await expect(link).toBeVisible();
   await link.click();
@@ -18,10 +23,18 @@ test("CiteLock explains what it measures and asks for a profile before running a
       name: /Get discovered for the work you do best/,
     }),
   ).toBeVisible();
-  // No profile yet: the page asks for setup instead of running a paid batch.
-  await expect(page.getByText("Set up your profile to start")).toBeVisible();
+  // A saved CiteLock subject is independent of the shared onboarding profile.
+  // Clear the source in its editable draft as well; no paid batch is requested.
+  await page.locator("#citelock-entity").selectOption("agent");
+  if (!(await page.locator("#citelock-agent-name").isVisible())) {
+    await page.getByRole("button", { name: "Edit saved subject", exact: true }).click();
+  }
+  await page.locator("#citelock-agent-name").fill("No Source Agent");
+  await page.locator("#citelock-agent-website").fill("");
+  await page.locator("#citelock-area").fill("");
   await expect(page.locator("#citelock-agent-name")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save subject", exact: true })).toBeDisabled();
+  await expect(page.getByTestId("run-visibility-batch")).toBeDisabled();
 
   await page.getByRole("button", { name: "Where you show up", exact: true }).click();
   await expect(page.getByText(/No visibility batch yet/)).toBeVisible();
@@ -67,10 +80,8 @@ test("Social desk loads from the server with truthful empty states", async ({ pa
 
 test("Expertise evidence requires explicit rights and survives a browser reload",async({page})=>{
   await completeOnboarding(page,{name:"Jordan Rivera",website:"https://jordanrivera.example",area:"Rancho Santa Fe, CA",brokerage:"Pacific Coast Realty"});
-  await page.getByRole("button",{name:/Launch workspace/i}).click();
-  await page.getByRole("button",{name:/Continue without website scan/i}).click();
-  await page.getByRole("button",{name:/Launch workspace/i}).click();
-  await expect(page.getByRole("heading",{name:"Finish your profile"})).not.toBeVisible();
+  await page.getByRole("button",{name:"Confirm profile and open workspace"}).click();
+  await expect(page.getByRole("heading",{name:"Confirm your business profile"})).not.toBeVisible();
   await page.getByRole("link",{name:"CiteLock",exact:true}).click();
   await page.getByRole("button",{name:"Advanced workspace",exact:true}).click();
   await page.getByRole("button",{name:"Save subject",exact:true}).click();

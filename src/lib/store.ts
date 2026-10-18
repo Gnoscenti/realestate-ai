@@ -109,6 +109,8 @@ interface AppState {
   updateAgentProfile: (
     patch: Partial<Omit<AgentProfile, "onboardedAt">>,
   ) => void;
+  /** Hydrate confirmed identity without resetting existing leads or appointments. */
+  hydrateConfirmedProfile: (profile: AgentProfile) => void;
   applyWebsiteScrape: (scrape: WebsiteScrapeResult) => {
     listings: number;
     profilePatched: boolean;
@@ -225,6 +227,8 @@ function welcomeFor(name?: string, area?: string): ChatMessage[] {
   ];
 }
 
+const RSF_PROFILE_SEED_FACT = "Primary market is Rancho Santa Fe & surrounding North County luxury corridor — use Covenant/Bridges/Fairbanks distinctions in every pricing and content conversation.";
+
 function seedMemory(profile: AgentProfile): AgentMemory {
   let memory = createEmptyMemory();
   memory = applyMemorySignal(memory, {
@@ -237,7 +241,7 @@ function seedMemory(profile: AgentProfile): AgentMemory {
   if (isRsfCorridor(profile.areaOfOperations)) {
     memory = applyMemorySignal(memory, {
       kind: "remember",
-      text: "Primary market is Rancho Santa Fe & surrounding North County luxury corridor — use Covenant/Bridges/Fairbanks distinctions in every pricing and content conversation.",
+      text: RSF_PROFILE_SEED_FACT,
     });
     memory = applyMemorySignal(memory, {
       kind: "onboarding",
@@ -245,6 +249,24 @@ function seedMemory(profile: AgentProfile): AgentMemory {
     });
   }
   return memory;
+}
+
+/** Refresh profile-derived facts without rewriting learned activity/preferences.
+ * Historical market counts remain history; the confirmed profile is current. */
+function refreshProfileMemory(memory: AgentMemory, profile: AgentProfile): AgentMemory {
+  const existing = ensureAgentMemory(memory);
+  return {
+    ...existing,
+    learnedFacts: [{
+      id: "confirmed_profile_identity",
+      text: `Confirmed agent: ${profile.name}. ${profile.areaOfOperations ? `Current market: ${profile.areaOfOperations}.` : "Current market is unspecified."} The confirmed profile takes precedence over historical market activity.`,
+      source: "onboarding",
+      confidence: 1,
+      createdAt: new Date().toISOString(),
+    }, ...existing.learnedFacts.filter((fact) =>
+      fact.source !== "onboarding" && fact.text !== RSF_PROFILE_SEED_FACT,
+    )],
+  };
 }
 
 function applyProfileIdentity(profile: AgentProfile): Pick<AppState, "chat"> {
@@ -412,6 +434,23 @@ export const useAppStore = create<AppState>()(
       },
       clearCompletedPriorities: () => set({ completedPriorities: [] }),
 
+      hydrateConfirmedProfile: (profile) => {
+        const current = get().agentProfile;
+        const identityChanged = current && (
+          current.name !== profile.name || current.areaOfOperations !== profile.areaOfOperations
+        );
+        set({
+          agentProfile: profile,
+          onboarded: true,
+          agentMemory: !current
+            ? seedMemory(profile)
+            : identityChanged
+              ? refreshProfileMemory(get().agentMemory, profile)
+              : get().agentMemory,
+          ...(current ? {} : applyProfileIdentity(profile)),
+        });
+      },
+
       completeOnboarding: (input, opts) => {
         const now = new Date().toISOString();
         const scrape = opts?.websiteScrape;
@@ -496,7 +535,9 @@ export const useAppStore = create<AppState>()(
         if (!current) return { listings: 0, profilePatched: false };
         const currentCite = current as CiteAgentProfile;
         const sp = scrape.profile;
-        const profile: CiteAgentProfile = {
+        // Confirmed identity changes through profile review. Inventory rescans
+        // must neither replace nor add identity fields or scrape metadata.
+        const profile: CiteAgentProfile = current.onboardingRevision ? current : {
           ...current,
           phone: sp.phone || current.phone,
           email: sp.email || current.email,
@@ -546,7 +587,7 @@ export const useAppStore = create<AppState>()(
           kind: "mls_sync",
           text: `website scrape ${fromSite.length} listings`,
         });
-        return { listings: fromSite.length, profilePatched: true };
+        return { listings: fromSite.length, profilePatched: profile !== current };
       },
 
       resyncFromWebsite: async () => {
