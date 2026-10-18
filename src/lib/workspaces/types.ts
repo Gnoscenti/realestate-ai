@@ -24,8 +24,14 @@ export const agentProfileInputSchema = z.object({
   brokerage: optionalTrimmed(160),
   businessPhone: optionalTrimmed(40),
   websiteUrl: optionalTrimmed(500).refine(
-    (value) => !value || /^https:\/\//i.test(value),
-    "Website must use HTTPS",
+    (value) => {
+      if (!value) return true;
+      try {
+        const url = new URL(value);
+        return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+      } catch { return false; }
+    },
+    "Website must be a valid HTTP or HTTPS URL",
   ),
   areaOfOperations: optionalTrimmed(240),
   mlsBoard: optionalTrimmed(160),

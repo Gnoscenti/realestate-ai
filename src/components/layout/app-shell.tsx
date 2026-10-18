@@ -48,6 +48,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import {
   bindWorkspaceToUser,
+  currentWorkspaceKey,
   workspaceStorageKey,
 } from "@/lib/auth/workspace-scope";
 
@@ -206,6 +207,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState("");
   const [editProfile, setEditProfile] = useState(false);
+  const [profileSyncError, setProfileSyncError] = useState(false);
+  const [profileSyncAttempt, setProfileSyncAttempt] = useState(0);
   const [boundWorkspaceKey, setBoundWorkspaceKey] = useState<string | null>(
     null,
   );
@@ -261,20 +264,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Bind persisted workspace storage to the signed-in user in this browser.
   // This also runs for the anonymous key, so a signed-out visitor never reads
-  // the previous user's workspace back out of localStorage. Cross-device sync
-  // requires a server-backed workspace and is intentionally not claimed here.
+  // the previous user's workspace back out of localStorage. Restore the shared
+  // confirmed identity from the server after selecting that browser scope.
   useEffect(() => {
     if (authPending) return;
     let cancelled = false;
     const requestedKey = workspaceStorageKey(user?.id);
     setBoundWorkspaceKey(null);
-    void bindWorkspaceToUser(user?.id).then(() => {
-      if (!cancelled) setBoundWorkspaceKey(requestedKey);
+    setEditProfile(false);
+    setProfileSyncError(false);
+    void bindWorkspaceToUser(user?.id).then(async () => {
+      if (cancelled || currentWorkspaceKey() !== requestedKey) return;
+      if (user?.id) {
+        try {
+          const { getOnboardingProfile } = await import("@/lib/onboarding/api");
+          const saved = await getOnboardingProfile();
+          if (cancelled || currentWorkspaceKey() !== requestedKey) return;
+          if (saved && saved.revision > 0) useAppStore.getState().hydrateConfirmedProfile(saved.profile);
+        } catch {
+          if (!cancelled) setProfileSyncError(true);
+        }
+      }
+      if (!cancelled && currentWorkspaceKey() === requestedKey) {
+        setBoundWorkspaceKey(requestedKey);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [authPending, user?.id]);
+  }, [authPending, user?.id, profileSyncAttempt]);
 
   // The product tour is opt-in from the help button. Automatically opening an
   // 11-step modal on first use obscures the task the tester came to complete.
@@ -383,10 +401,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="safe-pad-y min-h-dvh">
         <OnboardingWizard
+          key={user.id}
           mode={onboarded ? "edit" : "first"}
           preferredName={user.displayName}
           preferredEmail={user.primaryEmail}
-          onDone={() => setEditProfile(false)}
+          onDone={() => { setEditProfile(false); void navigate({ to: "/" }); }}
           onCancel={() => setEditProfile(false)}
         />
       </div>
@@ -395,6 +414,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div data-testid={accessOk ? "entitled-workspace" : "free-workspace"} className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
+      {profileSyncError && (
+        <div role="status" className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm shadow-lg">
+          Saved profile could not be refreshed. Your current browser workspace is available.
+          <Button variant="ghost" onClick={() => setProfileSyncAttempt((attempt) => attempt + 1)}>Retry profile sync</Button>
+        </div>
+      )}
       <aside
         className={cn(
           "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",

@@ -13,14 +13,15 @@ test("the access gate is decided by the server, not by browser storage", async (
     page.getByText(/Command Center|Action Desk/i).first(),
   ).toBeVisible({ timeout: 15_000 });
   await expect(
-    page.getByRole("heading", { name: "Finish your profile" }),
+    page.getByRole("heading", { name: "Confirm your business profile" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: /Set up profile/i }).first(),
+    page.getByRole("button", { name: /Build my workspace|Review profile and sources/ }).first(),
   ).toBeVisible();
 
   const state = await readWorkspaceState(page);
-  expect(state?.onboarded).toBe(false);
+  // Server profile hydration can legitimately restore an onboarded identity;
+  // it must not replace or bypass the separate server-controlled access grant.
   // The browser mirror reflects the server grant (a beta code in tests).
   expect(state?.access).toBe("code");
 });

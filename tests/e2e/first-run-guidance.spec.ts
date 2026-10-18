@@ -1,82 +1,82 @@
-import { expect, test } from "@playwright/test";
-import {
-  readWorkspaceState,
-  resetApp,
-  grantTestAccess,
-} from "./helpers";
+import { expect, test, type Page } from "@playwright/test";
+import { readWorkspaceState, resetApp, grantTestAccess } from "./helpers";
 
-test("fresh mobile workspace gives direct tasks without a setup wall", async ({
-  page,
-}) => {
+async function showOutcomes(page: Page) {
+  const skip = page.getByRole("button", { name: "Skip for now", exact: true });
+  if (await skip.isVisible()) await skip.click();
+  await expect(page.getByRole("link", { name: "Try a sample inquiry", exact: true })).toBeVisible();
+}
+
+test("mobile source setup offers two pages and an optional exit", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 667 });
   await resetApp(page);
   await grantTestAccess(page);
-
+  const before = await readWorkspaceState(page);
+  // Later tests can restore a server-owned profile even after browser data is reset.
+  if (!(await page.getByLabel("Your real-estate website", { exact: true }).isVisible())) {
+    await page.getByRole("button", { name: "Review profile and sources" }).click();
+  }
+  await expect(page.getByLabel("Your real-estate website", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Your brokerage biography page", { exact: true })).toBeVisible();
   await expect(
-    page.getByTestId("fresh-workspace-guide"),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(
-    page.getByRole("heading", { name: "Choose one real task" }),
+    page.getByText("One page is enough to start. You can add the other later."),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Add a lead/i })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Connect listings/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /Add appointment/i }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Finish your profile" }),
-  ).toHaveCount(0);
-
-  const width = await page.evaluate(
-    () => document.documentElement.scrollWidth,
-  );
-  const clientWidth = await page.evaluate(
-    () => document.documentElement.clientWidth,
-  );
-  expect(width).toBeLessThanOrEqual(clientWidth + 8);
+  await expect(page.locator("#agent-name")).toHaveCount(0);
+  const build = page.getByRole("button", { name: "Build my workspace", exact: true });
+  await build.scrollIntoViewIfNeeded();
+  const buttonBox = await build.boundingBox();
+  expect(buttonBox).not.toBeNull();
+  expect((buttonBox?.y ?? 9999) + (buttonBox?.height ?? 0)).toBeLessThanOrEqual(667);
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Your real-estate website", { exact: true })).toHaveCount(0);
+  const after = await readWorkspaceState(page);
+  expect(after?.name).toBe(before?.name);
+  expect(after?.leads).toBe(before?.leads);
+  const width = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 8);
 });
 
-test("optional profile setup can be dismissed without changing workspace", async ({
-  page,
-}) => {
+test("first outcomes and keyboard coach do not require a lead", async ({ page }) => {
   await resetApp(page);
   await grantTestAccess(page);
-
-  await page
-    .getByRole("button", { name: /Add profile \(optional\)|Set up profile/i })
-    .first()
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Finish your profile" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Not now" }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "Choose one real task" }),
-  ).toBeVisible();
-  const state = await readWorkspaceState(page);
-  expect(state?.onboarded).toBe(false);
+  await showOutcomes(page);
+  const guide = page.getByTestId("fresh-workspace-guide");
+  await expect(guide.getByRole("button", { name: "Prepare marketing" })).toBeVisible();
+  await expect(guide.getByRole("link", { name: "Inspect visibility" })).toHaveAttribute(
+    "href",
+    "/aieo",
+  );
+  await expect(guide.getByRole("link", { name: "Try a sample inquiry" })).toHaveAttribute(
+    "href",
+    "/outreach",
+  );
+  await expect(guide.getByRole("link", { name: /Add a lead/i })).toHaveCount(0);
+  const restart = page.getByRole("button", { name: "Restart workspace tip" });
+  await restart.click();
+  const coach = page.getByLabel("Workspace coach", { exact: true });
+  await expect(coach).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(coach).toHaveCount(0);
+  await expect(restart).toBeFocused();
+  await restart.click();
+  await expect(coach).toBeVisible();
+  expect((await readWorkspaceState(page))?.leads).toBe(0);
 });
 
-test("new field user can add a phone-only lead and get a next action", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 667 });
+test("sample inquiry is useful without creating real leads", async ({ page }) => {
   await resetApp(page);
   await grantTestAccess(page);
-
-  await page.getByRole("link", { name: /Add a lead/i }).click();
-  await page.getByRole("button", { name: "Add lead" }).click();
-  await page.getByLabel("Name").fill("Field Test Lead");
-  await page.getByLabel("Phone").fill("(858) 555-0142");
-  await page.getByRole("button", { name: "Create lead" }).click();
-
-  await expect(page.getByText("Field Test Lead").first()).toBeVisible();
-  await page.goto("/");
-  await expect(page.getByText("Field Test Lead").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Action pack", { exact: true })).toBeVisible();
+  await showOutcomes(page);
+  await page.getByRole("link", { name: "Try a sample inquiry", exact: true }).click();
+  await expect(page).toHaveURL(/\/outreach\/?$/);
+  await expect(
+    page.getByText("Synthetic leads and appointments only.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Try a sample inquiry|Scan sample inbox again/ }),
+  ).toBeVisible();
+  expect((await readWorkspaceState(page))?.leads).toBe(0);
 });

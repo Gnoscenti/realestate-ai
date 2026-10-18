@@ -141,9 +141,14 @@ export interface AgentProfile {
   phone?: string;
   email?: string;
   photoUrl?: string;
-  /** Agent MLS / DRE / license ID from site */
+  /** Local MLS member/agent ID; never a state license or listing number. */
   agentMlsId?: string;
   license?: string;
+  licenseJurisdiction?: string;
+  brokerageBioUrl?: string;
+  sameAs?: string[];
+  /** Revision of the server-confirmed shared profile. */
+  onboardingRevision?: number;
   bio?: string;
   title?: string;
   /** Where identity + inventory last came from */

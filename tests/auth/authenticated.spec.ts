@@ -17,6 +17,38 @@ async function unlock(page:Page) {
   await page.getByRole("button",{name:"Redeem",exact:true}).click();
   await expect(page.getByTestId("entitled-workspace")).toBeVisible();
 }
+
+test("confirmed onboarding follows its signed-in owner across browsers and stays out of another account", async ({ page, browser }) => {
+  await signUp(page);
+  await unlock(page);
+  await page.goto("/");
+  await expect(page.getByLabel("Your real-estate website", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Continue without a page", exact: true }).click();
+  const name = `Owner ${randomUUID().slice(0, 8)}`;
+  await page.locator("#agent-name").fill(name);
+  await page.locator("#brokerage").fill("Owner's confirmed brokerage");
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
+  const device = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  const other = await browser.newContext({ baseURL: new URL(page.url()).origin });
+  try {
+    await device.addCookies(await page.context().cookies());
+    const restored = await device.newPage();
+    await restored.goto("/");
+    await expect(restored.getByRole("heading", { name: "Your business overview" })).toBeVisible();
+    await expect(restored.getByTestId("fresh-workspace-guide")).toContainText(name);
+    const stranger = await other.newPage();
+    await signUp(stranger);
+    await unlock(stranger);
+    await stranger.goto("/");
+    await expect(stranger.getByLabel("Your real-estate website", { exact: true })).toBeVisible();
+    await expect(stranger.getByText(name, { exact: true })).toHaveCount(0);
+    await expect(stranger.getByText("Owner's confirmed brokerage", { exact: true })).toHaveCount(0);
+  } finally {
+    await device.close();
+    await other.close();
+  }
+});
 test("real sessions enforce the paywall, persist social drafts and isolate another account",async({page,browser})=>{
   await signUp(page);
   await page.evaluate(base=>{
