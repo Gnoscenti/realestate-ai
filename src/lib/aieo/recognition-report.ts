@@ -7,6 +7,7 @@ export const RECOGNITION_LIMITATIONS = [
   "Failed requests are shown separately and do not count as negative recognition.",
   "Readiness recommendations are hypotheses to test; a change between runs does not prove causation.",
   "Hashes support evidence comparison; they do not establish independent notarization.",
+  "Successful source retrieval or a single answer does not establish improved visibility, cross-platform reproducibility, or client referrals.",
 ];
 
 export type RecognitionComparison = {
