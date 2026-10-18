@@ -27,10 +27,26 @@ describe("source-backed instructional guide",()=>{
     expect(analysis.recommendedClaim).toBe("Julie Pierce Casey ranked No. 1 by transaction sides among RealTrends-ranked agents in Rancho Santa Fe, based on 2025 sales data.");
     expect(analysis.conflicts).toHaveLength(1);
     expect(analysis.conflicts[0]).toContain("over $44M");
-    expect(analysis.conflicts[0]).toContain("does not establish an error");
-    expect(analysis.sources[0].facts.join(" ")).toContain("over $44M for 2025");
+    expect(analysis.sources[0].facts.join(" ")).toContain("over $44M");
+    expect(analysis.conflicts[0]).toContain("disagreement alone does not establish an error");
     expect(analysis.conflicts[0]).toContain("$33.61M");
     expect(analysis.conflicts.join("")).not.toContain("$56M");
+  });
+  it("preserves the current biography qualifier and does not treat a compatible lower bound as a conflict",()=>{
+    const pages = [
+      {role:"website" as const,url:input.website,text:personalText.replace("Closed over $44 million in 2025", "Closed over $56 million in the first half of 2026 and over $44 million in sales in 2025")},
+      {role:"ranking" as const,url:input.rankingUrl,text:rankingText},
+    ];
+    const analysis = analyzeGuidePages(input,pages,"2026-10-14T15:00:00.000Z");
+    expect(analysis.conflicts).toHaveLength(1);
+    expect(analysis.conflicts[0]).toContain("over $44M for 2025");
+    expect(analysis.conflicts[0]).not.toContain("$56M");
+    const compatible = analyzeGuidePages(input,[
+      {...pages[0],text:personalText.replace("over $44 million", "over $30 million")},
+      pages[1],
+    ],"2026-10-14T15:00:00.000Z");
+    expect(compatible.sources[0].facts.join(" ")).toContain("over $30M");
+    expect(compatible.conflicts).toEqual([]);
   });
   it("abstains on copied ranking hosts, different profiles, wrong locale, team attribution and absent city rank",()=>{
     expect(readRealTrendsRanking(input,"https://realtrends.com.evil.example/agent-profile/test",rankingText)).toBeNull();

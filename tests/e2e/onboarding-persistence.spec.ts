@@ -1,59 +1,43 @@
 import { expect, test } from "@playwright/test";
-import {
-  completeOnboarding,
-  readWorkspaceState,
-  resetApp,
-  grantTestAccess,
-} from "./helpers";
+import { completeOnboarding, readWorkspaceState, resetApp, grantTestAccess } from "./helpers";
 
-test("onboarding profile survives a hard reload", async ({ page }) => {
+test("confirmed profile restores from the server after browser storage is cleared", async ({
+  page,
+}) => {
   await resetApp(page);
-  await completeOnboarding(page, {
-    name: "Persistent Agent",
-    area: "Poway, CA",
-  });
-  await page.getByRole("button", { name: /Launch workspace/i }).click();
-  await grantTestAccess(page);
-
+  await completeOnboarding(page, { name: "Persistent Agent", area: "Poway, CA" });
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
+  await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: "networkidle" });
-
-  await expect(
-    page.getByRole("heading", { name: "Finish your profile" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(/Command Center|Action Desk/i).first(),
-  ).toBeVisible({ timeout: 20_000 });
+  await grantTestAccess(page);
+  await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
   const state = await readWorkspaceState(page);
   expect(state?.name).toBe("Persistent Agent");
   expect(state?.onboarded).toBe(true);
+  expect(state?.leads).toBe(0);
 });
 
-test("short mobile viewport keeps required fields and launch reachable", async ({
+test("short mobile viewport keeps confirmation reachable without MLS or a market", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 667 });
   await resetApp(page);
-
-  await completeOnboarding(page, {
-    name: "Mobile Agent",
-    area: "San Diego, CA",
-  });
-
-  const name = page.locator("#agent-name");
-  await expect(name).toBeVisible();
-  const nameBox = await name.boundingBox();
-  expect(nameBox?.y ?? -1).toBeGreaterThanOrEqual(0);
-  const launch = page.getByRole("button", { name: /Launch workspace/i });
+  await completeOnboarding(page, { name: "Mobile Agent", area: "" });
+  const launch = page.getByRole("button", { name: "Confirm profile and open workspace" });
+  await expect(launch).toBeEnabled();
   await launch.scrollIntoViewIfNeeded();
-  await expect(launch).toBeVisible();
   const launchBox = await launch.boundingBox();
   expect(launchBox).not.toBeNull();
-  expect((launchBox?.y ?? 9999) + (launchBox?.height ?? 0)).toBeLessThanOrEqual(
-    667,
-  );
+  expect((launchBox?.y ?? 9999) + (launchBox?.height ?? 0)).toBeLessThanOrEqual(667);
+  await launch.click();
+  await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
+  const state = await readWorkspaceState(page);
+  expect(state?.name).toBe("Mobile Agent");
+  expect(state?.agentMlsId).toBeFalsy();
 });
 
-test("failed website scan preserves manual fields and can be skipped", async ({
+test("manual fallback saves a supplied page and keeps corrected fields on reload", async ({
   page,
 }) => {
   await resetApp(page);
@@ -61,20 +45,42 @@ test("failed website scan preserves manual fields and can be skipped", async ({
     name: "Manual Agent",
     area: "Oceanside, CA",
     brokerage: "Manual Brokerage",
-    website: "http://127.0.0.1:9",
+    website: "manual-agent.example",
   });
-
-  await page.getByRole("button", { name: /Scan website/i }).click();
-  const continueButton = page.getByRole("button", {
-    name: /Continue without website scan/i,
-  });
-  await expect(continueButton).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Your business overview" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Website source" })).toHaveAttribute(
+    "href",
+    "https://manual-agent.example/",
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await grantTestAccess(page);
+  await page.getByRole("button", { name: "Review profile and sources" }).click();
+  await expect(page.locator("#website")).toHaveValue("https://manual-agent.example");
+  await page.getByRole("button", { name: "Continue without a page", exact: true }).click();
   await expect(page.locator("#brokerage")).toHaveValue("Manual Brokerage");
-
-  await continueButton.click();
-  await page.getByRole("button", { name: /Launch workspace/i }).click();
-
+  await expect(page.locator("#areaOfOperations")).toHaveValue("Oceanside, CA");
+  await page.keyboard.press("Escape");
   const state = await readWorkspaceState(page);
   expect(state?.brokerage).toBe("Manual Brokerage");
   expect(state?.source).toBe("manual");
+});
+
+test("confirming profile edits preserves real customer records", async ({ page }) => {
+  await resetApp(page);
+  await grantTestAccess(page);
+  await page.goto("/leads");
+  await page.getByRole("button", { name: "Add lead", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Existing Customer");
+  await page.getByLabel("Phone", { exact: true }).fill("(858) 555-0142");
+  await page.getByRole("button", { name: "Create lead", exact: true }).click();
+  await expect(page.getByText("Existing Customer").first()).toBeVisible();
+  await completeOnboarding(page, { name: "Customer Book Agent", area: "Seattle, WA" });
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Confirm your business profile" })).toHaveCount(0);
+  const state = await readWorkspaceState(page);
+  expect(state?.name).toBe("Customer Book Agent");
+  expect(state?.leads).toBe(1);
+  await page.goto("/leads");
+  await expect(page.getByText("Existing Customer").first()).toBeVisible();
 });

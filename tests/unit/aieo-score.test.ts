@@ -820,6 +820,9 @@ describe("CiteLock v2", () => {
       mentionRate: 50,
       citationRate: 50,
     });
+    expect(report.summary).toContain("insufficient sample");
+    expect(report.summary).toContain("no causal visibility improvement established");
+    expect(report.summary).not.toContain("controlled runs");
   });
 
   it("does not let duplicate recognition run IDs satisfy the measurement threshold", () => {
@@ -847,3 +850,4 @@ describe("CiteLock v2", () => {
     });
   });
 });
+

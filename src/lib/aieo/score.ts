@@ -470,7 +470,7 @@ function findConflicts(items: CiteEvidence[]): CiteConflict[] {
             : "warning",
         message:
           field === "transaction_volume"
-            ? `Published production figures disagree for ${scope.replace(/:/g, " ")}. This does not establish an error in either source. Confirm methodology, transaction credit, categories and reporting cutoff before reusing a combined or comparative claim.`
+            ? `Published production figures disagree for ${scope.replace(/:/g, " ")}. Keep methodologies separate until a human verifies them; disagreement alone does not establish that either source is erroneous.`
             : `Public sources disagree about ${field.replace(/_/g, " ")}${scope === "default" ? "" : ` for ${scope}`}.`,
       });
     }
@@ -1167,7 +1167,7 @@ export function scoreAieo(input: AieoInput): AieoScore {
     new Set(queryPlan.map((query) => query.id)),
     evaluatedAt,
   );
-  const summary = `CiteLock v${ALGORITHM_VERSION} readiness: ${total}/100 (${grade}), ${status.replace(/_/g, " ")}; ${coverage}% weighted evidence coverage. Recognition: ${recognition ? `${recognition.mentionRate}% mention rate across ${recognition.runs} controlled runs` : "not measured"}.`;
+  const summary = `CiteLock v${ALGORITHM_VERSION} readiness: ${total}/100 (${grade}), ${status.replace(/_/g, " ")}; ${coverage}% weighted evidence coverage. Recognition: ${recognition ? `${recognition.mentionRate}% mention rate across ${recognition.runs} recorded observations (${recognition.state === "insufficient" ? "insufficient sample" : "measured sample"}); no causal visibility improvement established` : "not measured"}.`;
 
   return {
     algorithmVersion: ALGORITHM_VERSION,

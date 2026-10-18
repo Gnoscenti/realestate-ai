@@ -6,11 +6,13 @@
  */
 import {
   auditWebsitePageHtml,
+  discoverRealtorNames,
   emptyScrape,
   normalizeSiteUrl,
   parseRealtorWebsiteHtml,
   realtorNamesMatch,
   scoreInternalLinks,
+  type AgentPageDiscovery,
   type ScrapedAgentIdentity,
   type ScrapedClaim,
   type ScrapedListing,
@@ -169,6 +171,7 @@ function mergeIdentity(
     bio: a.bio || b.bio,
     title: a.title || b.title,
     address: a.address || b.address,
+    market: a.market || b.market,
     sameAs: [...new Set([...(a.sameAs || []), ...(b.sameAs || [])])],
   };
 }
@@ -200,8 +203,64 @@ function personBoundProfile(
     bio: structured.bio,
     title: structured.title,
     address: structured.address,
+    market: structured.market,
     sameAs: structured.sameAs,
   };
+}
+
+/** Read one explicitly supplied page for the onboarding identity chooser.
+ * This is discovery only: the caller must require confirmation before saving
+ * an identity. The existing scanner still requires an explicit name hint. */
+export async function discoverAgentPage(opts: {
+  website: string;
+  agentNameHint?: string;
+}): Promise<AgentPageDiscovery> {
+  const sourceUrl = normalizeSiteUrl(opts.website);
+  const result: AgentPageDiscovery = {
+    ok: false,
+    sourceUrl,
+    observedAt: new Date().toISOString(),
+    candidates: [],
+    warnings: [],
+  };
+  if (!sourceUrl) return { ...result, error: "Enter a valid website URL" };
+  const page = await fetchHtml(sourceUrl);
+  if (!page.ok) return { ...result, error: page.error };
+  result.finalUrl = page.url;
+  result.observedAt = new Date().toISOString();
+  const names = discoverRealtorNames(page.html);
+  // Rank an already-known identity first without hiding any other people.
+  names.sort((left, right) =>
+    Number(realtorNamesMatch(opts.agentNameHint, right)) -
+    Number(realtorNamesMatch(opts.agentNameHint, left)),
+  );
+  if (names.length > 12) {
+    result.warnings.push("This page lists many people. Use your individual biography page to narrow the match.");
+  }
+  for (const name of names.slice(0, 12)) {
+    const profile = personBoundProfile(
+      parseRealtorWebsiteHtml(page.html, page.url, name),
+      name,
+    ) || { name };
+    // A visible heading can offer a name for confirmation even when the page
+    // title is generic. It never authorizes unbound fields from parsed.profile.
+    if (!profile.name) continue;
+    result.candidates.push({
+      profile: { ...profile, name: profile.name },
+      identityMatch: opts.agentNameHint?.trim()
+        ? realtorNamesMatch(opts.agentNameHint, profile.name)
+          ? "matched"
+          : "different_person"
+        : "unconfirmed",
+    });
+  }
+  result.ok = result.candidates.length > 0;
+  if (!result.ok) {
+    result.warnings.push("No person could be identified on this page. Try an individual biography page or enter your profile details.");
+  } else if (result.candidates.length > 1) {
+    result.warnings.push("This page names more than one person. Choose your own profile before continuing.");
+  }
+  return result;
 }
 
 export async function scrapeRealtorWebsite(opts: {

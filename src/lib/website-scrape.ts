@@ -22,7 +22,22 @@ export type ScrapedAgentIdentity = {
   bio?: string;
   title?: string;
   address?: string;
+  /** Explicit Person.areaServed evidence, never inferred from an office address. */
+  market?: string;
   sameAs?: string[];
+};
+
+export type AgentPageDiscovery = {
+  ok: boolean;
+  sourceUrl: string;
+  finalUrl?: string;
+  observedAt: string;
+  candidates: Array<{
+    profile: ScrapedAgentIdentity & { name: string };
+    identityMatch: "matched" | "unconfirmed" | "different_person";
+  }>;
+  warnings: string[];
+  error?: string;
 };
 
 export type ScrapedListing = {
@@ -472,6 +487,45 @@ function schemaTypeTokens(o: Record<string, unknown>): string[] {
     );
 }
 
+/** Discover names, not identity approval. Contacts still pass through the
+ * server's person-bound parser separately for every candidate. */
+export function discoverRealtorNames(html: string): string[] {
+  const names: string[] = [];
+  const add = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const name = value.replace(/\s+/g, " ").trim();
+    if (
+      name.length > 120 ||
+      !realtorNamesMatch(name, name) ||
+      names.some((existing) => realtorNamesMatch(existing, name))
+    ) return;
+    names.push(name);
+  };
+  walkJsonLd(extractJsonLd(html), (node) => {
+    if (schemaTypeTokens(node).includes("person")) add(node.name);
+  });
+  // A generic title such as "Coastal Realty Group" is not a person. When no
+  // Person nodes exist, accept a conservative name-shaped title or main
+  // heading only when that identity is visible in the page body. This fallback
+  // cannot authorize page-wide phone, email, photo or brokerage fields.
+  if (names.length === 0) {
+    const title = extractMeta(html, "og:title") || stripTags(
+      html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "",
+    );
+    const body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] || "";
+    const headings = [...body.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)]
+      .map((match) => stripTags(match[1]!));
+    for (const candidate of [title.split(/[|\-–—]/)[0]?.trim() || "", ...headings]) {
+      if (
+        /^[\p{L}][\p{L}'’.]*(?:\s+[\p{L}][\p{L}'’.]*){1,4}$/u.test(candidate) &&
+        !/\b(?:realty|real|estate|group|team|brokerage|homes?|properties|contact|about|welcome|realtors?|agents?|associates|company|office|luxury|services|meet|find|search)\b/i.test(candidate) &&
+        personNameVisible(stripTags(body), candidate)
+      ) add(candidate);
+    }
+  }
+  return names;
+}
+
 function fromJsonLd(
   html: string,
   baseUrl: string,
@@ -917,6 +971,18 @@ function structuredPersonFromJsonLd(
   if (typeof person.description === "string")
     profile.bio = person.description.slice(0, 600);
   if (typeof person.jobTitle === "string") profile.title = person.jobTitle;
+  const served = Array.isArray(person.areaServed)
+    ? person.areaServed
+    : [person.areaServed];
+  const markets = served.flatMap((value): string[] => {
+    if (typeof value === "string" && value.trim()) return [value.trim()];
+    if (!value || typeof value !== "object") return [];
+    const area = value as Record<string, unknown>;
+    return typeof area.name === "string" && area.name.trim()
+      ? [area.name.trim()]
+      : [];
+  });
+  if (markets.length) profile.market = [...new Set(markets)].join(", ").slice(0, 250);
   if (typeof person.image === "string")
     profile.photoUrl = absolutize(baseUrl, person.image);
   if (person.image && typeof person.image === "object") {

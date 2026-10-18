@@ -370,4 +370,3 @@ export function buildVisibilityReport(
 export function clusterLabel(id: string): string {
   return clusterById(id)?.label || id;
 }
-

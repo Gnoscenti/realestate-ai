@@ -22,17 +22,124 @@ import { isRealTrendsProfileUrl, sanitizeCiteLockPublicUrl } from "./scan-types"
 
 const SOURCE_LABEL = "RealTrends Verified";
 const DEFAULT_CACHE_HOURS = 24;
+const PRODUCTION_PARSE_VERSION = "production-v2";
 
-import { parseRealTrendsProduction, type ProductionObservation } from "./realtrends-parser";
-export { parseRealTrendsProduction } from "./realtrends-parser";
-export type { ProductionObservation } from "./realtrends-parser";
-
-const OBSERVATION_NOTE = "CiteLock production parser v2: source-reported figures; reporting scope and attribution are publisher-defined. Retrieval does not verify a competing total or measure AI visibility.";
+export type ProductionObservation = {
+  claimScope: string;
+  field: "transaction_volume" | "transaction_sides";
+  value: string;
+  note?: string;
+};
 
 export type ProductionFetchResult = {
   evidence: CiteEvidence[];
   outcomes: CiteSourceOutcome[];
 };
+
+function moneyToNumber(raw: string, unit?: string): number {
+  const amount = Number(raw.replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return Number.NaN;
+  const multiplier = /^(?:b|bn|billion)$/i.test(unit || "")
+    ? 1_000_000_000
+    : /^(?:m|mm|million)$/i.test(unit || "")
+      ? 1_000_000
+      : /^(?:k|thousand)$/i.test(unit || "")
+        ? 1_000
+        : 1;
+  return Math.round(amount * multiplier);
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function htmlLines(html: string): string[] {
+  return decodeHtml(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<\/?(?:tr|td|th|div|p|br|li|h\d|span|section)[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+/**
+ * Parse year-scoped production figures from a RealTrends Verified profile.
+ * Only figures with an unambiguous year and dollar amount are emitted; a page
+ * we cannot read deterministically yields no observations at all.
+ */
+export function parseRealTrendsProduction(
+  html: string,
+): ProductionObservation[] {
+  const lines = htmlLines(html);
+  const observations = new Map<string, ProductionObservation>();
+  // Only an explicit performance-period heading establishes the sales year.
+  // Copyrights, market updates and ranking ordinals are not production data.
+  let contextYear: string | undefined;
+  const ambiguous = new Set<string>();
+  const record = (observation: ProductionObservation) => {
+    const previous = observations.get(observation.claimScope);
+    if (previous && previous.value !== observation.value)
+      ambiguous.add(observation.claimScope);
+    observations.set(observation.claimScope, observation);
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const heading = line.match(
+      /^(?:Based on (20\d{2}) Sales Data|(20\d{2}) (?:Sales Data|Performance))$/i,
+    );
+    if (heading) {
+      contextYear = heading[1] || heading[2];
+      continue;
+    }
+    if (/^(?:National|State|City|Awards|Market Update\b|Copyright\b|©)/i.test(line)) {
+      contextYear = undefined;
+      continue;
+    }
+    const metric = line.match(
+      /^(?:(20\d{2})\s+)?(Sales Volume|Volume|Transaction Sides|Sides)(?:\s+(.+))?$/i,
+    );
+    if (!metric) continue;
+    const year = metric[1] || contextYear;
+    if (!year) continue;
+    const value = metric[3] || lines[index + 1] || "";
+    if (/volume/i.test(metric[2]!)) {
+      const amount = value.match(
+        /^\$\s*([\d][\d,.]*)\s*(billion|million|thousand|bn|mm|[bmk])?$/i,
+      );
+      if (!amount) continue;
+      const numeric = moneyToNumber(amount[1]!, amount[2]);
+      if (Number.isFinite(numeric) && numeric > 0)
+        record({
+          claimScope: `sales-volume:${year}:full-year`,
+          field: "transaction_volume",
+          value: `${value} in ${year}`,
+        });
+    } else if (/^\d{1,4}(?:\.\d)?$/.test(value)) {
+      const count = Number(value);
+      if (count > 0 && count < 10_000)
+        record({
+          claimScope: `sales-sides:${year}:full-year`,
+          field: "transaction_sides",
+          value: `${count} sides in ${year}`,
+        });
+    }
+  }
+  for (const scope of ambiguous) observations.delete(scope);
+  return [...observations.values()].sort((a, b) =>
+    a.claimScope.localeCompare(b.claimScope),
+  );
+}
 
 function parseEnterprisePayload(payload: unknown): ProductionObservation[] {
   const entries = Array.isArray(payload)
@@ -186,13 +293,16 @@ export async function fetchRealTrendsProduction(
   const cached = await sql.query<CachedRow>(
     `select claim_scope, field, value, note, observed_at
        from citelock_production_observations
-      where profile_url = $1 and expires_at > $2 and note = $3
+      where profile_url = $1 and expires_at > $2
       order by observed_at desc, claim_scope`,
-    [profileUrl, nowIso, OBSERVATION_NOTE],
+    [profileUrl, nowIso],
   );
-  if (cached.length) {
+  const qualifiedCache = cached.filter((row) =>
+    row.note?.startsWith(`${PRODUCTION_PARSE_VERSION}:`),
+  );
+  if (qualifiedCache.length) {
     const latest = new Map<string, CachedRow>();
-    for (const row of cached)
+    for (const row of qualifiedCache)
       if (!latest.has(row.claim_scope)) latest.set(row.claim_scope, row);
     const rows = [...latest.values()];
     const observedAt =
@@ -252,7 +362,10 @@ export async function fetchRealTrendsProduction(
     };
   }
 
-  observations = observations.map(observation => ({ ...observation, note: OBSERVATION_NOTE }));
+  observations = observations.map((observation) => ({
+    ...observation,
+    note: `${PRODUCTION_PARSE_VERSION}: RealTrends-reported production; source retrieval does not establish identical methodology to other publishers.`,
+  }));
 
   if (!observations.length) {
     return {

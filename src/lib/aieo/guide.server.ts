@@ -53,10 +53,10 @@ export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideS
         facts.push(`RealTrends reports city sides rank ${parsed.citySidesRank}, ${parsed.sides} sides and $${parsed.volumeMillions}M volume, based on ${parsed.year} sales data.`);
       }
       // Only a directly attached annual claim. Do not total listing prices or merge quarters/years.
-      for (const match of text.matchAll(/(?:(\bover|\bmore than|\bat least)\s+)?\$([\d.]+)\s*(?:million|M)\s+(?:in\s+(?:sales\s+in\s+)?|for\s+)(20\d{2})\b/gi)) {
+      for (const match of text.matchAll(/(?:(over|more than|at least|approximately|about)\s+)?\$([\d.]+)\s*(?:million|M)\s+(?:in\s+(?:sales\s+in\s+)?|for\s+)(20\d{2})\b/gi)) {
+        const qualifier = match[1] ? `${match[1].toLowerCase()} ` : "";
         const amount = Number(match[2]), year = Number(match[3]);
-        const qualifier = match[1] ? match[1].toLowerCase() + " " : "";
-        if (amount > 0 && year <= new Date().getUTCFullYear() && !annualClaims.some(c => c.url === page.url && c.year === year && c.amount === amount)) {
+        if (amount > 0 && year <= new Date().getUTCFullYear() && !annualClaims.some(c => c.url === page.url && c.year === year && c.amount === amount && c.qualifier === qualifier)) {
           annualClaims.push({ amount, year, url: page.url, qualifier });
           facts.push(`This page states ${qualifier}$${amount}M for ${year}; attribution and coverage need confirmation.`);
         }
@@ -68,8 +68,8 @@ export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideS
   });
   // Assignment occurs inside the map; explicitly narrow the collected result.
   const rank = ranking as RankingFact | null;
-  const conflicts = rank ? annualClaims.filter(c => c.year === rank.year && rank.volumeMillions !== undefined && Math.abs(c.amount - rank.volumeMillions) > 0.01)
-    .map(c => `${c.url} states ${c.qualifier}$${c.amount}M for ${c.year}; RealTrends reports $${rank.volumeMillions}M. This difference does not establish an error in either source. Confirm reporting scope, credit, categories, and cutoff before publishing a volume comparison.`) : [];
+  const conflicts = rank ? annualClaims.filter(c => c.year === rank.year && rank.volumeMillions !== undefined && Math.abs(c.amount - rank.volumeMillions) > 0.01 && (!/^(?:over|more than|at least) /.test(c.qualifier) || c.amount > rank.volumeMillions))
+    .map(c => `${c.url} states ${c.qualifier}$${c.amount}M for ${c.year}; RealTrends reports $${rank.volumeMillions}M. Confirm reporting scope, credit, and cutoff before publishing a volume comparison; disagreement alone does not establish an error.`) : [];
   return { input, sources, ranking: rank, conflicts, version: "guide-1.0",
     recommendedClaim: rank ? `${input.name} ranked No. ${rank.citySidesRank} by transaction sides among RealTrends-ranked agents in ${rank.city}, based on ${rank.year} sales data.` : null };
 }

@@ -16,7 +16,8 @@ test("onboarding without website starts empty (no invented inventory)", async ({
     area: "La Jolla, CA",
   });
 
-  await page.getByRole("button", { name: /Launch workspace/i }).click();
+  await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Confirm your business profile" })).toHaveCount(0);
   await unlockWithBetaCode(page);
 
   const state = await readWorkspaceState(page);

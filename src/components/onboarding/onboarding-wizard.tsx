@@ -1,510 +1,763 @@
-import { useMemo, useState } from "react";
-import {
-  ArrowRight,
-  Building2,
-  CheckCircle2,
-  Globe,
-  Home,
-  Image as ImageIcon,
-  Loader2,
-  MapPin,
-  Phone,
-  Sparkles,
-  User,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, Globe, Loader2, RefreshCw, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { MLS_OPTIONS, normalizeWebsite } from "@/lib/mls";
-import { scrapeAgentWebsite } from "@/lib/scrape-site";
-import type { WebsiteScrapeResult } from "@/lib/website-scrape";
+  getOnboardingProfile,
+  scanOnboardingSource,
+  confirmOnboardingProfile,
+} from "@/lib/onboarding/api";
+import {
+  buildOnboardingPreview,
+  onboardingNamesMatch,
+  onboardingProfileFieldsSchema,
+  type OnboardingProfileFields,
+  type OnboardingSnapshot,
+  type OnboardingSource,
+} from "@/lib/onboarding/types";
+import { normalizeSiteUrl } from "@/lib/website-scrape";
 import { useAppStore } from "@/lib/store";
-import { cn, formatCurrency } from "@/lib/utils";
+import { OnboardingProfileReview } from "./onboarding-profile-review";
 
 type Props = {
   mode?: "first" | "edit";
+  embedded?: boolean;
   onDone?: () => void;
   onCancel?: () => void;
   preferredName?: string | null;
   preferredEmail?: string | null;
 };
+type SourceKind = "website" | "brokerage_bio";
+type Progress = Record<SourceKind, "waiting" | "reading" | "done" | "failed" | "skipped">;
+type ReadFailure = { kind: SourceKind; sourceUrl: string; error: string };
+const sourceLabel = (kind: SourceKind) =>
+  kind === "website" ? "Your real-estate website" : "Your brokerage biography page";
+const emptyProgress = (): Progress => ({ website: "waiting", brokerage_bio: "waiting" });
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
-/** Post-login profile — one screen, all fields. Signed-out users see /login first. */
+/** Two explicit sources, a person confirmation, then a durable shared profile. */
 export function OnboardingWizard({
   mode = "first",
+  embedded = false,
   onDone,
   onCancel,
   preferredName,
   preferredEmail,
 }: Props) {
-  const existing = useAppStore((s) => s.agentProfile);
-  const completeOnboarding = useAppStore((s) => s.completeOnboarding);
-  const updateAgentProfile = useAppStore((s) => s.updateAgentProfile);
-  const applyWebsiteScrape = useAppStore((s) => s.applyWebsiteScrape);
-
-  const [name, setName] = useState(
-    existing?.name ?? preferredName?.trim() ?? "",
-  );
-  const [area, setArea] = useState(existing?.areaOfOperations ?? "");
+  const existing = useAppStore((state) => state.agentProfile);
+  const hydrateConfirmedProfile = useAppStore((state) => state.hydrateConfirmedProfile);
+  const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [website, setWebsite] = useState(existing?.website ?? "");
-  const [brokerage, setBrokerage] = useState(existing?.brokerage ?? "");
-  const [mls, setMls] = useState(existing?.mls ?? "sandicor");
-  const [syncing, setSyncing] = useState(false);
-  const [scrape, setScrape] = useState<WebsiteScrapeResult | null>(null);
-  const [scrapeError, setScrapeError] = useState<string | null>(null);
-  const [scanFailed, setScanFailed] = useState(false);
-  const [skipWebsiteScan, setSkipWebsiteScan] = useState(false);
+  const [brokerageBio, setBrokerageBio] = useState(existing?.brokerageBioUrl ?? "");
+  const [phase, setPhase] = useState<"sources" | "people" | "review">("sources");
+  const [sources, setSources] = useState<OnboardingSource[]>([]);
+  const [failures, setFailures] = useState<ReadFailure[]>([]);
+  const [progress, setProgress] = useState<Progress>(emptyProgress);
+  const [scanning, setScanning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmedName, setConfirmedName] = useState("");
+  const [draft, setDraft] = useState<OnboardingProfileFields>({
+    name: "",
+    website: "",
+    areaOfOperations: "",
+    mls: "",
+  });
+  const [overrides, setOverrides] = useState<Partial<OnboardingProfileFields>>({});
+  const request = useRef(0);
+  const mounted = useRef(true);
+  const editedFields = useRef(new Set<keyof OnboardingProfileFields>());
+  const stepHeading = useRef<HTMLHeadingElement>(null);
 
-  const canLaunch =
-    name.trim().length >= 2 && area.trim().length >= 2 && Boolean(mls);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, []);
 
-  const runWebsiteScrape = async (): Promise<WebsiteScrapeResult | null> => {
-    const site = website.trim();
-    if (!site) {
-      setScrape(null);
-      setScrapeError(null);
-      setScanFailed(false);
-      setSkipWebsiteScan(false);
-      return null;
-    }
-    setSyncing(true);
-    setScrapeError(null);
-    setScanFailed(false);
-    setSkipWebsiteScan(false);
-    try {
-      const result = await scrapeAgentWebsite({
-        data: {
-          website: normalizeWebsite(site),
-          agentNameHint: name.trim(),
-          maxPages: 5,
-        },
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    void getOnboardingProfile()
+      .then((saved) => {
+        if (!active) return;
+        setSnapshot(saved);
+        if (saved) {
+          setWebsite(saved.profile.website);
+          setBrokerageBio(saved.profile.brokerageBioUrl ?? "");
+          if (saved.revision > 0) hydrateConfirmedProfile(saved.profile);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setLoadError(
+            errorMessage(
+              cause,
+              "Your saved profile could not be loaded. Retry to keep your changes in sync.",
+            ),
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
-      setScrape(result);
-      const failed = !result.ok && result.listings.length === 0;
-      setScanFailed(failed);
-      if (!result.ok && result.error) setScrapeError(result.error);
-      else if (result.warnings.length) setScrapeError(result.warnings[0] ?? null);
-      if (result.profile.brokerage && !brokerage.trim()) {
-        setBrokerage(result.profile.brokerage);
-      }
-      if (result.profile.name && name.trim().length < 2) {
-        setName(result.profile.name);
-      }
-      return result;
-    } catch (e) {
-      setScrapeError(e instanceof Error ? e.message : "Website scrape failed");
-      setScrape(null);
-      setScanFailed(true);
-      return null;
-    } finally {
-      setSyncing(false);
-    }
+    return () => {
+      active = false;
+    };
+  }, [hydrateConfirmedProfile, loadAttempt]);
+
+  useEffect(() => {
+    if (phase !== "sources") stepHeading.current?.focus();
+  }, [phase]);
+
+  const cancel = () => {
+    if (saving || !onCancel) return;
+    request.current += 1;
+    onCancel?.();
   };
 
-  const runFinish = async () => {
-    if (!canLaunch) {
-      toast.error("Name, market area, and MLS board are required");
+  const updateUrl = (kind: SourceKind, value: string) => {
+    request.current += 1;
+    if (kind === "website") setWebsite(value);
+    else setBrokerageBio(value);
+    // Keep deliberate URL edits authoritative when returning from profile review.
+    setOverrides((current) => ({
+      ...current,
+      [kind === "website" ? "website" : "brokerageBioUrl"]: normalizeSiteUrl(value),
+    }));
+    setScanning(false);
+    setSources([]);
+    setFailures([]);
+    setProgress(emptyProgress());
+    setError(null);
+  };
+
+  const runBuild = async () => {
+    if (scanning || loading || loadError || saving) return;
+    const urls = {
+      website: normalizeSiteUrl(website),
+      brokerage_bio: normalizeSiteUrl(brokerageBio),
+    };
+    if ((website.trim() && !urls.website) || (brokerageBio.trim() && !urls.brokerage_bio)) {
+      setError(
+        "Enter a public web address, such as yourname.com or https://brokerage.com/agents/your-name.",
+      );
       return;
     }
+    if (!urls.website && !urls.brokerage_bio) {
+      setError("Add either page to build your profile, or choose Continue without a page.");
+      return;
+    }
+    const version = ++request.current;
+    const active = () => mounted.current && version === request.current;
+    setWebsite(urls.website);
+    setBrokerageBio(urls.brokerage_bio);
+    setScanning(true);
+    setError(null);
+    setSources([]);
+    setFailures([]);
+    setProgress(emptyProgress());
+    const found: OnboardingSource[] = [];
+    for (const kind of ["website", "brokerage_bio"] as const) {
+      if (!active()) return;
+      if (!urls[kind]) {
+        setProgress((value) => ({ ...value, [kind]: "skipped" }));
+        continue;
+      }
+      setProgress((value) => ({ ...value, [kind]: "reading" }));
+      try {
+        const result = await scanOnboardingSource({
+          data: {
+            kind,
+            url: urls[kind],
+            agentNameHint:
+              snapshot?.profile.name || existing?.name || preferredName?.trim() || undefined,
+          },
+        });
+        if (!active()) return;
+        found.push(result);
+        setSources([...found]);
+        setProgress((value) => ({ ...value, [kind]: result.ok ? "done" : "failed" }));
+      } catch (cause) {
+        if (!active()) return;
+        setFailures((value) => [
+          ...value,
+          {
+            kind,
+            sourceUrl: urls[kind],
+            error: errorMessage(
+              cause,
+              "This page could not be read. You can retry or continue with the other page.",
+            ),
+          },
+        ]);
+        setProgress((value) => ({ ...value, [kind]: "failed" }));
+      }
+    }
+    if (!active()) return;
+    setScanning(false);
+    setPhase("people");
+  };
 
-    setSyncing(true);
-    let siteResult = scrape;
+  const candidates = useMemo(() => {
+    const seen = new Set<string>();
+    return sources
+      .flatMap((source) => source.candidates.map((candidate) => ({ ...candidate, source })))
+      .filter((candidate) => {
+        const name = candidate.profile.name.trim().toLocaleLowerCase();
+        if (seen.has(name)) return false;
+        seen.add(name);
+        return true;
+      });
+  }, [sources]);
+
+  const currentProfile = snapshot?.profile ?? existing;
+  const preview = useMemo(
+    () => buildOnboardingPreview(sources, confirmedName, currentProfile),
+    [sources, confirmedName, currentProfile],
+  );
+
+  const reviewPerson = (name: string, useSources: boolean) => {
+    request.current += 1;
+    setScanning(false);
+    setError(null);
+    const selectedSources = useSources ? sources : [];
+    if (!useSources) setSources([]);
+    const personName = name.trim();
+    const previousName = confirmedName || currentProfile?.name;
+    const changedPerson = !!previousName && !onboardingNamesMatch(previousName, personName);
+    if (changedPerson) editedFields.current.clear();
+    const retainedOverrides = changedPerson
+      ? { website: overrides.website, brokerageBioUrl: overrides.brokerageBioUrl }
+      : overrides;
+    const prepared = buildOnboardingPreview(selectedSources, personName, currentProfile).profile;
+    // Existing browser-only profiles are deliberately carried into the first durable save.
+    const legacy =
+      !snapshot && existing && onboardingNamesMatch(existing.name, personName)
+        ? Object.fromEntries(
+            Object.entries(existing).filter(([key]) =>
+              [
+                "name",
+                "website",
+                "areaOfOperations",
+                "mls",
+                "brokerage",
+                "phone",
+                "email",
+                "photoUrl",
+                "agentMlsId",
+                "license",
+                "licenseJurisdiction",
+                "bio",
+                "title",
+                "sameAs",
+                "brokerageBioUrl",
+              ].includes(key),
+            ),
+          )
+        : {};
+    const fallback = {
+      ...legacy,
+      ...(prepared.name ? {} : { name: personName }),
+      ...(prepared.email || !preferredEmail?.trim() ? {} : { email: preferredEmail.trim() }),
+      ...retainedOverrides,
+      website: normalizeSiteUrl(website),
+      brokerageBioUrl: normalizeSiteUrl(brokerageBio),
+    };
+    setConfirmedName(personName);
+    setOverrides(fallback);
+    setDraft({ ...prepared, ...fallback });
+    setPhase("review");
+  };
+
+  const editField = (field: keyof OnboardingProfileFields, value: string | string[]) => {
+    editedFields.current.add(field);
+    let nextOverrides = { ...overrides, [field]: value };
+    if (field === "name" && typeof value === "string") {
+      // Rebind source evidence as the name changes. User-typed corrections remain
+      // explicit; inherited values must not move from one person's profile to another.
+      if (currentProfile && !onboardingNamesMatch(currentProfile.name, value)) {
+        nextOverrides = Object.fromEntries(
+          Object.entries(nextOverrides).filter(
+            ([key]) =>
+              key === "website" ||
+              key === "brokerageBioUrl" ||
+              editedFields.current.has(key as keyof OnboardingProfileFields),
+          ),
+        );
+      }
+      setConfirmedName(value.trim());
+      setDraft({
+        ...buildOnboardingPreview(sources, value, currentProfile).profile,
+        ...nextOverrides,
+      });
+    } else {
+      setDraft((current) => ({ ...current, [field]: value }));
+    }
+    setOverrides(nextOverrides);
+  };
+
+  const save = async () => {
+    if (saving || loading || loadError || draft.name.trim().length < 2) return;
+    const validated = onboardingProfileFieldsSchema.partial().safeParse({
+      ...overrides,
+      ...(overrides.sameAs ? { sameAs: overrides.sameAs.filter((url) => url.trim()) } : {}),
+    });
+    if (!validated.success) {
+      setError(validated.error.issues[0]?.message || "Check the profile details before saving.");
+      return;
+    }
+    const version = ++request.current;
+    setSaving(true);
+    setError(null);
     try {
-      if (website.trim() && !skipWebsiteScan) {
-        if (!siteResult) siteResult = await runWebsiteScrape();
-        if (
-          !siteResult ||
-          (!siteResult.ok && siteResult.listings.length === 0)
-        ) {
-          setScanFailed(true);
-          toast.error(
-            "Website scan failed. Retry, fix the URL, or continue without scanning.",
-          );
-          return;
-        }
-      }
-      if (skipWebsiteScan) siteResult = null;
-
-      const payload = {
-        name: name.trim(),
-        areaOfOperations: area.trim(),
-        website: website.trim() ? normalizeWebsite(website) : "",
-        mls,
-        brokerage:
-          brokerage.trim() ||
-          siteResult?.profile.brokerage?.trim() ||
-          existing?.brokerage ||
-          undefined,
-        phone: siteResult?.profile.phone || existing?.phone,
-        email:
-          siteResult?.profile.email ||
-          existing?.email ||
-          preferredEmail?.trim() ||
-          undefined,
-        photoUrl: siteResult?.profile.photoUrl || existing?.photoUrl,
-        agentMlsId:
-          siteResult?.profile.mlsNumber || existing?.agentMlsId,
-        license:
-          siteResult?.profile.license ||
-          siteResult?.profile.mlsNumber ||
-          existing?.license,
-        bio: siteResult?.profile.bio || existing?.bio,
-        title: siteResult?.profile.title || existing?.title,
-        dataSource: (siteResult?.ok
-          ? "website"
-          : existing?.dataSource || "manual") as "website" | "manual",
-      };
-
-      if (mode === "edit" && existing) {
-        if (siteResult && (siteResult.ok || siteResult.listings.length)) {
-          applyWebsiteScrape(siteResult);
-        }
-        updateAgentProfile(payload);
-        toast.success(
-          siteResult?.listings.length
-            ? `Profile updated · ${siteResult.listings.length} listings from website`
-            : skipWebsiteScan
-              ? "Profile updated · website scan skipped"
-              : "Profile updated",
-        );
-      } else {
-        completeOnboarding(payload, { websiteScrape: siteResult });
-        toast.success(
-          siteResult?.listings.length
-            ? `Welcome — ${siteResult.listings.length} listings from your website`
-            : skipWebsiteScan
-              ? "Welcome — website saved; scan skipped"
-              : website.trim()
-                ? "Welcome — profile data checked; no listings found"
-                : "Welcome — empty book (your data only)",
-        );
-      }
+      const saved = await confirmOnboardingProfile({
+        data: {
+          expectedRevision: snapshot?.revision ?? 0,
+          scanIds: sources.map((source) => source.id),
+          confirmedName: confirmedName || draft.name.trim(),
+          overrides: validated.data,
+        },
+      });
+      if (!mounted.current || version !== request.current) return;
+      setSnapshot(saved);
+      hydrateConfirmedProfile(saved.profile);
+      toast.success("Your business profile is ready");
       onDone?.();
+    } catch (cause) {
+      if (!mounted.current || version !== request.current) return;
+      setError(
+        errorMessage(
+          cause,
+          "Your profile could not be saved. Your edits are still here; please retry.",
+        ),
+      );
     } finally {
-      setSyncing(false);
+      if (mounted.current && version === request.current) setSaving(false);
     }
   };
 
-  const previewListings = useMemo(
-    () => scrape?.listings.slice(0, 5) ?? [],
-    [scrape],
-  );
+  const refreshSavedProfile = async () => {
+    const version = ++request.current;
+    setLoading(true);
+    try {
+      const latest = await getOnboardingProfile();
+      if (!mounted.current || version !== request.current) return;
+      setSnapshot(latest);
+      setDraft({
+        ...buildOnboardingPreview(sources, confirmedName, latest?.profile).profile,
+        ...overrides,
+      });
+      setError(null);
+      toast.message("Latest saved profile loaded. Review your edits before confirming.");
+    } catch (cause) {
+      if (mounted.current && version === request.current)
+        setError(errorMessage(cause, "The saved profile could not be reloaded. Please retry."));
+    } finally {
+      if (mounted.current && version === request.current) setLoading(false);
+    }
+  };
 
-  return (
-    <div className="gradient-mesh fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-transparent p-4 sm:p-6">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-90"
-        style={{
-          background:
-            "radial-gradient(ellipse 70% 50% at 20% 0%, color-mix(in oklab, var(--color-primary) 16%, transparent), transparent 55%), radial-gradient(ellipse 50% 40% at 90% 100%, color-mix(in oklab, var(--color-accent) 12%, transparent), transparent 50%)",
-        }}
-      />
-      <div className="relative my-auto w-full max-w-xl">
-        <div className="mb-6 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-primary)] text-[var(--color-primary-fg)]">
-              <Home className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="font-display text-lg font-semibold tracking-tight text-[var(--color-fg)]">
-                {mode === "edit" ? "Update your profile" : "Finish your profile"}
-              </h1>
-              <p className="text-sm text-[var(--color-fg-muted)]">
-                Optional setup for profile, market, website, and MLS label.
-              </p>
-            </div>
-          </div>
-          {onCancel && (
+  const heading =
+    mode === "edit"
+      ? "Update your business profile"
+      : "Build your workspace from your existing pages";
+  const description =
+    "Bring your business information into marketing, your assistant, and CiteLock. Review everything before it is saved.";
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-2">
+          {embedded ? (
+            <h1 className="font-display text-2xl font-semibold tracking-tight">{heading}</h1>
+          ) : (
+            <DialogTitle className="pr-6 text-2xl">{heading}</DialogTitle>
+          )}
+          {embedded ? (
+            <p className="max-w-xl text-sm leading-relaxed text-[var(--color-fg-muted)]">
+              {description}
+            </p>
+          ) : (
+            <DialogDescription>{description}</DialogDescription>
+          )}
+        </div>
+        {embedded && onCancel && (
+          <Button variant="ghost" className="min-h-11 shrink-0" disabled={saving} onClick={cancel}>
+            Skip for now
+          </Button>
+        )}
+      </div>
+      {loading && (
+        <p className="flex items-center gap-2 text-sm text-[var(--color-fg-muted)]" role="status">
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+          Loading your saved profile…
+        </p>
+      )}
+      {loadError && (
+        <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+          <p role="alert" className="text-sm">
+            {loadError}
+          </p>
+          <Button variant="outline" onClick={() => setLoadAttempt((value) => value + 1)}>
+            Retry loading profile
+          </Button>
+        </div>
+      )}
+      {error && (
+        <div>
+          <p
+            role="alert"
+            className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 text-sm text-[var(--color-warning)]"
+          >
+            {error}
+          </p>
+          {phase === "review" && (
             <Button
-              type="button"
               variant="ghost"
-              className="min-h-[44px] shrink-0"
-              onClick={onCancel}
+              className="mt-2 min-h-11"
+              disabled={loading || saving}
+              onClick={() => void refreshSavedProfile()}
             >
-              {mode === "edit" ? "Cancel" : "Not now"}
+              Reload saved profile and keep my edits
             </Button>
           )}
         </div>
+      )}
 
+      {phase === "sources" && (
         <form
-          className="glass-panel surface-shine p-5 sm:p-6"
+          className="space-y-5"
           onSubmit={(event) => {
             event.preventDefault();
-            void runFinish();
+            void runBuild();
           }}
         >
-          <div className="mb-5 flex gap-2 rounded-[var(--radius-md)] border border-[color-mix(in_oklab,var(--color-primary)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-primary-soft)_80%,transparent)] px-3 py-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
-            <span>
-              Add only what helps your work. Your website can be added later;
-              nothing here blocks the workspace.
-            </span>
-          </div>
-
           <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Label htmlFor="agent-name" className="flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
-                  Full name
+            {(["website", "brokerage_bio"] as const).map((kind) => (
+              <div key={kind}>
+                <Label htmlFor={kind === "website" ? "website" : "brokerage-bio"}>
+                  {sourceLabel(kind)}
                 </Label>
-                <Input
-                  id="agent-name"
-                  className="mt-1.5 h-11"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Alex Rivera"
-                  autoComplete="name"
-                  required
-                  aria-required="true"
-                />
+                <div className="relative mt-2">
+                  <Globe
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-fg-subtle)]"
+                  />
+                  <Input
+                    id={kind === "website" ? "website" : "brokerage-bio"}
+                    className="h-11 pl-9"
+                    value={kind === "website" ? website : brokerageBio}
+                    onChange={(event) => updateUrl(kind, event.target.value)}
+                    placeholder={
+                      kind === "website" ? "yourname.com" : "brokerage.com/agents/your-name"
+                    }
+                    inputMode="url"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={loading || !!loadError}
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="brokerage" className="flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
-                  Brokerage
-                </Label>
-                <Input
-                  id="brokerage"
-                  className="mt-1.5 h-11"
-                  value={brokerage}
-                  onChange={(e) => setBrokerage(e.target.value)}
-                  placeholder="Optional · often from website"
-                />
-              </div>
-              <div>
-                <Label htmlFor="area" className="flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
-                  Area of operations
-                </Label>
-                <Input
-                  id="area"
-                  className="mt-1.5 h-11"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  placeholder="Rancho Santa Fe, CA"
-                  required
-                  aria-required="true"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {[
-                "Rancho Santa Fe, CA",
-                "Del Mar, CA",
-                "Solana Beach, CA",
-                "Encinitas, CA",
-              ].map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setArea(a)}
-                  aria-pressed={area === a}
-                  className={cn(
-                    "min-h-[44px] rounded-full border px-3 py-2 text-xs",
-                    area === a
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]"
-                      : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
+            ))}
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              One page is enough to start. You can add the other later.
+            </p>
+          </div>
+          {scanning && (
+            <ol
+              className="space-y-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-4 text-sm"
+              aria-label="Workspace preparation"
+              aria-live="polite"
+            >
+              {(["website", "brokerage_bio"] as const).map((kind) => (
+                <li key={kind} className="flex items-center gap-2">
+                  {progress[kind] === "reading" ? (
+                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  ) : progress[kind] === "done" ? (
+                    <CheckCircle2 className="h-4 w-4 text-[var(--color-primary)]" />
+                  ) : (
+                    <span className="h-4 w-4 text-center" aria-hidden="true">
+                      –
+                    </span>
                   )}
-                >
-                  {a}
-                </button>
+                  <span>
+                    {kind === "website" ? "Reading website" : "Matching brokerage profile"}
+                    {progress[kind] === "done"
+                      ? " — ready"
+                      : progress[kind] === "skipped"
+                        ? " — not supplied"
+                        : progress[kind] === "failed"
+                          ? " — unavailable; continuing"
+                          : progress[kind] === "reading"
+                            ? "…"
+                            : " — waiting"}
+                  </span>
+                </li>
+              ))}
+              <li className="pl-6 text-[var(--color-fg-subtle)]">
+                Preparing workspace — after your confirmation
+              </li>
+            </ol>
+          )}
+          <Button
+            type="submit"
+            className="min-h-12 w-full text-base"
+            disabled={scanning || loading || !!loadError}
+          >
+            {scanning ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Globe className="h-4 w-4" />
+            )}
+            {scanning ? "Reading your pages…" : "Build my workspace"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="min-h-11 w-full"
+            disabled={loading || !!loadError}
+            onClick={() => reviewPerson(currentProfile?.name || preferredName || "", false)}
+          >
+            Continue without a page
+          </Button>
+        </form>
+      )}
+
+      {phase !== "sources" && (
+        <div className="space-y-3">
+          {(sources.length > 0 || failures.length > 0) && (
+            <div
+              className="space-y-2 border-y border-[var(--color-border)] py-3 text-xs text-[var(--color-fg-muted)]"
+              aria-label="Source results"
+            >
+              {sources.map((source) => (
+                <div key={source.id}>
+                  <a
+                    className="font-medium underline underline-offset-2"
+                    href={source.finalUrl || source.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {sourceLabel(source.kind)}
+                  </a>
+                  <span>
+                    {" "}
+                    —{" "}
+                    {source.ok
+                      ? `${source.candidates.length} profile${source.candidates.length === 1 ? "" : "s"} found`
+                      : "could not be read"}
+                  </span>
+                  <p className="mt-1">
+                    {source.error ||
+                      source.warnings[0] ||
+                      `Observed ${new Date(source.observedAt).toLocaleString()}`}
+                  </p>
+                  {phase === "review" &&
+                    source.ok &&
+                    !source.candidates.some((candidate) =>
+                      onboardingNamesMatch(candidate.profile.name, confirmedName),
+                    ) && (
+                      <p className="mt-1">
+                        No matching person on this page. Its profile details will not be used.
+                      </p>
+                    )}
+                </div>
+              ))}
+              {failures.map((failure) => (
+                <div key={`${failure.kind}-${failure.sourceUrl}`}>
+                  <a
+                    className="font-medium underline underline-offset-2"
+                    href={failure.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {sourceLabel(failure.kind)}
+                  </a>
+                  <p className="mt-1">{failure.error}</p>
+                </div>
               ))}
             </div>
+          )}
+          <Button
+            variant="ghost"
+            className="min-h-11"
+            disabled={saving || loading}
+            onClick={() => {
+              request.current += 1;
+              setPhase("sources");
+              setError(null);
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Edit URLs or retry
+          </Button>
+        </div>
+      )}
 
-            <div>
-              <Label htmlFor="website" className="flex items-center gap-1.5">
-                <Globe className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
-                Website
-              </Label>
-              <div className="relative mt-1.5">
-                <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
-                <Input
-                  id="website"
-                  className="h-11 pl-9"
-                  value={website}
-                  onChange={(e) => {
-                    setWebsite(e.target.value);
-                    setScrape(null);
-                    setScrapeError(null);
-                    setScanFailed(false);
-                    setSkipWebsiteScan(false);
-                  }}
-                  placeholder="yourname.com or https://…"
-                  inputMode="url"
-                  autoCapitalize="off"
-                />
-              </div>
-              <p className="mt-1.5 text-[11px] text-[var(--color-fg-subtle)]">
-                Optional. Pulls photo, phone, license/MLS #, and listings when set.
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="mls-board" className="flex items-center gap-1.5">
-                <Building2 className="h-3.5 w-3.5 text-[var(--color-fg-subtle)]" />
-                MLS board
-              </Label>
-              <Select value={mls} onValueChange={setMls}>
-                <SelectTrigger id="mls-board" className="mt-1.5 h-11">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MLS_OPTIONS.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="mt-1.5 text-[11px] text-[var(--color-fg-subtle)]">
-                Labels your market only. A licensed MLS feed is not connected in this release; listings come from your website, CSV, or labeled observations.
-              </p>
-            </div>
-
-            {website.trim() && (
-              <div className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-h-[44px] w-full"
-                  disabled={syncing}
-                  onClick={() => void runWebsiteScrape()}
-                >
-                  {syncing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  {scrape ? "Re-scan website" : "Scan website for my data"}
-                </Button>
-                {syncing && (
-                  <p
-                    className="text-center text-xs text-[var(--color-fg-muted)]"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Checking website… this can take up to 12 seconds.
-                  </p>
-                )}
-                {scrapeError && (
-                  <p
-                    className="text-xs text-[var(--color-warning)]"
-                    role={scanFailed ? "alert" : "status"}
-                    aria-live="polite"
-                  >
-                    {scrapeError}
-                  </p>
-                )}
-                {scanFailed && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-[44px] w-full"
-                    onClick={() => {
-                      setSkipWebsiteScan(true);
-                      setScanFailed(false);
-                      setScrape(null);
-                      setScrapeError(null);
-                      toast.message(
-                        "Website will be saved without importing profile data.",
-                      );
-                    }}
-                  >
-                    Continue without website scan
-                  </Button>
-                )}
-                {skipWebsiteScan && (
-                  <p className="text-xs text-[var(--color-fg-muted)]" role="status">
-                    Website will be saved; no website data will be imported.
-                  </p>
-                )}
-                {scrape && !scanFailed && (
-                  <div className="flex gap-3">
-                    {scrape.profile.photoUrl ? (
-                      <img
-                        src={scrape.profile.photoUrl}
-                        alt=""
-                        className="h-14 w-14 rounded-full object-cover ring-2 ring-[var(--color-border)]"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-surface-2)]">
-                        <ImageIcon className="h-5 w-5 text-[var(--color-fg-subtle)]" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-[var(--color-fg)]">
-                        {scrape.profile.name || name}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {scrape.profile.phone && (
-                          <Badge variant="secondary">
-                            <Phone className="h-3 w-3" />
-                            {scrape.profile.phone}
-                          </Badge>
-                        )}
-                        {scrape.profile.mlsNumber && (
-                          <Badge variant="secondary">
-                            MLS/Lic {scrape.profile.mlsNumber}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-                        {scrape.listings.length} listing(s) found
-                      </p>
-                      {previewListings.length > 0 && (
-                        <ul className="mt-2 space-y-1 border-t border-[var(--color-border)] pt-2">
-                          {previewListings.map((l, idx) => (
-                            <li
-                              key={`${l.address}-${idx}`}
-                              className="flex justify-between gap-2 text-xs text-[var(--color-fg-muted)]"
-                            >
-                              <span className="truncate">{l.address || l.title}</span>
-                              <span className="shrink-0 tabular text-[var(--color-fg)]">
-                                {l.price ? formatCurrency(l.price) : "—"}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+      {phase === "people" && (
+        <div className="space-y-4">
+          <div>
+            <h2
+              ref={stepHeading}
+              tabIndex={-1}
+              className="font-display text-xl font-semibold focus:outline-none"
+            >
+              {candidates.length ? "Which profile is yours?" : "Your profile can still start here"}
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+              {candidates.length
+                ? "Confirm the person before we use any public contact or credential information."
+                : "We could not identify a person on these pages. Use your signed-in details and add anything else later."}
+            </p>
+          </div>
+          {candidates.map(({ profile, identityMatch, source }) => (
+            <div
+              key={profile.name}
+              className="space-y-3 rounded-[var(--radius-md)] border border-[var(--color-border)] p-4"
+            >
+              <div className="flex gap-3">
+                {profile.photoUrl ? (
+                  <img
+                    src={profile.photoUrl}
+                    referrerPolicy="no-referrer"
+                    alt=""
+                    className="h-16 w-16 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[var(--color-bg-elevated)]">
+                    <UserRound className="h-6 w-6 text-[var(--color-fg-subtle)]" />
                   </div>
                 )}
+                <div className="min-w-0 break-words">
+                  <h3 className="font-medium">{profile.name}</h3>
+                  {profile.brokerage && (
+                    <p className="text-sm text-[var(--color-fg-muted)]">{profile.brokerage}</p>
+                  )}
+                  {profile.email && <p className="text-sm">{profile.email}</p>}
+                  {profile.phone && <p className="text-sm">{profile.phone}</p>}
+                  <a
+                    href={source.finalUrl || source.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--color-primary)] underline underline-offset-2"
+                  >
+                    View source
+                  </a>
+                </div>
               </div>
-            )}
-          </div>
-
-          <div className="mt-6">
-            <Button
-              type="submit"
-              className="min-h-[48px] w-full text-base"
-              disabled={!canLaunch || syncing}
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4" />
+              {identityMatch === "different_person" && (
+                <p className="text-xs text-[var(--color-warning)]">
+                  This name differs from your signed-in profile. Only continue if this is you.
+                </p>
               )}
-              {mode === "edit" ? "Save changes" : "Launch workspace"}
-              {!syncing && <ArrowRight className="h-4 w-4" />}
-            </Button>
-          </div>
+              <Button className="min-h-11 w-full" onClick={() => reviewPerson(profile.name, true)}>
+                This is me<span className="sr-only">, {profile.name}</span>
+              </Button>
+            </div>
+          ))}
+          <Button
+            variant="outline"
+            className="min-h-11 w-full"
+            onClick={() => reviewPerson(currentProfile?.name || preferredName || "", false)}
+          >
+            {candidates.length ? "None of these — use my details" : "Continue with my details"}
+          </Button>
+        </div>
+      )}
 
-          <p className="mt-4 text-center text-[11px] text-[var(--color-fg-subtle)]">
-            Name + market + MLS required · everything else optional · edit anytime
+      {phase === "review" && (
+        <form
+          className="space-y-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <div>
+            <h2
+              ref={stepHeading}
+              tabIndex={-1}
+              className="font-display text-xl font-semibold focus:outline-none"
+            >
+              Confirm your business profile
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+              Keep what is right and correct anything that needs updating. Only your name is
+              required.
+            </p>
+          </div>
+          <OnboardingProfileReview
+            profile={draft}
+            conflicts={preview.conflicts}
+            onChange={editField}
+            disabled={saving || loading}
+          />
+          <Button
+            type="submit"
+            className="min-h-12 w-full text-base"
+            disabled={saving || loading || draft.name.trim().length < 2 || !!loadError}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" />
+            )}
+            {saving ? "Preparing workspace…" : "Confirm profile and open workspace"}
+          </Button>
+          <p className="text-center text-xs text-[var(--color-fg-muted)]">
+            Your confirmed profile is saved to your workspace. You can edit it later.
           </p>
         </form>
-      </div>
-    </div>
+      )}
+      {!embedded && onCancel && (
+        <Button variant="ghost" className="min-h-11" disabled={saving} onClick={cancel}>
+          {mode === "edit" ? "Cancel" : "Skip for now"}
+        </Button>
+      )}
+    </>
+  );
+
+  if (embedded)
+    return (
+      <section
+        className="space-y-6 rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 sm:p-7"
+        aria-label="Business profile setup"
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && onCancel) {
+            event.stopPropagation();
+            cancel();
+          }
+        }}
+      >
+        {content}
+      </section>
+    );
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) cancel();
+      }}
+    >
+      <DialogContent
+        className="max-w-2xl gap-6"
+        onEscapeKeyDown={(event) => {
+          if (saving || !onCancel) event.preventDefault();
+        }}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        {content}
+      </DialogContent>
+    </Dialog>
   );
 }

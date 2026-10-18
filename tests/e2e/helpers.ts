@@ -4,7 +4,7 @@ import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
 /** Beta code accepted by the server outside production (see billing/entitlement.server.ts). */
 export const TEST_ACCESS_CODE = "RSF-BETA-01";
 
-/** Clear persisted workspace so each test starts fresh */
+/** Clear browser state. Authenticated server-owned profiles deliberately survive. */
 export async function resetApp(page: Page) {
   await page.goto("/");
   await page.evaluate(() => {
@@ -27,27 +27,41 @@ export async function completeOnboarding(
     brokerage?: string;
   },
 ) {
-  // New beta entry flow opens access/workspace first. Profile setup starts only
-  // when the tester chooses it from inside the app.
-  const heading = page.getByRole("heading", { name: "Finish your profile" });
+  await grantTestAccess(page);
+  // A durable dev-workspace profile may already exist from another spec.
+  // Open its editor when the initial source form is not already on screen.
+  const heading = page.getByRole("heading", {
+    name: /Build your workspace from your existing pages|Update your business profile/,
+  });
   if (!(await heading.isVisible().catch(() => false))) {
-    await grantTestAccess(page);
     const setup = page
-      .getByRole("button", { name: /Add profile \(optional\)|Set up profile|Edit profile/i })
+      .getByRole("button", { name: /Review profile and sources|Set up from my pages|Add profile \(optional\)|Set up profile|Edit profile/i })
       .first();
-    await setup.waitFor({ state: "visible", timeout: 20_000 });
-    await setup.click();
+    if (await setup.isVisible()) {
+      await setup.click();
+    } else if (await page.getByRole("button", { name: "Open navigation", exact: true }).isVisible()) {
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+      await page.getByRole("button", { name: /^(Edit|Set up) profile$/ }).click();
+    } else {
+      // Populated desktop workspaces expose the profile through the sidebar's
+      // account card, whose accessible name contains the agent's actual name.
+      const expand = page.getByRole("button", { name: "Expand sidebar", exact: true });
+      if (await expand.isVisible()) await expand.click();
+      const state = await readWorkspaceState(page);
+      if (!state?.name) throw new Error("No profile or visible setup entry was available");
+      await page.getByRole("complementary").getByRole("button").filter({
+        has: page.getByText(state.name, { exact: true }),
+      }).click();
+    }
   }
 
   await heading.waitFor({ timeout: 20_000 });
+  await page.locator("#website").fill(opts.website ?? "");
+  await page.locator("#brokerage-bio").fill("");
+  await page.getByRole("button", { name: "Continue without a page", exact: true }).click();
   await page.locator("#agent-name").fill(opts.name);
-  if (opts.brokerage) {
-    await page.locator("#brokerage").fill(opts.brokerage);
-  }
-  await page.locator("#area").fill(opts.area);
-  if (opts.website) {
-    await page.locator("#website").fill(opts.website);
-  }
+  await page.locator("#brokerage").fill(opts.brokerage ?? "");
+  await page.locator("#areaOfOperations").fill(opts.area);
 }
 
 /**

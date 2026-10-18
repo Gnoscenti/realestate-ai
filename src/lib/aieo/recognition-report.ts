@@ -68,4 +68,3 @@ export function buildRecognitionReport(captures: CiteRecognitionPublicCapture[])
   });
   return { runDate: latest?.runDate, panelVersion: latest?.panelVersion, summaries };
 }
-
