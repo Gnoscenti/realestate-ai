@@ -42,6 +42,7 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import { buildFiveMinuteProtocol } from "@/lib/edge-pack";
 import { BuyerSellerFaqPanel, ShowingFollowUpPanel } from "@/components/outreach/faq-showing-panels";
+import { InboxDraftDemo } from "@/components/outreach/inbox-draft-demo";
 import { SPEED_TO_LEAD_SLA_MINUTES } from "@/lib/competitors";
 
 const searchSchema = z.object({
@@ -149,17 +150,22 @@ function OutreachPage() {
 
   if (!lead) {
     return (
-      <div className="mx-auto max-w-3xl py-16 text-center text-[var(--color-fg-muted)]">
-        No active leads.{" "}
-        <Link to="/leads" className="text-[var(--color-primary)] underline">
-          Add a lead
-        </Link>
+      <div className="mx-auto max-w-7xl space-y-6">
+        <InboxDraftDemo />
+        <div className="py-8 text-center text-sm text-[var(--color-fg-muted)]">
+          Your lead book is empty. Try the sample above, or{" "}
+          <Link to="/leads" className="text-[var(--color-primary)] underline">
+            open your leads
+          </Link>
+          .
+        </div>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <InboxDraftDemo />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -605,3 +611,4 @@ function InsightCard({
     </div>
   );
 }
+

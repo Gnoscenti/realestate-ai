@@ -27,6 +27,24 @@ function firstName(name?: string | null): string {
   return name.trim().split(/\s+/)[0]!;
 }
 
+/** First inquiry: use verified contact/property fields, without inventing a budget
+ * or claiming that a property showing has been authorized. Calendar slots are for
+ * an agent consultation; listing access must be confirmed separately. */
+export function generateInquiryDraft(opts: {
+  customerName: string;
+  propertyLabel: string;
+  agentName: string;
+  slotLabels: string[];
+}): { subject: string; body: string } {
+  const availability = opts.slotLabels.length
+    ? `For a quick phone consultation, would ${opts.slotLabels.join(" or ")} work for you? These are proposed times; no appointment is booked yet.`
+    : "What times would work for a quick phone consultation? I will confirm my availability before arranging a time.";
+  return {
+    subject: `Your inquiry about ${opts.propertyLabel}`,
+    body: `Hi ${firstName(opts.customerName)},\n\nThanks for your interest in ${opts.propertyLabel}. I would be happy to discuss your questions and next steps.\n\n${availability}\n\nIf you would like a property tour, I will also confirm listing access before scheduling it.\n\nBest,\n${opts.agentName}`,
+  };
+}
+
 export function generateShowingSequence(opts: {
   lead?: Lead | null;
   appointment?: CalendarAppointment | null;
@@ -139,3 +157,4 @@ Collected by ${opts.buyerAgentName || "showing agent"}.
 ${sign}`.trim(),
   };
 }
+
