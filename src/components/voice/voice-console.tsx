@@ -1027,7 +1027,8 @@ function CallLogs({ state }: { state: VoiceConsoleState }) {
   const load = useCallback(
     async (before?: string) => {
       const append = Boolean(before);
-      append ? setLoadingMore(true) : setLoading(true);
+      if (append) setLoadingMore(true);
+      else setLoading(true);
       setError(null);
       try {
         const result = await listMyVoiceCalls({
@@ -1040,7 +1041,8 @@ function CallLogs({ state }: { state: VoiceConsoleState }) {
       } catch (error) {
         setError(errorMessage(error));
       } finally {
-        append ? setLoadingMore(false) : setLoading(false);
+        if (append) setLoadingMore(false);
+        else setLoading(false);
       }
     },
     [state.workspaceId],

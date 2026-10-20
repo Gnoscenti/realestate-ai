@@ -564,11 +564,11 @@ export async function resolveVoiceBillingEvent(
     !workspaceId ||
     workspaceId.length > 240 ||
     workspaceId !== workspaceId.trim() ||
-    /[\u0000-\u001f]/.test(workspaceId) ||
+    [...workspaceId].some((character) => character.charCodeAt(0) < 32) ||
     !userId ||
     userId.length > 240 ||
     userId !== userId.trim() ||
-    /[\u0000-\u001f]/.test(userId) ||
+    [...userId].some((character) => character.charCodeAt(0) < 32) ||
     product !== VOICE_BILLING_PRODUCT
   ) {
     return ignored(event, payloadSha256, "METADATA_MISMATCH", {

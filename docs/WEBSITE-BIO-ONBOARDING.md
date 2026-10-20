@@ -158,6 +158,29 @@ Automatic Vercel deployment from `main` is temporarily disabled in `vercel.json`
 The PRs can merge without releasing the onboarding UI before its database is
 ready. The existing production deployment remains available.
 
+### Inspection on October 19, 2026
+
+The repository migration set was read from `migrations/`. It runs from
+`0001_auth.sql` through `0019_workspace_onboarding.sql`, including the paired
+filenames that share a numeric prefix. `0019_workspace_onboarding.sql` creates
+only `workspace_onboarding_profiles`, `workspace_onboarding_sources`, and
+`workspace_onboarding_revisions`. Saving an MLS member ID still does not connect
+an MLS feed. The sample inquiry remains a labeled rehearsal and sends or books
+nothing.
+
+This environment had no `DATABASE_URL` and no Vercel token, so the production
+`_migrations` history and those three tables were **not** inspected. Database
+readiness is not demonstrated. `git.deploymentEnabled.main` stays `false` until
+an authorized operator completes that inspection, applies the pending files with
+`npm run db:migrate`, and confirms `0019_workspace_onboarding.sql` is recorded.
+
+Local automated coverage for the onboarding behavior lives in
+`tests/unit/onboarding-repository.test.ts` (workspace isolation, corrections,
+blocked-page completion) and `tests/e2e/onboarding-website-scrape.spec.ts`
+(390-pixel viewport, website confirmation, biography after a blocked page,
+correction retained on rescan, synthetic inquiry). Those commands were not run
+against production, and this note is not production acceptance.
+
 The Neon production path does not apply migrations at runtime, and the Vercel
 build runs only `npm run build`. Before releasing this integration, an authorized
 operator must inspect the target database's `_migrations` history, apply the

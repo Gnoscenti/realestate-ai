@@ -1,3 +1,4 @@
+import { ComplianceSandboxPanel } from "@/components/compliance-ledger/sandbox-panel";
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -67,10 +68,11 @@ function TransactionsPage() {
       </div>
 
       <Tabs defaultValue="documents">
-        <TabsList>
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="documents">Document AI</TabsTrigger>
           <TabsTrigger value="signatures">E-signature</TabsTrigger>
           <TabsTrigger value="milestones">Milestones</TabsTrigger>
+          <TabsTrigger value="fractionalization">Fractionalization lab</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="space-y-6">
@@ -318,6 +320,7 @@ function TransactionsPage() {
             </Card>
           ))}
         </TabsContent>
+        <TabsContent value="fractionalization"><ComplianceSandboxPanel /></TabsContent>
       </Tabs>
     </div>
   );

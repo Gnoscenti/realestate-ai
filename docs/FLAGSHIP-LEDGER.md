@@ -1261,3 +1261,75 @@ Vercel production dpl_6PsN6dDGZcodwNU61tNGGqKhpftu is READY and authenticated CL
 Zero uncaught browser errors and zero same-originHTTP5xx. Bounded new-deployment log sample:four existing pg SSL future-major-version warnings on successful requests, zeroHTTP5xx and no other error entries. No production credentials, dependencies, migrations, customer records, external publications or payments changed. The existing synthetic acceptance account/media remain as documented in Session9.
 
 The cold-start bug is resolved and has a permanent no-retry CI gate. Explicit root CSS must remain linked; if additional route stylesheets are introduced, link them explicitly and preserve the cold-start regression. Source details and unsuccessful experiments are retained above. Final documentation-only closeout contains this evidence; its deployment serves identical application code. Final alias/persistence and CI receipt is retained under ignored tmp/session10/final-release-receipt.json and reported in the delivery response.
+
+
+## Session 11 — 2026-10-20: fractionalization sandbox
+### Repo map and conventions
+Local main a8a344a has substantial existing uncommitted onboarding, voice and CiteLock work. Recorded file hashes in ignored tmp/tokenization/baseline.json; preserve all of it. Listings are text IDs with workspace composite foreign keys, not guaranteed UUIDs; transactions are browser-local manual records. 0017 through 0019 are already occupied; next migration is 0020. Use existing authMiddleware, personal workspace and Sql transactions. Ancestor AGENTS.md describes a different Python project; user explicitly requires this existing TypeScript stack.
+### Audit findings
+Original TokenySolutions/T-REX is archived/deprecated and points to ERC-3643/ERC-3643. ERC-3643 needs identity, issuer and compliance registries; a local boolean is not an on-chain identity proof. A listing record does not establish rights to issue a property interest.
+### Citelock/GEO intent
+Preserve realtor/broker source-backed GEO guides and Social Desk. Do not recast CiteLock as verified title/property ownership or investment eligibility. The added workflow is an explicitly simulated extension inside Transactions.
+### Blocker register
+Real issuance requires issuer/ownership structure, offering review, identity/AML provider, custody/escrow and audited operational contracts. These are not supplied. Provide a working local sandbox with no live funds or mainnet write path; maintain separate application billing.
+### Decisions made and why
+Use a server-owned, listing-linked simulation with exact decimal arithmetic, revision/idempotency safeguards and audit events. No SDAR KYC certification claim. Keep Foundry workspace isolated with pinned upstream dependencies and local contract tests; no private keys needed. Do not deploy dirty newer work as part of this extension.
+### Verification results
+Initial inspection complete; implementation and tests pending.
+### Open items
+Build isolated schema/domain/UI, contract harness, tests and architecture/demo documentation. Verify against the current working tree and distinguish simulation from on-chain execution.
+
+Session11 verification: first global typecheck found pre-existing voice integration errors (missing assertCheckoutReturnUrl export and generated route types for four voice paths). No new domain/UI type errors. Initial sandbox tests: 14 pass; first DB-backed case timed out during fresh PGLite/migration bootstrap under concurrent typecheck. Move expensive schema setup into explicit beforeAll (30s); behavioral timeout remains15s. Installed Forge1.8.5 official binary in ignored tooling after SHA256 matched official checksum. No live chain connection.
+
+Session11 implementation/verification:15sandbox tests pass after explicit DB setup; browser walkthrough passes without retries (54.6s; development-auth fixture);390px screenshot visually inspected. Five local Foundry tests pass with real signed ONCHAINID claims, revocation, pause/freeze, unauthorized mint, atomic initialization and network refusal. Node24.22.0 downloaded into ignored tooling and checksum verified. Global build passed. Generated route types now include existing voice routes. Added missing single portal return URL export using the unchanged same-origin/HTTPS guard, plus seven security tests. Fixed five pre-existing voice lint errors by exact behavior-preserving expression/character-check replacements; no permissions loosened. Original dirty content hashes retained and inverse patch verification will confirm preservation. Contract dependencies are isolated and excluded from app lint, not app tests. Production has not been changed.
+
+### Session11 verified results and release boundary
+- Node24.22.0 used for broad checks and final browser run; root npm dependencies and package lock were not changed by this task.
+- TypeScript: PASS after normal route generation and guarded portal helper. ESLint whole repository: PASS, zero warnings, after the five exact repairs.
+- Production build: PASS before final export refinement; final-source repeat currently running (see receipt).
+- New sandbox unit/integration:15/15 PASS on PGLite and15/15 PASS on native PostgreSQL17. Native migration run applied26files including0020; second run up to date. Task-owned disposable PostgreSQL container stopped/removed. No production database touched.
+- Browser: final Node24 walkthrough PASS with retries=0 (31.0seconds test/57.0seconds total). Covers creating the shared Social Desk property reference, simulation creation, identity gate, exact deposit/allocation arithmetic, reload persistence, revocation, refund, complete Markdown history export and390px overflow check. Screenshot visually inspected. This uses development-auth fixture; production acceptance and real-session browser security of the new feature were not run. API uses the existing auth/same-site middleware; repository tests prove tenant isolation.
+- Foundry1.8.5/Solc0.8.17:5/5 PASS. Real upstream token, identity, claim issuer and registries; actual test signatures, revocation, pause/freeze, unauthorized mint, atomic initialization and Base chain refusal. One upstream DefaultCompliance mutability warning. DefaultCompliance is a permissive fixture; this is not a security audit or legal compliance test.
+- Full unit/integration run:64files/546tests PASS,7files/43tests FAIL plus1unhandled error (589total tests,281.10seconds). All failed files are existing voice suites: billing, console, foundation, provisioning, stripe-webhook, webhooks, workspace-mutation-lease. Missing schema includes voice_assistants.provisioning_identity and voice_workspace_mutation_leases; phone-assignment provider_agent_id is also referenced by newer queries. Migration files contain no provisioning_identity or voice_workspace_mutation_leases. Do not invent a voice migration inside the fractionalization migration, suppress the tests, or treat this dirty branch as release-ready.
+- Preserve audit:92pre-existing modified-file hashes captured; reversing only the three voice lint repairs and the native-test-list addition restores92/92original hashes, zero unexpected modifications. Generated routeTree changes register the existing voice files; no feature route was added.
+- Scoped task diff whitespace check passes. Global diff --check reports the pre-existing widespread CRLF changes; they were preserved rather than mass-normalized.
+- HEAD remains a8a344a. This extension has not been committed, pushed, deployed to Vercel, or broadcast to a chain. No provider secret, mainnet address, SDAR credential, real USDC or customer payment was used.
+
+### Session11 remaining/open items
+The requested simulation and separate local cryptographic contract harness are implemented and tested. Browser-to-chain dispatch, live KYC/SDAR issuer integration, real escrow/custody, legal offering structure, contract security review, production acceptance and live deployment are NOT implemented/verified. Contracts explicitly refuse nonlocal chains. Global release remains blocked by the existing voice schema mismatch. Architecture, exact enable/run steps and a truthful SDAR demonstration script are in docs/FRACTIONALIZATION-ARCHITECTURE.md. Detailed logs are ignored under tmp/tokenization.
+
+Session11 final-source gates: production build PASS and TypeScript PASS after all implementation edits. Whole-repo lint remains PASS (0warnings); final browser run and native PostgreSQL results above correspond to the final simulation implementation. Receipt finalized in ignored tmp/tokenization/receipt.json. Full repository release remains blocked by the documented pre-existing voice schema failures; no deployment or commit was made.
+
+## Session 12 — 2026-10-20 voice schema repair and production release
+### Repo map and conventions
+- Continue in the independent /home/ttroj/code/realestate-ai repository, main at a8a344a. Preserve existing dirty onboarding, voice, CiteLock, tooling and sandbox work. Initial changed-file hashes saved privately in tmp/session12/baseline.json; do not reset or force-push.
+### Audit findings
+- Previous full Node 24 suite: 546/589 passed; 43 failures in seven voice suites, plus one unhandled rejection. Missing provisioning_identity, phone provider_agent_id and voice_workspace_mutation_leases are confirmed schema/code mismatches.
+### CiteLock/GEO intent
+- Preserve the existing evidence-qualified, actionable agent/broker visibility guidance and free/paid boundary; MLS is not a prerequisite. This release also includes the explicit fractionalization simulation built in Session 11.
+### Blocker register
+- Voice schema blocks full checks and release. Inspect all voice SQL for a complete additive migration and validate upgrade from existing rows.
+- Production target, latest remote history, environment, applied migrations and current deployment must be rechecked before release.
+### Decisions made and why
+- User explicitly authorizes repair, commit, push, Vercel deployment and production login/CiteLock/Social Desk/sandbox verification. Use additive schema changes, preserve newer work, back up production before migration and deploy the exact tested commit.
+- Production verification must use ordinary authentication. Sandbox actions remain simulated; no real phone provisioning, money movement, external social publishing or chain transactions.
+### Verification results
+- Starting state and prior receipts re-read. New verification pending; earlier results are historical only.
+### Open items
+- Repair and test voice schema; pass all relevant repository gates without retries; inspect/preserve latest remote work; commit/push; stage/promote Vercel; verify named production workflows and record actual limits.
+
+- Remote reconciliation: fetched origin; main remains exactly a8a344a (0 ahead/0 behind). Discovered cursor/voice-database-onboarding-f0ea at 2de4041, containing six missing voice migrations (25705e0) and companion routing/configuration. Reviewed their contracts against current voice code and integrated the migration files without renaming. The runner keys by full filename, so 0020_rwa_sandbox.sql and 0020_voice_runtime.sql are distinct and ordered safely.
+- Correction: the missing p.provider_agent_id reference is a prompt-version field, not a phone field. The six migrations also cover provider versions, durable provisioning steps, billing events, consent retention, console checklists and workspace leases.
+
+- Targeted voice tests: 52/52 PASS in seven previously failing suites, zero retries. Restored Stripe webhook route required normal router regeneration; subsequent typecheck, AIEO fixture typecheck and zero-warning lint passed.
+- Production backup/restore PASS (read-only source): 65 tables restored with identical schema/content fingerprints; nine pending migrations applied locally, preserving all 64 original application tables on their original columns and all existing migration timestamps. Second migration pass was a no-op; final restored schema has 32 migrations and 74 tables. Private receipt: tmp/session12/production-backup-restore.sanitized.json.
+- Concurrent full unit/browser runs encountered host slowdown (WSL service connection timeouts and cold PGLite setup exceeding test deadlines). Aborted only the task-owned unit process to eliminate self-induced contention; unchanged assertions/timeouts will be exercised sequentially. These interrupted/failing runs are not acceptance evidence.
+
+- Full sequential unit/integration gate PASS: 72 files, 593 tests, 215.97 seconds, no retries and no changed timeouts/assertions. Includes all four startup/restart checks, all three historical migration-lineage cases and the new voice upgrade regression. Parallel diagnostic run was superseded by this resource-isolated run, not hidden.
+- Secret scan PASS across 425 intended Git files: no local key values found; only .env.example included. Production COMPLIANCE_SANDBOX_ENABLED=1 and a generated Sensitive CRON_SECRET added through stdin; existing provider/auth/database secrets preserved. Deployment ignores now explicitly exclude contracts and local private artifacts.
+
+- Native PostgreSQL gate PASS: 155 tests in 21 files, including new voice/sandbox coverage; fresh migration pass plus repeat no-op. Compiled production artifact against native PostgreSQL: 4/4 authenticated browser scenarios PASS, zero retries (onboarding across browsers/isolation, paywall/social persistence/isolation, foreign-origin rejection, free CiteLock guide and entitlement upgrade). Task-owned disposable database stopped.
+- Preservation: 85 tracked-file changes in the incoming dirty tree are CRLF-only; retain them as requested rather than reset unrelated files. Semantic comparison reviewed with --ignore-space-at-eol. New release branch: fix/voice-schema-sandbox-release-20261020. Existing remote voice PR is #51 at 2de4041; merge its history after preserving/committing the verified combined tree. No competing patch from the other audit chat is being pushed.
+- Next: finish remaining browser/auth/cold-start gates; contract check; commit and merge voice branch history; exact-head PR CI; production migrate from verified manifest/backup, stage/promote Vercel, run tmp/session12/production-verification.mjs and inspect runtime errors. Production has not yet been migrated or redeployed in this session.
+
+- Final precommit local gates PASS: 593/593 unit/integration; both TypeScript checks; zero-warning lint; production build; native PostgreSQL 155/155; compiled production authentication 4/4; full browser 27/27; development auth 3/3 (compiled-only origin scenario intentionally runs in the production job); three independent cold calendar starts 1/1 each; Foundry contract harness 5/5. No retries. The earlier host-contention failures remain documented and were resolved by serial execution, not weaker assertions or longer deadlines.

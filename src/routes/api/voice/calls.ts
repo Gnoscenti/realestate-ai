@@ -12,7 +12,7 @@ async function getCalls(request: Request): Promise<Response> {
   if (
     !workspaceId ||
     workspaceId.length > 240 ||
-    /[\u0000-\u001f]/.test(workspaceId)
+    [...workspaceId].some((character) => character.charCodeAt(0) < 32)
   ) {
     return Response.json({ error: "workspaceId is required" }, { status: 400 });
   }

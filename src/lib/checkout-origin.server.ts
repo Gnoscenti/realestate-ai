@@ -31,3 +31,8 @@ export function assertCheckoutReturnUrls(input: {
     cancelUrl: validateReturnUrl(input.cancelUrl, expectedOrigin),
   };
 }
+
+/** The customer portal has one return URL; retain the same origin/HTTPS guard as checkout. */
+export function assertCheckoutReturnUrl(rawUrl: string): string {
+  return validateReturnUrl(rawUrl, appOrigin());
+}

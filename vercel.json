@@ -3,6 +3,7 @@
   "framework": null,
   "git": {
     "deploymentEnabled": {
+      "main": false,
       "feat/website-bio-onboarding": false,
       "fix/citelock-source-provenance-20261014": false
     }
@@ -11,5 +12,11 @@
   "buildCommand": "npx --yes npm@12.2.0 run build",
   "regions": [
     "sfo1"
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/voice/process-webhooks",
+      "schedule": "17 7 * * *"
+    }
   ]
 }

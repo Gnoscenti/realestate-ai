@@ -1,0 +1,18 @@
+{
+  "erc3643": {
+    "repo": "https://github.com/ERC-3643/ERC-3643",
+    "rev": "2f0704dee9658ad9cd5b6ed82e7427da74c28345"
+  },
+  "openzeppelin": {
+    "repo": "https://github.com/OpenZeppelin/openzeppelin-contracts",
+    "rev": "dc44c9f1a4c3b10af99492eed84f83ed244203f6"
+  },
+  "openzeppelinUpgradeable": {
+    "repo": "https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable",
+    "rev": "09b36d5e94e1270521a223db2b01a4f02de0e5bf"
+  },
+  "onchainId": {
+    "repo": "https://github.com/onchain-id/solidity",
+    "rev": "a483cda6821e3883497972d36d0c4c1e1693e483"
+  }
+}

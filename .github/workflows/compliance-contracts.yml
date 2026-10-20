@@ -1,0 +1,22 @@
+name: Local ERC-3643 harness
+on:
+  pull_request:
+    paths: ["contracts/**", ".github/workflows/compliance-contracts.yml"]
+  push:
+    branches: [main]
+    paths: ["contracts/**", ".github/workflows/compliance-contracts.yml"]
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+      - name: Install pinned contract dependencies
+        run: bash contracts/install.sh
+      - name: Test local identity and token restrictions
+        run: forge test --root contracts -vv
