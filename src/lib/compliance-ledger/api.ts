@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "../auth/middleware";
-import { commandSchema, listingReferenceSchema } from "./types";
+import { commandSchema, listingReferenceSchema, sandboxPageSchema } from "./types";
 
 export const getMyComplianceSandbox = createServerFn({ method: "GET" }).middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator(sandboxPageSchema).handler(async ({ context, data }) => {
     const { getSandbox } = await import("./repository.server");
-    return getSandbox(context.userId);
+    return getSandbox(context.userId, undefined, data);
   });
 export const createMyComplianceSandbox = createServerFn({ method: "POST" }).middleware([authMiddleware])
   .validator(listingReferenceSchema).handler(async ({ context, data }) => {

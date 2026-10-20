@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getSql, type Sql } from "../db";
 import { ensurePersonalWorkspace, requireWorkspaceAccess } from "../workspaces/repository.server";
 import { applySandboxCommand, toMicro } from "./engine";
-import { SANDBOX_ACTION_LIMIT, SANDBOX_INVESTOR_LIMIT, commandSchema, eligibleListingStatus, listingReferenceSchema, type SandboxCase, type SandboxCommand,
+import { SANDBOX_ACTION_LIMIT, SANDBOX_INVESTOR_LIMIT, commandSchema, eligibleListingStatus, listingReferenceSchema, sandboxPageSchema, type SandboxPageRequest, type SandboxCase, type SandboxCommand,
   type SandboxEvent, type SandboxState, type SandboxWorkspace } from "./types";
 
 export function sandboxEnabled(env = process.env): boolean {
@@ -19,17 +19,42 @@ function toCase(row: Row): SandboxCase {
   return { id: row.id, listingId: row.listing_id, listingTitle: row.title, listingStatus: row.status,
     revision: row.revision, state: row.state, mode: "simulation", contractAddress: null, chainId: 31337 };
 }
-export async function getSandbox(userId: string, sqlOverride?: Sql): Promise<SandboxWorkspace> {
-  if (!sandboxEnabled()) return { ownerId: userId, enabled: false, listings: [], cases: [] };
+export async function getSandbox(userId: string, sqlOverride?: Sql, rawPage: SandboxPageRequest = {}): Promise<SandboxWorkspace> {
+  const page = sandboxPageSchema.parse(rawPage);
+  if (!sandboxEnabled()) return { ownerId: userId, enabled: false, listings: [], cases: [], nextCursor: null };
   const sql = sqlOverride ?? await getSql();
   const workspace = await ensurePersonalWorkspace(userId, sql);
-  const listings = await sql<{ id: string; title: string; status: string }>`
-    select id,title,status from listings where workspace_id=${workspace.id} order by created_at desc limit 100`;
-  const cases = await sql<Row>`
-    select c.id,c.listing_id,l.title,l.status,c.revision,c.state from rwa_sandbox_cases c
-    join listings l on l.id=c.listing_id and l.workspace_id=c.workspace_id
-    where c.workspace_id=${workspace.id} order by c.updated_at desc limit 100`;
-  return { ownerId: userId, enabled: true, listings, cases: cases.map(toCase) };
+  // Read the immutable ordering key from the tenant-scoped cursor row. Keeping
+  // the timestamp in PostgreSQL avoids losing microseconds through JS Dates.
+  if (page.afterListingId) {
+    const cursor = await sql`select id from listings where workspace_id=${workspace.id} and id=${page.afterListingId}`;
+    if (!cursor.length) throw new Error("The property page changed. Reload the saved sandbox.");
+  }
+  type ListingRow = SandboxWorkspace["listings"][number];
+  const rows = await sql.query<ListingRow>(
+    `select id,title,status from listings where workspace_id=$1
+     and ($2::text is null or (created_at,id) <
+       (select created_at,id from listings where workspace_id=$1 and id=$2))
+     order by created_at desc,id desc limit 101`,
+    [workspace.id, page.afterListingId ?? null],
+  );
+  const listings = rows.slice(0, 100);
+  const nextCursor = rows.length > 100 ? listings[99].id : null;
+  // Refreshing an older selected case must not drop it back outside the first
+  // page. This extra row is separately scoped and does not move the page cursor.
+  if (page.selectedListingId && !listings.some(row => row.id === page.selectedListingId)) {
+    const selected = await sql<ListingRow>`select id,title,status from listings
+      where workspace_id=${workspace.id} and id=${page.selectedListingId}`;
+    listings.push(...selected);
+  }
+  const cases = await sql.query<Row>(
+    `select c.id,c.listing_id,l.title,l.status,c.revision,c.state from rwa_sandbox_cases c
+     join listings l on l.id=c.listing_id and l.workspace_id=c.workspace_id
+     where c.workspace_id=$1 and c.listing_id=any($2::text[])
+     order by c.updated_at desc,c.id desc`,
+    [workspace.id, listings.map(row => row.id)],
+  );
+  return { ownerId: userId, enabled: true, listings, cases: cases.map(toCase), nextCursor };
 }
 export async function createSandbox(userId: string, raw: { listingId: string }, sqlOverride?: Sql): Promise<SandboxCase> {
   requireEnabled();

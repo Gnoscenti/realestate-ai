@@ -13,6 +13,11 @@ export const amountSchema = z.string().trim().regex(/^(?:0|[1-9]\d{0,6})(?:\.\d{
     const units = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
     return units > 0n && units <= 1_000_000_000_000n;
   }, "Enter more than zero and at most 1,000,000 test USDC."));
+export const sandboxPageSchema = z.object({
+  afterListingId: z.string().min(1).max(240).optional(),
+  selectedListingId: z.string().min(1).max(240).optional(),
+}).strict();
+export type SandboxPageRequest = z.infer<typeof sandboxPageSchema>;
 export const listingReferenceSchema = z.object({ listingId: z.string().min(1).max(240) }).strict();
 const reference = { caseId: z.string().uuid(), operationId: z.string().uuid(), expectedRevision: z.number().int().positive() };
 export const commandSchema = z.discriminatedUnion("kind", [
@@ -58,6 +63,7 @@ export interface SandboxWorkspace {
   enabled: boolean;
   listings: { id: string; title: string; status: string }[];
   cases: SandboxCase[];
+  nextCursor: string | null;
 }
 export const eligibleListingStatus = (status: string) =>
   ["active", "pending", "coming_soon", "unknown"].includes(status);

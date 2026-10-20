@@ -32,6 +32,7 @@ function AccountSandbox({ ownerId }: { ownerId: string }) {
   const [status, setStatus] = useState("");
   const mounted = useRef(false);
   const pending = useRef(false);
+  const selectedRef = useRef("");
   const current = workspace?.cases.find(row => row.listingId === selected);
   const caseId = current?.id;
   const revision = current?.revision;
@@ -40,11 +41,14 @@ function AccountSandbox({ ownerId }: { ownerId: string }) {
   const activeListing = eligibleListingStatus(workspace?.listings.find(row => row.id === selected)?.status ?? current?.listingStatus ?? "");
 
   const load = useCallback(async () => {
-    const result = await getMyComplianceSandbox();
+    const result = await getMyComplianceSandbox({ data: { selectedListingId: selectedRef.current || undefined } });
     if (!mounted.current) return;
     if (result.ownerId !== ownerId) throw new Error("Your session changed. Reload this page.");
     setWorkspace(result);
-    setSelected(value => value || result.cases[0]?.listingId || result.listings[0]?.id || "");
+    const selection = result.listings.some(row => row.id === selectedRef.current)
+      ? selectedRef.current : result.cases[0]?.listingId || result.listings[0]?.id || "";
+    selectedRef.current = selection;
+    setSelected(selection);
   }, [ownerId]);
   const run = useCallback(async (task: () => Promise<void>) => {
     if (pending.current) return;
@@ -70,7 +74,19 @@ function AccountSandbox({ ownerId }: { ownerId: string }) {
   function accept(saved: SandboxCase) {
     if (!mounted.current) return;
     setWorkspace(previous => previous && ({ ...previous, cases: [saved, ...previous.cases.filter(row => row.id !== saved.id)] }));
+    selectedRef.current = saved.listingId;
     setSelected(saved.listingId);
+  }
+  async function loadOlder() {
+    if (!workspace?.nextCursor) return;
+    const result = await getMyComplianceSandbox({ data: { afterListingId: workspace.nextCursor } });
+    if (!mounted.current) return;
+    if (result.ownerId !== ownerId) throw new Error("Your session changed. Reload this page.");
+    setWorkspace(previous => previous && ({ ...previous, nextCursor: result.nextCursor,
+      listings: [...previous.listings.filter(row => !result.listings.some(item => item.id === row.id)), ...result.listings],
+      cases: [...previous.cases.filter(row => !result.cases.some(item => item.id === row.id)), ...result.cases],
+    }));
+    setStatus("Older properties loaded. Choose a property reference to reopen its saved simulation.");
   }
   function action(kind: SandboxCommand["kind"]) {
     if (!current) return;
@@ -120,11 +136,16 @@ function AccountSandbox({ ownerId }: { ownerId: string }) {
       {workspace?.enabled && <>
         {!workspace.listings.length && !workspace.cases.length ? <div className="rounded-lg border border-dashed p-6"><h3 className="font-medium">Start with a property reference</h3><p className="mt-2 text-sm text-[var(--color-fg-muted)]">Add a listing with a title and address in Social Desk. It will appear here; a listing reference does not establish ownership or issuing rights.</p><Link to="/marketing" className="mt-3 inline-block text-sm underline">Open Social Desk</Link><Button variant="outline" className="ml-3" disabled={busy} onClick={() => void run(load)}>Refresh listings</Button></div> : <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-2"><Label htmlFor="fractional-listing">Property reference</Label><select id="fractional-listing" className="h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm" value={selected} disabled={busy} onChange={event => { setSelected(event.target.value); setError(""); setStatus(""); }}>
+            <div className="min-w-0 flex-1 space-y-2"><Label htmlFor="fractional-listing">Property reference</Label><select id="fractional-listing" className="h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm" value={selected} disabled={busy} onChange={event => { selectedRef.current = event.target.value; setSelected(event.target.value); setError(""); setStatus(""); }}>
               {[...workspace.listings, ...workspace.cases.filter(row => !workspace.listings.some(listing => listing.id === row.listingId)).map(row => ({ id: row.listingId, title: row.listingTitle, status: row.listingStatus }))].map(listing => <option value={listing.id} key={listing.id}>{listing.title} · {listing.status}</option>)}
             </select></div>
             {!current && <Button disabled={locked || !selected || !activeListing} onClick={() => void run(async () => { accept(await createMyComplianceSandbox({ data: { listingId: selected } })); if (mounted.current) setStatus("Simulation created. No contract was deployed."); })}>Generate Fractional Compliance Engine</Button>}
             {current && <Button variant="outline" disabled={locked} onClick={() => void run(exportLedger)}><Download className="h-4 w-4" />Export simulation</Button>}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span>{workspace.listings.length} property references loaded.</span>
+            {workspace.nextCursor && <Button variant="outline" disabled={locked} onClick={() => void run(loadOlder)}>Load older properties</Button>}
+            <Button variant="ghost" disabled={busy} onClick={() => void run(load)}>Refresh saved sandbox</Button>
           </div>
           {!activeListing && <p className="text-sm text-[var(--color-warning)]">This property is inactive. Existing test balances may be refunded and mock claims revoked.</p>}
           {current && <>

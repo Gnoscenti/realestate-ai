@@ -144,6 +144,43 @@ describe("durable workspace-scoped sandbox", () => {
     expect(history.slice(0, 2 * SANDBOX_INVESTOR_LIMIT).every(event => ["refund", "revoke_mock_identity"].includes(event.kind))).toBe(true);
     await expect(changeSandbox(f.user, { ...command("verify_mock_identity", "1", saved.revision, start.id), wallet: wallets[0] }, f.sql, now)).rejects.toThrow("cleanup is complete");
   });
+  it("pages past 100 saved cases and keeps older cleanup and audit access after reload", async () => {
+    const f = await fixture();
+    await f.sql`update listings set created_at='2000-01-01' where id=${f.listingId}`;
+    const old = await createSandbox(f.user, { listingId: f.listingId }, f.sql);
+    await changeSandbox(f.user, command("verify_mock_identity", "1", 1, old.id), f.sql, now);
+    const funded = await changeSandbox(f.user, command("deposit", "1.5", 2, old.id), f.sql, now);
+    const newer = Array.from({ length: 100 }, () => ({ id: randomUUID(), case_id: randomUUID() }));
+    // Identical timestamps exercise the ID tie-breaker at the page boundary.
+    await f.sql`insert into listings(id,workspace_id,title,status,provenance,created_by_user_id,created_at)
+      select n.id,${f.workspace.id},'Newer synthetic reference','active','test',${f.user},'2020-01-01'::timestamptz
+      from jsonb_to_recordset(${JSON.stringify(newer)}::jsonb) as n(id text,case_id uuid)`;
+    await f.sql`insert into rwa_sandbox_cases(id,workspace_id,listing_id,state)
+      select n.case_id,${f.workspace.id},n.id,${JSON.stringify(empty)}::jsonb
+      from jsonb_to_recordset(${JSON.stringify(newer)}::jsonb) as n(id text,case_id uuid)`;
+    const first = await getSandbox(f.user, f.sql);
+    expect(first.listings).toHaveLength(100);
+    expect(first.cases).toHaveLength(100);
+    expect(first.listings.some(row => row.id === f.listingId)).toBe(false);
+    expect(first.nextCursor).toBeTruthy();
+    const second = await getSandbox(f.user, f.sql, { afterListingId: first.nextCursor! });
+    expect(second.listings.map(row => row.id)).toEqual([f.listingId]);
+    expect(second.cases).toEqual([funded]);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.listings, ...second.listings].map(row => row.id)).size).toBe(101);
+    await f.sql`update listings set status='withdrawn' where id=${f.listingId}`;
+    const refresh = await getSandbox(f.user, f.sql, { selectedListingId: f.listingId });
+    expect(refresh.cases.find(row => row.id === old.id)?.listingStatus).toBe("withdrawn");
+    expect(refresh.nextCursor).toBe(first.nextCursor);
+    const refunded = await changeSandbox(f.user, command("refund", "1.5", funded.revision, old.id), f.sql, now);
+    const reopened = await getSandbox(f.user, f.sql, { afterListingId: first.nextCursor! });
+    expect(reopened.cases).toEqual([refunded]);
+    expect(refunded.state.investors[0].escrowMicro).toBe("0");
+    expect((await getSandboxEvents(f.user, old.id, f.sql)).map(event => event.kind)).toEqual(["refund", "deposit", "verify_mock_identity"]);
+    const stranger = "stranger-" + randomUUID();
+    expect((await getSandbox(stranger, f.sql, { selectedListingId: f.listingId })).listings).toEqual([]);
+    await expect(getSandbox(stranger, f.sql, { afterListingId: first.nextCursor! })).rejects.toThrow("property page changed");
+  });
   it("rejects cross-tenant listing, case and audit access", async () => {
     const f = await fixture();
     const other = "stranger-" + randomUUID();

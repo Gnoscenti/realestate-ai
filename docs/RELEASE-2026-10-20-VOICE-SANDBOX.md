@@ -67,7 +67,7 @@ Production configuration now includes the sandbox enable flag and a generated Se
 
 ## Required next action and release sequence
 
-GitHub rejected the normal expected-head merge because `main` requires **one approving review**, including for administrators. No review has been submitted. Auto-merge is disabled. The owner selected Copilot as approver on October20. The repository now enables GitHub's public-preview Copilot approvals feature; a fresh, actual approving review is required. The one-review requirement, required checks and administrator enforcement remain enabled. The earlier human-only route is superseded by this explicitly selected reviewer.
+GitHub rejected the normal expected-head merge because `main` requires **one approving review**, including for administrators. Copilot has submitted comment-only reviews; none is an approving review. Auto-merge is disabled. The owner selected Copilot as approver on October20. The repository now enables GitHub's public-preview Copilot approvals feature; a fresh, actual approving review is required. The one-review requirement, required checks and administrator enforcement remain enabled. The earlier human-only route is superseded by this explicitly selected reviewer.
 
 After approval:
 
@@ -86,3 +86,11 @@ Automated review identified two additional edge cases after the initial complete
 - The1,000-action limit now closes new claims, deposits and allocations while retaining a bounded cleanup path: each of25investors can revoke a still-approved claim and refund their full remaining escrow, for at most50 additional audited events. Repeated revocations and partial refunds cannot consume the cleanup reserve. Idempotent retries remain valid at the final cap.
 
 The updated sandbox suite passes19/19, including a database-backed1,050-event boundary with all investors revoked/refunded, full history, reload persistence, and rejected ordinary/partial/no-op operations. The full-suite counts above describe the earlier baseline; final exact-head CI must include these four additional cases. See the PR checks and private final receipts for the last commit's result. No human approval, production migration or deployment is implied by an automated code review.
+
+### Older simulation access correction
+
+Copilot's follow-up found that saved simulations beyond the first100 properties could not be reopened. The sandbox now pages through older references using a workspace-scoped creation-time/ID cursor and keeps the selected older simulation available during refresh. This preserves access to refunds, revocation and audit export without unbounded initial reads or a creation cap.
+
+Local checks for this correction: sandbox20/20, real browser2/2 with no retries, full TypeScript, zero-warning lint. The browser regression creates101 real persisted cases, reopens the older one, refreshes it, refunds its test escrow, reloads and exports its history. No migration changes. Exact-head CI and a new Copilot review are required after the fix is pushed. The preceding full597-unit/159-PostgreSQL/27-browser acceptance is historical; the new regressions increase those counts by one each when the fresh full suites pass.
+
+Copilot approvals are enabled, but review5592797204 remained COMMENTED and called for final human review of the coordinated schema/billing/provider release. The accessibility defect is corrected; approval is still a separate prerequisite. Production remains unchanged until the reviewed candidate is normally merged, migrated and deployed.
