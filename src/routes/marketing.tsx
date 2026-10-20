@@ -55,6 +55,7 @@ import { describeAiError } from "@/lib/ai-errors";
 import { ActualPhotoStudio } from "@/components/marketing/actual-photo-studio";
 import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
 import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
+import { ListingLaunchPlan } from "@/components/marketing/listing-launch-plan";
 import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
 import { exportCampaignMarkdown, type CampaignPlan } from "@/lib/social-agent";
 
@@ -184,6 +185,20 @@ function SocialDeskPage() {
     setComposer(emptyContent(composer.platform, originParam || ""));
     setComposerDirty(false);
     setLastDraft(null);
+  };
+
+  const useLaunchListingInDraft = (id: string) => {
+    const listing = properties.find((item) => item.id === id);
+    if (!listing) return;
+    setPropertyId(id);
+    setGoal("just_listed");
+    newDraft();
+    toast.message(`${listing.title} is selected for a reviewed Social Desk draft`);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("social-desk-composer")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   useEffect(()=>{
@@ -461,6 +476,13 @@ function SocialDeskPage() {
         </div>
       </div>
 
+      <ListingLaunchPlan
+        properties={properties}
+        initialPropertyId={propertyParam}
+        agentName={profile?.name}
+        onUseListingInDraft={useLaunchListingInDraft}
+      />
+
       {savedBrowserCampaigns.length > 0 && <details className="rounded border p-4">
         <summary className="cursor-pointer font-medium">Saved browser campaigns ({savedBrowserCampaigns.length})</summary>
         <p className="mt-2 text-sm text-muted-foreground">Your earlier campaigns are still saved in this browser. Their local approval, schedule and post statuses are unverified. Download a copy to review the content and media rights before reuse.</p>
@@ -595,7 +617,7 @@ function SocialDeskPage() {
         </div>
 
         <div className="space-y-4 lg:col-span-8">
-          <Card>
+          <Card id="social-desk-composer">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
