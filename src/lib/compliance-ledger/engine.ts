@@ -1,4 +1,4 @@
-import { commandSchema, type SandboxCommand, type SandboxState } from "./types";
+import { SANDBOX_INVESTOR_LIMIT, commandSchema, type SandboxCommand, type SandboxState } from "./types";
 
 export function toMicro(amount: string): bigint {
   const [whole, fraction = ""] = amount.split(".");
@@ -20,7 +20,7 @@ export function applySandboxCommand(state: SandboxState, raw: SandboxCommand, no
   let investor = next.investors.find(row => row.wallet === command.wallet);
   if (command.kind === "verify_mock_identity") {
     if (!investor) {
-      if (next.investors.length >= 25) throw new Error("This sandbox supports 25 simulated investors.");
+      if (next.investors.length >= SANDBOX_INVESTOR_LIMIT) throw new Error("This sandbox supports 25 simulated investors.");
       investor = { wallet: command.wallet, mockIdentity: "approved", claimExpiresAt: "", escrowMicro: "0", allocatedMicro: "0" };
       next.investors.push(investor);
     }

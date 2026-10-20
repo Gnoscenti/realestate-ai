@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getSql, type Sql } from "../db";
 import { ensurePersonalWorkspace, requireWorkspaceAccess } from "../workspaces/repository.server";
-import { applySandboxCommand } from "./engine";
-import { commandSchema, eligibleListingStatus, listingReferenceSchema, type SandboxCase, type SandboxCommand,
+import { applySandboxCommand, toMicro } from "./engine";
+import { SANDBOX_ACTION_LIMIT, SANDBOX_INVESTOR_LIMIT, commandSchema, eligibleListingStatus, listingReferenceSchema, type SandboxCase, type SandboxCommand,
   type SandboxEvent, type SandboxState, type SandboxWorkspace } from "./types";
 
 export function sandboxEnabled(env = process.env): boolean {
@@ -70,7 +70,24 @@ export async function changeSandbox(userId: string, raw: SandboxCommand, sqlOver
       return toCase(row);
     }
     if (row.revision !== command.expectedRevision) throw new Error("This sandbox changed. Reload before continuing.");
-    if (row.revision >= 1001) throw new Error("Sandbox event limit reached.");
+    if (row.revision > SANDBOX_ACTION_LIMIT) {
+      // Once normal actions close, each investor can be revoked and fully refunded
+      // once. No new claims/funds or partial refunds can consume cleanup capacity.
+      if (row.revision > SANDBOX_ACTION_LIMIT + 2 * SANDBOX_INVESTOR_LIMIT) {
+        throw new Error("Sandbox cleanup is complete. No further actions are available.");
+      }
+      const investor = row.state.investors.find(value => value.wallet === command.wallet);
+      if (command.kind === "revoke_mock_identity") {
+        if (!investor || investor.mockIdentity !== "approved") throw new Error("No approved mock claim remains to revoke.");
+      } else if (command.kind === "refund") {
+        if (!investor || BigInt(investor.escrowMicro) === 0n) throw new Error("No simulated escrow remains to refund.");
+        if (toMicro(command.amount) !== BigInt(investor.escrowMicro)) {
+          throw new Error("Sandbox event limit reached. Refund the full remaining simulated escrow balance.");
+        }
+      } else {
+        throw new Error("Sandbox event limit reached. Only claim revocation and full refunds remain available.");
+      }
+    }
     if (!eligibleListingStatus(row.status) && command.kind !== "refund" && command.kind !== "revoke_mock_identity") {
       throw new Error("This listing is no longer active. Only revocation and refunds are available.");
     }

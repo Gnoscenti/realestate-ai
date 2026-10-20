@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getSql } from "../../src/lib/db";
 import { ensurePersonalWorkspace } from "../../src/lib/workspaces/repository.server";
 import { applySandboxCommand, formatMicro } from "../../src/lib/compliance-ledger/engine";
-import { commandSchema, type SandboxCommand, type SandboxState } from "../../src/lib/compliance-ledger/types";
+import { SANDBOX_ACTION_LIMIT, SANDBOX_INVESTOR_LIMIT, commandSchema, type SandboxCommand, type SandboxState } from "../../src/lib/compliance-ledger/types";
 import { changeSandbox, createSandbox, getSandbox, getSandboxEvents, sandboxEnabled } from "../../src/lib/compliance-ledger/repository.server";
 
 const wallet = "0x1111111111111111111111111111111111111111";
@@ -46,8 +46,11 @@ describe("fractionalization simulation rules", () => {
     expect(() => applySandboxCommand(deposited, command("allocate"), "2026-10-21T12:00:00Z")).toThrow("current mock");
     expect(applySandboxCommand(revoked, command("refund"), now).investors[0].escrowMicro).toBe("0");
   });
-  it.each(["0", "-1", "1e3", "NaN", "1.0000001", "1000001", "00.1"])("rejects unsafe amount %s", amount => {
-    expect(() => command("deposit", amount)).toThrow();
+  it.each(["0", "-1", "1e3", "NaN", "1.0000001", "1000001", "00.1", "1,000", "1.2a", "Infinity"])("rejects unsafe amount %s", amount => {
+    const raw = { ...command("deposit"), amount };
+    expect(() => commandSchema.safeParse(raw)).not.toThrow();
+    expect(commandSchema.safeParse(raw).success).toBe(false);
+    expect(() => commandSchema.parse(raw)).toThrow();
   });
   it("bounds cumulative funds and disallows fabricated claim flags or owner IDs", () => {
     const checked = applySandboxCommand(empty, command("verify_mock_identity"), now);
@@ -101,6 +104,45 @@ describe("durable workspace-scoped sandbox", () => {
     await expect(changeSandbox(f.user, command("allocate", "5", saved.revision, start.id), f.sql, now)).rejects.toThrow("Insufficient");
     expect((await getSandbox(f.user, f.sql)).cases[0]).toEqual(saved);
     expect(await getSandboxEvents(f.user, start.id, f.sql)).toHaveLength(3);
+  });
+  it("reserves bounded audited cleanup for every investor after the event limit", async () => {
+    const f = await fixture();
+    const start = await createSandbox(f.user, { listingId: f.listingId }, f.sql);
+    const wallets = Array.from({ length: SANDBOX_INVESTOR_LIMIT }, (_, i) => "0x" + (i + 1).toString(16).padStart(40, "0"));
+    let state: SandboxState = empty;
+    const events = Array.from({ length: SANDBOX_ACTION_LIMIT - 1 }, (_, i) => {
+      const kind = i < 2 * wallets.length && i % 2 === 1 ? "deposit" : "verify_mock_identity";
+      const investorWallet = wallets[i < 2 * wallets.length ? Math.floor(i / 2) : i % wallets.length];
+      const action = { ...command(kind, "1", i + 1, start.id), wallet: investorWallet };
+      state = applySandboxCommand(state, action, now);
+      return { operation_id: action.operationId, revision: i + 2, command: action };
+    });
+    // Seed a valid full history directly, avoiding 999 round-trip setup mutations.
+    await f.sql`update rwa_sandbox_cases set state=${JSON.stringify(state)}::jsonb,revision=${SANDBOX_ACTION_LIMIT} where id=${start.id}`;
+    await f.sql`insert into rwa_sandbox_events(case_id,workspace_id,operation_id,revision,actor_user_id,command,created_at)
+      select ${start.id},${f.workspace.id},e.operation_id,e.revision,${f.user},e.command,${now}::timestamptz
+      from jsonb_to_recordset(${JSON.stringify(events)}::jsonb) as e(operation_id uuid,revision integer,command jsonb)`;
+    let saved = await changeSandbox(f.user, { ...command("verify_mock_identity", "1", SANDBOX_ACTION_LIMIT, start.id), wallet: wallets[0] }, f.sql, now);
+    expect(saved.revision).toBe(SANDBOX_ACTION_LIMIT + 1);
+    expect(await createSandbox(f.user, { listingId: f.listingId }, f.sql)).toEqual(saved);
+    for (const kind of ["verify_mock_identity", "deposit", "allocate"] as const) {
+      await expect(changeSandbox(f.user, { ...command(kind, "1", saved.revision, start.id), wallet: wallets[0] }, f.sql, now)).rejects.toThrow("event limit");
+    }
+    await expect(changeSandbox(f.user, { ...command("refund", "0.5", saved.revision, start.id), wallet: wallets[0] }, f.sql, now)).rejects.toThrow("full remaining");
+    for (const investorWallet of wallets) {
+      saved = await changeSandbox(f.user, { ...command("revoke_mock_identity", "1", saved.revision, start.id), wallet: investorWallet }, f.sql, now);
+      await expect(changeSandbox(f.user, { ...command("revoke_mock_identity", "1", saved.revision, start.id), wallet: investorWallet }, f.sql, now)).rejects.toThrow("No approved");
+      const refund = { ...command("refund", "1", saved.revision, start.id), wallet: investorWallet };
+      saved = await changeSandbox(f.user, refund, f.sql, now);
+      expect(await changeSandbox(f.user, refund, f.sql, now)).toEqual(saved);
+    }
+    expect(saved.state.investors.every(value => value.mockIdentity === "revoked" && value.escrowMicro === "0")).toBe(true);
+    expect(saved.revision).toBe(SANDBOX_ACTION_LIMIT + 2 * SANDBOX_INVESTOR_LIMIT + 1);
+    expect((await getSandbox(f.user, f.sql)).cases[0]).toEqual(saved);
+    const history = await getSandboxEvents(f.user, start.id, f.sql);
+    expect(history).toHaveLength(SANDBOX_ACTION_LIMIT + 2 * SANDBOX_INVESTOR_LIMIT);
+    expect(history.slice(0, 2 * SANDBOX_INVESTOR_LIMIT).every(event => ["refund", "revoke_mock_identity"].includes(event.kind))).toBe(true);
+    await expect(changeSandbox(f.user, { ...command("verify_mock_identity", "1", saved.revision, start.id), wallet: wallets[0] }, f.sql, now)).rejects.toThrow("cleanup is complete");
   });
   it("rejects cross-tenant listing, case and audit access", async () => {
     const f = await fixture();

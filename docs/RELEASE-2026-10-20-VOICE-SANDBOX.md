@@ -78,3 +78,11 @@ After approval:
 5. Inspect deployment-scoped runtime logs and record the deployment, final SHA and actual results in the ledger.
 
 **Not completed:** merge, production migration/deployment of this candidate, fresh production CiteLock/Social Desk output, and production voice/sandbox acceptance. Local and compiled-production tests do not substitute for these remaining checks. No actual social publication, phone provisioning, payment or blockchain transaction is claimed.
+## Final review corrections
+
+Automated review identified two additional edge cases after the initial complete gates above. Both are fixed with regressions:
+
+- Amount validation now completes string-format validation before numeric BigInt refinement. Invalid values such as `NaN`, `1,000`, and `1.2a` return normal validation issues from `safeParse` instead of throwing a JavaScript syntax error.
+- The1,000-action limit now closes new claims, deposits and allocations while retaining a bounded cleanup path: each of25investors can revoke a still-approved claim and refund their full remaining escrow, for at most50 additional audited events. Repeated revocations and partial refunds cannot consume the cleanup reserve. Idempotent retries remain valid at the final cap.
+
+The updated sandbox suite passes19/19, including a database-backed1,050-event boundary with all investors revoked/refunded, full history, reload persistence, and rejected ordinary/partial/no-op operations. The full-suite counts above describe the earlier baseline; final exact-head CI must include these four additional cases. See the PR checks and private final receipts for the last commit's result. No human approval, production migration or deployment is implied by an automated code review.
