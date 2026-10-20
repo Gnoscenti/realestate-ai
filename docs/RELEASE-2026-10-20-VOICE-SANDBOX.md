@@ -1,6 +1,6 @@
 # Voice schema and fractionalization release — October 20, 2026
 
-**Status: implementation committed and pushed; tests pass; production release awaits the repository's required approving review.** This report distinguishes the tested candidate from the currently live application. The audit trail is [FLAGSHIP-LEDGER.md](FLAGSHIP-LEDGER.md), Sessions11–12.
+**Status: implementation committed and pushed; tests pass; production release awaits the repository's required approving review.** This report distinguishes the tested candidate from the currently live application. The audit trail is [FLAGSHIP-LEDGER.md](FLAGSHIP-LEDGER.md), Sessions11–13.
 
 ## What changed and why
 
@@ -16,6 +16,8 @@ The release also preserves the incoming onboarding, CiteLock and fractionalizati
 - `4e4079e`: preserved 85 incoming CRLF-only file changes separately.
 - `96ee7cb`: verified implementation, schema, tests, configuration and sandbox.
 - `3d9d9d348ed2dacb935c7b7a40089293aed64c36`: integrated existing voice branch `2de4041`; exactly the same tree as tested `96ee7cb`.
+- `ae5260d`: safe amount validation and bounded cleanup after the event cap.
+- `3f54a94c4b781d85ddec6a0789848abebee642db`: paginated older simulation access and regressions; final verified application source.
 - Release branch: `fix/voice-schema-sandbox-release-20261020`.
 - [PR52](https://github.com/Gnoscenti/realestate-ai/pull/52) includes current main and existing voice history. No reset or force push occurred.
 - This closeout changes documentation only. Resolve its current commit and checks from the PR; application acceptance corresponds to the unchanged application tree above.
@@ -25,20 +27,20 @@ The release also preserves the incoming onboarding, CiteLock and fractionalizati
 | Gate | Actual result |
 |---|---|
 | Targeted formerly failing voice suites | 52/52 passed |
-| Full unit/integration | 593/593 in 72 files passed |
+| Full unit/integration | 598/598 in 72 files passed |
 | TypeScript and AIEO fixture types | Passed |
 | Whole-repository ESLint | Passed, zero warnings |
 | Vite production build | Passed |
-| Native PostgreSQL suite | 155/155 in 21 files passed; fresh migrations and repeat no-op |
+| Native PostgreSQL suite | 160/160 in 21 files passed; fresh migrations and repeat no-op |
 | Compiled production artifact + PostgreSQL auth | 4/4 passed, including isolation, origin rejection and free/paid guide access |
-| Full browser workflows | 27/27 passed with zero retries |
+| Full browser workflows | 28/28 passed with zero retries |
 | Development auth | 3/3 applicable cases passed; production-only origin case covered above |
 | Independent cold-start calendar runs | Three separate starts passed with zero retries |
 | Local Foundry harness | 5/5 passed |
 | Secret scan | No configured private values in 425 intended Git files |
-| Exact application-head remote checks | [CI39488409081](https://github.com/Gnoscenti/realestate-ai/actions/runs/39488409081), [contracts39488408999](https://github.com/Gnoscenti/realestate-ai/actions/runs/39488408999), Vercel preview all passed |
+| Exact application-head remote checks | [CI39512081285](https://github.com/Gnoscenti/realestate-ai/actions/runs/39512081285), [contracts39512081253](https://github.com/Gnoscenti/realestate-ai/actions/runs/39512081253), Vercel preview all passed |
 
-The full suite includes persistent database startup/restart and historical migration-lineage tests. Earlier concurrent diagnostic runs hit host contention/cold-start deadlines; they are recorded in the ledger. All final local gates ran serially with unchanged assertions/timeouts and no retries. These are overlapping suites, not additive unique-test totals.
+The full suite includes persistent database startup/restart and historical migration-lineage tests. Earlier concurrent diagnostic runs hit host contention/cold-start deadlines; they are recorded in the ledger. Final application-head CI passed with unchanged existing assertions/timeouts and no retries. Targeted local sandbox checks passed20/20 on both PGLite and native PostgreSQL, and both sandbox browser workflows passed without retries. A local operator harness initially checked a temporary PostgreSQL initialization socket too early; waiting for the actual TCP server fixed that setup race before the native tests ran. These are overlapping suites, not additive unique-test totals.
 
 Use the existing Node24/npm12.2 toolchain. The equivalent repository commands are:
 
@@ -67,8 +69,9 @@ Production configuration now includes the sandbox enable flag and a generated Se
 
 ## Required next action and release sequence
 
-GitHub rejected the normal expected-head merge because `main` requires **one approving review**, including for administrators. Copilot has submitted comment-only reviews; none is an approving review. Auto-merge is disabled. The owner selected Copilot as approver on October20. The repository now enables GitHub's public-preview Copilot approvals feature; a fresh, actual approving review is required. The one-review requirement, required checks and administrator enforcement remain enabled. The earlier human-only route is superseded by this explicitly selected reviewer.
+GitHub requires **one approving review**, including for administrators. The owner chose Copilot, and repository Copilot approvals were enabled without changing the required-review count, checks or administrator enforcement. Copilot's final [review5592902738](https://github.com/Gnoscenti/realestate-ai/pull/52#pullrequestreview-5592902738) on verified application head3f54a94 found **no open issues**, but returned **COMMENTED** and called for human review of the schema upgrade and billing/provider rollout. GitHub still reports REVIEW_REQUIRED/BLOCKED. Auto-merge is disabled.
 
+Only the author Gnoscenti is currently listed as a collaborator. A trusted eligible human reviewer must approve the PR; the owner has been asked to identify that reviewer. No approval was manufactured and no protection was removed.
 After approval:
 
 1. Fetch main, preserve any newer changes, and confirm all checks and approval apply to the final PR head. Merge normally; verify ancestry and a clean local checkout.
@@ -85,12 +88,12 @@ Automated review identified two additional edge cases after the initial complete
 - Amount validation now completes string-format validation before numeric BigInt refinement. Invalid values such as `NaN`, `1,000`, and `1.2a` return normal validation issues from `safeParse` instead of throwing a JavaScript syntax error.
 - The1,000-action limit now closes new claims, deposits and allocations while retaining a bounded cleanup path: each of25investors can revoke a still-approved claim and refund their full remaining escrow, for at most50 additional audited events. Repeated revocations and partial refunds cannot consume the cleanup reserve. Idempotent retries remain valid at the final cap.
 
-The updated sandbox suite passes19/19, including a database-backed1,050-event boundary with all investors revoked/refunded, full history, reload persistence, and rejected ordinary/partial/no-op operations. The full-suite counts above describe the earlier baseline; final exact-head CI must include these four additional cases. See the PR checks and private final receipts for the last commit's result. No human approval, production migration or deployment is implied by an automated code review.
+The final sandbox suite passes20/20 on PGLite and native PostgreSQL, including the1,050-event boundary with all investors revoked/refunded, full history, reload persistence, and rejected ordinary/partial/no-op operations. Full final CI counts are in the table above.
 
 ### Older simulation access correction
 
 Copilot's follow-up found that saved simulations beyond the first100 properties could not be reopened. The sandbox now pages through older references using a workspace-scoped creation-time/ID cursor and keeps the selected older simulation available during refresh. This preserves access to refunds, revocation and audit export without unbounded initial reads or a creation cap.
 
-Local checks for this correction: sandbox20/20, real browser2/2 with no retries, full TypeScript, zero-warning lint. The browser regression creates101 real persisted cases, reopens the older one, refreshes it, refunds its test escrow, reloads and exports its history. No migration changes. Exact-head CI and a new Copilot review are required after the fix is pushed. The preceding full597-unit/159-PostgreSQL/27-browser acceptance is historical; the new regressions increase those counts by one each when the fresh full suites pass.
+Local checks for this correction: sandbox20/20 on PGLite and native PostgreSQL, real browser2/2 with no retries, full TypeScript, zero-warning lint and production build. The browser regression creates101 real persisted cases, reopens the older one, refreshes it, refunds its test escrow, reloads and exports its history. No migration changes. Exact-head full CI passed598 unit/integration,160 native PostgreSQL and28 browser scenarios, plus the additional gates in the table above.
 
-Copilot approvals are enabled, but review5592797204 remained COMMENTED and called for final human review of the coordinated schema/billing/provider release. The accessibility defect is corrected; approval is still a separate prerequisite. Production remains unchanged until the reviewed candidate is normally merged, migrated and deployed.
+Implementation and verification of the candidate are complete. Required human approval, merge, production migration/deployment and full acceptance of the new production release remain open. The existing production baseline does not verify the pending voice/sandbox features.
