@@ -11,5 +11,11 @@
   "buildCommand": "npx --yes npm@12.2.0 run build",
   "regions": [
     "sfo1"
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/voice/process-webhooks",
+      "schedule": "17 7 * * *"
+    }
   ]
 }

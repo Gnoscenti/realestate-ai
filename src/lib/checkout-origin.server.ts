@@ -31,3 +31,7 @@ export function assertCheckoutReturnUrls(input: {
     cancelUrl: validateReturnUrl(input.cancelUrl, expectedOrigin),
   };
 }
+
+export function assertCheckoutReturnUrl(rawUrl: string): string {
+  return validateReturnUrl(rawUrl, appOrigin());
+}
