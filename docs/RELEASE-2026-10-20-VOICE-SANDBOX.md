@@ -67,7 +67,7 @@ Production configuration now includes the sandbox enable flag and a generated Se
 
 ## Required next action and release sequence
 
-GitHub rejected the normal expected-head merge because `main` requires **one approving review**, including for administrators. No review has been submitted. Auto-merge is disabled. An eligible collaborator other than PR author `Gnoscenti` must approve PR52. The rule has not been weakened or bypassed.
+GitHub rejected the normal expected-head merge because `main` requires **one approving review**, including for administrators. No review has been submitted. Auto-merge is disabled. The owner selected Copilot as approver on October20. The repository now enables GitHub's public-preview Copilot approvals feature; a fresh, actual approving review is required. The one-review requirement, required checks and administrator enforcement remain enabled. The earlier human-only route is superseded by this explicitly selected reviewer.
 
 After approval:
 
