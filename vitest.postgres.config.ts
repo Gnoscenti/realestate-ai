@@ -17,6 +17,7 @@ export default defineConfig({
       "tests/unit/visibility-subjects.test.ts", "tests/unit/citelock-guide.test.ts",
       "tests/unit/inbox-drafts-repository.test.ts",
       "tests/unit/onboarding-repository.test.ts",
+      "tests/unit/voice*.test.ts",
     ],
     env: { DATABASE_URL: url.toString(), BETA_ACCESS_CODES: "", XAI_API_KEY: "", GEMINI_API_KEY: "", OPENAI_API_KEY: "", PERPLEXITY_API_KEY: "", RAPIDAPI_KEY: "" },
     testTimeout: 15000,

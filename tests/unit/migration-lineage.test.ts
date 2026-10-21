@@ -51,6 +51,7 @@ describe("integrated migration lineage",()=>{
         }
         const before=(await db.query("select name, applied_at from _migrations order by name")).rows;
         await apply(db,names);
+        await db.exec(await readFile(resolve("migrations/0020_voice_runtime_reconciliation.sql"),"utf8"));
         const after=(await db.query<{name:string;applied_at:unknown}>("select name, applied_at from _migrations order by name")).rows;
         expect(after).toHaveLength(names.length);
         expect(after.filter(r=>baseline.includes(r.name))).toEqual(before);

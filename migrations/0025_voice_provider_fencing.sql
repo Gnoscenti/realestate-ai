@@ -1,3 +1,5 @@
+-- Constraint guards preserve compatibility with the parallel cumulative voice
+-- reconciliation migration. Existing migration names and records remain intact.
 -- Fence provider work and durably reconcile verified billing events.
 --
 -- Migration 0010 has already been deployed. Keep these follow-up schema
@@ -24,17 +26,35 @@ alter table voice_provisioning_jobs
 alter table voice_provisioning_jobs
   add column if not exists provider_mutation_intent_at timestamptz;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_provider_mutation_intent_check
-  check (provider_mutation_intent in ('create_llm','create_agent_draft'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_provider_mutation_intent_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_provider_mutation_intent_check
+      check (provider_mutation_intent in ('create_llm','create_agent_draft'));
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_provider_mutation_intent_time_check
-  check (
-    (provider_mutation_intent is null and provider_mutation_intent_at is null)
-    or
-    (provider_mutation_intent is not null and provider_mutation_intent_at is not null)
-  );
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_provider_mutation_intent_time_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_provider_mutation_intent_time_check
+      check (
+        (provider_mutation_intent is null and provider_mutation_intent_at is null)
+        or
+        (provider_mutation_intent is not null and provider_mutation_intent_at is not null)
+      );
+  end if;
+end $$;
 
 -- A verified Stripe event and its ordered entitlement change are committed
 -- before any contended provider work. Provider convergence is a durable worker
@@ -55,13 +75,31 @@ alter table voice_stripe_events
 alter table voice_stripe_events
   add column if not exists policy_error text;
 
-alter table voice_stripe_events
-  add constraint voice_stripe_events_policy_reconciliation_state_check
-  check (policy_reconciliation_state in ('not_required','pending','completed'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_stripe_events'::regclass
+      and conname = 'voice_stripe_events_policy_reconciliation_state_check'
+  ) then
+    alter table voice_stripe_events
+      add constraint voice_stripe_events_policy_reconciliation_state_check
+      check (policy_reconciliation_state in ('not_required','pending','completed'));
+  end if;
+end $$;
 
-alter table voice_stripe_events
-  add constraint voice_stripe_events_policy_reconcile_attempts_check
-  check (policy_reconcile_attempts >= 0);
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_stripe_events'::regclass
+      and conname = 'voice_stripe_events_policy_reconcile_attempts_check'
+  ) then
+    alter table voice_stripe_events
+      add constraint voice_stripe_events_policy_reconcile_attempts_check
+      check (policy_reconcile_attempts >= 0);
+  end if;
+end $$;
 
 create index if not exists voice_stripe_events_policy_pending_idx
   on voice_stripe_events(policy_reconciliation_state, policy_reconcile_after,

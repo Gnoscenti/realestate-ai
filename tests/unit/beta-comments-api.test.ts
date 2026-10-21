@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("GitHub beta issue creation", () => {
-  it("creates an issue with the automation label", async () => {
+  it("creates a review-only intake issue without the coding-agent label", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -39,10 +39,14 @@ describe("GitHub beta issue creation", () => {
 
     expect(issue?.number).toBe(42);
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
-    expect(request.labels).toContain("beta-feedback");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "Gnoscenti/realestate-ai-feedback-intake/issues",
+    );
+    expect(request.labels).toContain("feedback-intake");
+    expect(request.labels).not.toContain("ai-ready");
   });
 
-  it("keeps beta-feedback on the 422 label fallback", async () => {
+  it("keeps feedback-intake on the 422 label fallback", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("invalid label", { status: 422 }))
@@ -62,7 +66,7 @@ describe("GitHub beta issue creation", () => {
 
     expect(issue?.number).toBe(43);
     const fallback = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
-    expect(fallback.labels).toEqual(["beta-feedback"]);
+    expect(fallback.labels).toEqual(["feedback-intake"]);
   });
 
   it("treats a bare 404 as delivery failure", async () => {

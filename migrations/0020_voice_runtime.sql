@@ -1,3 +1,5 @@
+-- Constraint guards preserve compatibility with the parallel cumulative voice
+-- reconciliation migration. Existing migration names and records remain intact.
 -- Live Retell + customer-controlled Twilio runtime.
 --
 -- Provider API credentials remain server environment secrets. Only provider
@@ -33,9 +35,18 @@ alter table voice_prompt_versions
 alter table voice_prompt_versions
   drop constraint if exists voice_prompt_versions_provider_sync_state_check;
 
-alter table voice_prompt_versions
-  add constraint voice_prompt_versions_provider_sync_state_check
-  check (provider_sync_state in ('pending', 'synced', 'failed'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_prompt_versions'::regclass
+      and conname = 'voice_prompt_versions_provider_sync_state_check'
+  ) then
+    alter table voice_prompt_versions
+      add constraint voice_prompt_versions_provider_sync_state_check
+      check (provider_sync_state in ('pending', 'synced', 'failed'));
+  end if;
+end $$;
 
 alter table voice_phone_numbers
   add column if not exists twilio_origination_url_sid text;
@@ -67,17 +78,35 @@ alter table voice_provisioning_jobs
 alter table voice_provisioning_jobs
   add column if not exists lease_expires_at timestamptz;
 
-alter table voice_assistants
-  add constraint voice_assistants_provisioning_job_fk
-  foreign key (provisioning_job_id)
-  references voice_provisioning_jobs(id)
-  on delete set null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_assistants'::regclass
+      and conname = 'voice_assistants_provisioning_job_fk'
+  ) then
+    alter table voice_assistants
+      add constraint voice_assistants_provisioning_job_fk
+      foreign key (provisioning_job_id)
+      references voice_provisioning_jobs(id)
+      on delete set null;
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_prompt_version_fk
-  foreign key (prompt_version_id)
-  references voice_prompt_versions(id)
-  on delete no action;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_prompt_version_fk'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_prompt_version_fk
+      foreign key (prompt_version_id)
+      references voice_prompt_versions(id)
+      on delete no action;
+  end if;
+end $$;
 
 alter table voice_webhook_events
   add column if not exists attempt_count integer not null default 0;
@@ -91,9 +120,18 @@ alter table voice_webhook_events
 alter table voice_webhook_events
   add column if not exists updated_at timestamptz not null default now();
 
-alter table voice_webhook_events
-  add constraint voice_webhook_events_attempt_count_check
-  check (attempt_count >= 0);
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_webhook_events'::regclass
+      and conname = 'voice_webhook_events_attempt_count_check'
+  ) then
+    alter table voice_webhook_events
+      add constraint voice_webhook_events_attempt_count_check
+      check (attempt_count >= 0);
+  end if;
+end $$;
 
 create index if not exists voice_webhook_events_processing_idx
   on voice_webhook_events(processing_state, next_attempt_at, received_at);

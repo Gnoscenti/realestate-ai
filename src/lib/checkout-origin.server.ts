@@ -21,6 +21,11 @@ function validateReturnUrl(rawUrl: string, expectedOrigin: string): string {
   return url.toString();
 }
 
+/** Validate one authenticated checkout/portal return URL against this request. */
+export function assertCheckoutReturnUrl(rawUrl: string): string {
+  return validateReturnUrl(rawUrl, appOrigin());
+}
+
 export function assertCheckoutReturnUrls(input: {
   successUrl: string;
   cancelUrl: string;
@@ -30,8 +35,4 @@ export function assertCheckoutReturnUrls(input: {
     successUrl: validateReturnUrl(input.successUrl, expectedOrigin),
     cancelUrl: validateReturnUrl(input.cancelUrl, expectedOrigin),
   };
-}
-
-export function assertCheckoutReturnUrl(rawUrl: string): string {
-  return validateReturnUrl(rawUrl, appOrigin());
 }

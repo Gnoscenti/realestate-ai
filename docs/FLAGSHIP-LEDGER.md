@@ -1261,3 +1261,20 @@ Vercel production dpl_6PsN6dDGZcodwNU61tNGGqKhpftu is READY and authenticated CL
 Zero uncaught browser errors and zero same-originHTTP5xx. Bounded new-deployment log sample:four existing pg SSL future-major-version warnings on successful requests, zeroHTTP5xx and no other error entries. No production credentials, dependencies, migrations, customer records, external publications or payments changed. The existing synthetic acceptance account/media remain as documented in Session9.
 
 The cold-start bug is resolved and has a permanent no-retry CI gate. Explicit root CSS must remain linked; if additional route stylesheets are introduced, link them explicitly and preserve the cold-start regression. Source details and unsuccessful experiments are retained above. Final documentation-only closeout contains this evidence; its deployment serves identical application code. Final alias/persistence and CI receipt is retained under ignored tmp/session10/final-release-receipt.json and reported in the delivery response.
+
+## Session 15 — ordered PR integration for the solo maintainer (2026-10-20)
+
+### Decisions and authorization
+The owner requested PRs #49, #50, #51, then #52 be fixed and merged before release, and explicitly authorized comments and removing the outside-review requirement because they are the sole maintainer. Required approvals changed from one to zero; a full API snapshot comparison confirmed every other protection unchanged: strict test/postgres checks, PR workflow, administrator enforcement, conversation resolution, and force-push/deletion prohibitions. This supersedes the earlier pending one-time exception proposal. No self-approval was fabricated.
+
+### Audit findings and changes
+- PR49's newer Social Desk listing handoff changed `newDraft` to accept an optional origin string, but the button still passed its mouse event directly. Wrapped the click callback to call `newDraft()`; preserved one-shot origin restoration and clearing the origin on listing handoff.
+- The reported single-return-URL export and generated voice routes are present in PR49. Added seven same-origin/credentials/protocol/production-HTTPS regression cases from the already verified release branch.
+- PR49 contains a cumulative voice reconciliation migration while PR51 carries the original six forward migrations. Their constraint replay must be tested in both upgrade orders before production; existing migration filenames and data must be preserved.
+- Kept production Git auto-deployment on hold for main so intermediate integrations cannot publish before the complete release passes checks, backup/restore rehearsal and migration review.
+
+### Verification and open items
+Local validation and exact-head CI are required before each normal, expected-head merge. No production migration or deployment occurred while these fixes were prepared. Detailed sanitized receipts and policy snapshots are retained in the ignored session15 operator folder; final release evidence will be appended after actual execution.
+
+
+Session15 PR51 convergence: reproduced a duplicate `voice_webhook_events_attempt_count_check` when PR49 reconciliation ran before the six voice migrations. Guarded the 19 constraint additions in 0020_voice_runtime, 0021_voice_beta_hardening and 0025_voice_provider_fencing by table/name; kept all filenames, existing ledger records, constraint definitions and tenant relationships. These release migrations have not been applied to production. Added two populated-foundation upgrade tests (reconciliation-first and original-first), preserving assistant/provider identity, prompts, consented transcripts and unverified historical billing. Both orders and all three existing migration lineages pass (5 tests); included the voice suites in native PostgreSQL CI. Conflict resolution preserves PR49's newer onboarding/private feedback/social handoff, one checkout helper, one voice navigation entry, and the 04:17 daily recovery cron documented by PR50.
