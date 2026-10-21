@@ -2,6 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { auth } from "@/lib/auth/server";
 import { listVoiceCalls } from "@/lib/voice/calls.server";
 
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some(
+    (character) => (character.codePointAt(0) ?? 0) < 32,
+  );
+}
+
 async function getCalls(request: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session?.user?.id) {
@@ -12,7 +18,7 @@ async function getCalls(request: Request): Promise<Response> {
   if (
     !workspaceId ||
     workspaceId.length > 240 ||
-    /[\u0000-\u001f]/.test(workspaceId)
+    hasControlCharacter(workspaceId)
   ) {
     return Response.json({ error: "workspaceId is required" }, { status: 400 });
   }

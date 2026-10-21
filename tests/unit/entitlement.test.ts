@@ -9,6 +9,7 @@ import {
   redeemAccessCode,
   requireEntitlement,
 } from "@/lib/billing/entitlement.server";
+import { getFeedbackEntitlement } from "@/lib/beta-comments-entitlement.server";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -18,6 +19,17 @@ describe("server-side entitlement", () => {
     const workspace = await ensurePersonalWorkspace(userId);
     expect((await getEntitlement(userId, workspace.id)).active).toBe(false);
     await expect(requireEntitlement(userId, workspace.id)).rejects.toThrow(/active plan/);
+  });
+
+  it("authorizes global feedback from the server grant, not a browser-held beta code", async () => {
+    const userId = `ent-feedback-${randomUUID()}`;
+    expect(await getFeedbackEntitlement(userId)).toMatchObject({ active: false });
+    const workspace = await ensurePersonalWorkspace(userId);
+    await redeemAccessCode(userId, workspace.id, "RSF-BETA-01");
+    await expect(getFeedbackEntitlement(userId)).resolves.toMatchObject({
+      active: true,
+      workspaceId: workspace.id,
+    });
   });
 
   it("redeems a server-held code once per workspace", async () => {
