@@ -27,9 +27,13 @@ import { Route as OutreachRouteImport } from './routes/outreach'
 import { Route as PropertiesRouteImport } from './routes/properties'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiListingMediaIdRouteImport } from './routes/api/listing-media/$id'
+import { Route as ApiVoiceCallsRouteImport } from './routes/api/voice/calls'
+import { Route as ApiWebhooksRetellRouteImport } from './routes/api/webhooks/retell'
 import { Route as ApiWebhooksSocialStripeRouteImport } from './routes/api/webhooks/social-stripe'
+import { Route as ApiInternalVoiceProcessWebhooksRouteImport } from './routes/api/internal/voice/process-webhooks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -121,6 +125,11 @@ const TransactionsRoute = TransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VoiceRoute = VoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -131,11 +140,27 @@ const ApiListingMediaIdRoute = ApiListingMediaIdRouteImport.update({
   path: '/api/listing-media/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVoiceCallsRoute = ApiVoiceCallsRouteImport.update({
+  id: '/api/voice/calls',
+  path: '/api/voice/calls',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksRetellRoute = ApiWebhooksRetellRouteImport.update({
+  id: '/api/webhooks/retell',
+  path: '/api/webhooks/retell',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksSocialStripeRoute = ApiWebhooksSocialStripeRouteImport.update({
   id: '/api/webhooks/social-stripe',
   path: '/api/webhooks/social-stripe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalVoiceProcessWebhooksRoute =
+  ApiInternalVoiceProcessWebhooksRouteImport.update({
+    id: '/api/internal/voice/process-webhooks',
+    path: '/api/internal/voice/process-webhooks',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -156,9 +181,13 @@ export interface FileRoutesByFullPath {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
   '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -179,9 +208,13 @@ export interface FileRoutesByTo {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
   '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -203,9 +236,13 @@ export interface FileRoutesById {
   '/properties': typeof PropertiesRoute
   '/search': typeof SearchRoute
   '/transactions': typeof TransactionsRoute
+  '/voice': typeof VoiceRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/listing-media/$id': typeof ApiListingMediaIdRoute
+  '/api/voice/calls': typeof ApiVoiceCallsRoute
+  '/api/webhooks/retell': typeof ApiWebhooksRetellRoute
   '/api/webhooks/social-stripe': typeof ApiWebhooksSocialStripeRoute
+  '/api/internal/voice/process-webhooks': typeof ApiInternalVoiceProcessWebhooksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -228,9 +265,13 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
     | '/api/auth/$'
     | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
     | '/api/webhooks/social-stripe'
+    | '/api/internal/voice/process-webhooks'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -251,9 +292,13 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
     | '/api/auth/$'
     | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
     | '/api/webhooks/social-stripe'
+    | '/api/internal/voice/process-webhooks'
   id:
     | '__root__'
     | '/'
@@ -274,9 +319,13 @@ export interface FileRouteTypes {
     | '/properties'
     | '/search'
     | '/transactions'
+    | '/voice'
     | '/api/auth/$'
     | '/api/listing-media/$id'
+    | '/api/voice/calls'
+    | '/api/webhooks/retell'
     | '/api/webhooks/social-stripe'
+    | '/api/internal/voice/process-webhooks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -298,9 +347,13 @@ export interface RootRouteChildren {
   PropertiesRoute: typeof PropertiesRoute
   SearchRoute: typeof SearchRoute
   TransactionsRoute: typeof TransactionsRoute
+  VoiceRoute: typeof VoiceRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiListingMediaIdRoute: typeof ApiListingMediaIdRoute
+  ApiVoiceCallsRoute: typeof ApiVoiceCallsRoute
+  ApiWebhooksRetellRoute: typeof ApiWebhooksRetellRoute
   ApiWebhooksSocialStripeRoute: typeof ApiWebhooksSocialStripeRoute
+  ApiInternalVoiceProcessWebhooksRoute: typeof ApiInternalVoiceProcessWebhooksRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -431,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TransactionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/voice': {
+      id: '/voice'
+      path: '/voice'
+      fullPath: '/voice'
+      preLoaderRoute: typeof VoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -445,11 +505,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiListingMediaIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/voice/calls': {
+      id: '/api/voice/calls'
+      path: '/api/voice/calls'
+      fullPath: '/api/voice/calls'
+      preLoaderRoute: typeof ApiVoiceCallsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/retell': {
+      id: '/api/webhooks/retell'
+      path: '/api/webhooks/retell'
+      fullPath: '/api/webhooks/retell'
+      preLoaderRoute: typeof ApiWebhooksRetellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/social-stripe': {
       id: '/api/webhooks/social-stripe'
       path: '/api/webhooks/social-stripe'
       fullPath: '/api/webhooks/social-stripe'
       preLoaderRoute: typeof ApiWebhooksSocialStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/voice/process-webhooks': {
+      id: '/api/internal/voice/process-webhooks'
+      path: '/api/internal/voice/process-webhooks'
+      fullPath: '/api/internal/voice/process-webhooks'
+      preLoaderRoute: typeof ApiInternalVoiceProcessWebhooksRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -474,9 +555,13 @@ const rootRouteChildren: RootRouteChildren = {
   PropertiesRoute: PropertiesRoute,
   SearchRoute: SearchRoute,
   TransactionsRoute: TransactionsRoute,
+  VoiceRoute: VoiceRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiListingMediaIdRoute: ApiListingMediaIdRoute,
+  ApiVoiceCallsRoute: ApiVoiceCallsRoute,
+  ApiWebhooksRetellRoute: ApiWebhooksRetellRoute,
   ApiWebhooksSocialStripeRoute: ApiWebhooksSocialStripeRoute,
+  ApiInternalVoiceProcessWebhooksRoute: ApiInternalVoiceProcessWebhooksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
