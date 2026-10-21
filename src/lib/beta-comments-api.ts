@@ -88,15 +88,6 @@ function issueTitleExcerpt(value: string): string {
     .slice(0, 72);
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#x27;");
-}
-
 interface GHIssue {
   number: number;
   html_url: string;
@@ -142,47 +133,6 @@ export async function createGitHubIssue(
     return { number: issue.number, html_url: issue.html_url, title: issue.title };
   } catch {
     return null;
-  }
-}
-
-/** Send notification email via Resend without exposing an owner address. */
-async function sendResendEmail(
-  rec: BetaCommentRecord,
-  markdown: string,
-  issueUrl?: string,
-): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const to = process.env.ALERT_EMAIL || process.env.BETA_FEEDBACK_EMAIL;
-  if (!apiKey || !to) return false;
-  try {
-    const subject = `[Feedback] ${rec.pageTitle} — ${rec.category}`;
-    const html = [
-      "<h2>Feedback intake</h2>",
-      `<p><b>Page:</b> ${escapeHtml(rec.pageTitle)} (<code>${escapeHtml(rec.pagePath)}</code>)</p>`,
-      `<p><b>Module:</b> ${escapeHtml(rec.module)} | <b>Category:</b> ${escapeHtml(rec.category)}</p>`,
-      "<p><b>Reporter input (untrusted):</b></p>",
-      `<pre style="white-space:pre-wrap">${escapeHtml(rec.body)}</pre>`,
-      issueUrl
-        ? `<p><b>GitHub intake:</b> <a href="${escapeHtml(issueUrl)}">${escapeHtml(issueUrl)}</a></p>`
-        : "",
-      `<hr/><pre>${escapeHtml(markdown)}</pre>`,
-    ].join("\n");
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "beta-feedback@resend.dev",
-        to,
-        subject,
-        html,
-      }),
-    });
-    return response.ok;
-  } catch {
-    return false;
   }
 }
 
@@ -239,14 +189,6 @@ export const submitBetaComment = createServerFn({ method: "POST" })
         };
         destinations.push("github-intake-issue");
       }
-    }
-
-    if (
-      process.env.RESEND_API_KEY &&
-      (process.env.ALERT_EMAIL || process.env.BETA_FEEDBACK_EMAIL)
-    ) {
-      const delivered = await sendResendEmail(record, markdown, issue?.url);
-      if (delivered) destinations.push("email");
     }
 
     return {
