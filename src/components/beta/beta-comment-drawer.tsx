@@ -228,7 +228,11 @@ export function BetaCommentDrawer() {
         );
         return;
       }
-      reconcileLocalBetaComment(localRecord.id, response.record);
+      reconcileLocalBetaComment(localRecord.id, {
+        ...response.record,
+        globalNumber: localRecord.globalNumber,
+        fileName: localRecord.fileName,
+      });
       if (response.issue) {
         toast.success(
           `Suggestion logged for engineering review in GitHub #${response.issue.number}`,
