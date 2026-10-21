@@ -474,7 +474,7 @@ function SocialDeskPage() {
               your own scheduler connection or a manual handoff with a receipt — never a fake "published" badge.
             </p>
           </div>
-          <Button onClick={newDraft} variant="secondary">
+          <Button onClick={() => newDraft()} variant="secondary">
             <Sparkles className="h-4 w-4" /> New post
           </Button>
         </div>

@@ -4,7 +4,8 @@
   "git": {
     "deploymentEnabled": {
       "feat/website-bio-onboarding": false,
-      "fix/citelock-source-provenance-20261014": false
+      "fix/citelock-source-provenance-20261014": false,
+      "main": false
     }
   },
   "installCommand": "npx --yes npm@12.2.0 ci",
