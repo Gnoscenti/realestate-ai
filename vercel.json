@@ -3,6 +3,7 @@
   "framework": null,
   "git": {
     "deploymentEnabled": {
+      "main": false,
       "feat/website-bio-onboarding": false,
       "fix/citelock-source-provenance-20261014": false,
       "main": false

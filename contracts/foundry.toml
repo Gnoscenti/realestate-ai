@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.17"
+optimizer = true
+optimizer_runs = 200
+chain_id = 31337
+remappings = [
+  "erc3643/=lib/erc3643/contracts/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+  "@onchain-id/solidity/=lib/onchain-id/"
+]

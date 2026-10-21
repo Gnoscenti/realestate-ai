@@ -11,13 +11,13 @@ export default defineConfig({
     // Failure injection changes constraints; suites must run serially on this isolated database.
     fileParallelism: false,
     include: [
-      "tests/unit/workspace-repository.test.ts", "tests/unit/citelock-repository.test.ts",
+      "tests/unit/compliance-ledger.test.ts", "tests/unit/workspace-repository.test.ts", "tests/unit/citelock-repository.test.ts",
       "tests/unit/entitlement.test.ts", "tests/unit/social-desk.test.ts",
       "tests/unit/social-dispatch.test.ts", "tests/unit/visibility-engine.test.ts",
       "tests/unit/visibility-subjects.test.ts", "tests/unit/citelock-guide.test.ts",
       "tests/unit/inbox-drafts-repository.test.ts",
       "tests/unit/onboarding-repository.test.ts",
-      "tests/unit/voice*.test.ts",
+      "tests/unit/voice-*.test.ts",
     ],
     env: { DATABASE_URL: url.toString(), BETA_ACCESS_CODES: "", XAI_API_KEY: "", GEMINI_API_KEY: "", OPENAI_API_KEY: "", PERPLEXITY_API_KEY: "", RAPIDAPI_KEY: "" },
     testTimeout: 15000,
