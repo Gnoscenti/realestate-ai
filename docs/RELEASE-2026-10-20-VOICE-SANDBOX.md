@@ -1,12 +1,12 @@
 # Voice schema and fractionalization release — October 20, 2026
 
-**Status: implementation committed and pushed; tests pass; production release awaits the repository's required approving review.** This report distinguishes the tested candidate from the currently live application. The audit trail is [FLAGSHIP-LEDGER.md](FLAGSHIP-LEDGER.md), Sessions11–13.
+**Status at this commit: ordered integration of PRs #49–#52 is in progress; PR49 is merged.** The owner authorized zero required outside approvals for the solo-maintainer workflow. All other branch protections remain unchanged. This report distinguishes verified candidate evidence from production acceptance. See [FLAGSHIP-LEDGER.md](FLAGSHIP-LEDGER.md), Sessions11–15, and the final deployment receipt posted on [PR52](https://github.com/Gnoscenti/realestate-ai/pull/52) after actual production verification.
 
 ## What changed and why
 
-The voice runtime had advanced beyond the checked-in database schema. Seven suites failed because tables/columns for provider provisioning, prompt versions, trusted billing, webhook retries and workspace mutation leases were absent. The six intended migrations already existed on the unmerged voice branch; they were reviewed against current SQL and integrated intact, together with the missing Stripe webhook route, generated router registrations, navigation and worker schedule.
+The voice runtime had advanced beyond the checked-in database schema. Seven suites failed because tables/columns for provider provisioning, prompt versions, trusted billing, webhook retries and workspace mutation leases were absent. The six intended migrations already existed on the unmerged voice branch; they were reviewed against current SQL and integrated with their original filenames, together with the missing Stripe webhook route, generated router registrations, navigation and worker schedule.
 
-A new upgrade regression starts with the older schema and existing workspace, assistant, prompt, call and billing rows. It proves preservation, stable provisioning identity backfill, no invented billing verification, lease uniqueness and repeat-migration no-op. Native PostgreSQL coverage now includes the voice suites. The portal return-URL helper retains the existing HTTPS/same-origin validation, and lint corrections preserve behavior.
+PR49 also contains a cumulative reconciliation migration. A reproduced collision when reconciliation ran first was fixed by guarding 19 constraint additions in three of the six original migrations. Both upgrade orders pass without removing migration history or fabricating billing verification. A populated upgrade regression starts with the older schema and existing workspace, assistant, prompt, call and billing rows. It proves preservation, stable provisioning identity backfill, no invented billing verification, lease uniqueness and repeat-migration no-op. Native PostgreSQL coverage now includes the voice suites. The portal return-URL helper retains the existing HTTPS/same-origin validation, and lint corrections preserve behavior.
 
 The release also preserves the incoming onboarding, CiteLock and fractionalization work. The sandbox is authenticated, workspace/listing-scoped and persistent, with exact six-decimal arithmetic, revision/idempotency protection, mock identity expiry/revocation, deposits, allocation, refund and history export. Its independent Foundry harness exercises upstream ERC-3643 identity/registry behavior on a local chain. It does not verify real identities, establish property ownership, move money or deploy a token. See [FRACTIONALIZATION-ARCHITECTURE.md](FRACTIONALIZATION-ARCHITECTURE.md).
 
@@ -17,12 +17,17 @@ The release also preserves the incoming onboarding, CiteLock and fractionalizati
 - `96ee7cb`: verified implementation, schema, tests, configuration and sandbox.
 - `3d9d9d348ed2dacb935c7b7a40089293aed64c36`: integrated existing voice branch `2de4041`; exactly the same tree as tested `96ee7cb`.
 - `ae5260d`: safe amount validation and bounded cleanup after the event cap.
-- `3f54a94c4b781d85ddec6a0789848abebee642db`: paginated older simulation access and regressions; final verified application source.
+- `3f54a94c4b781d85ddec6a0789848abebee642db`: paginated older simulation access and regressions; earlier verified application source before PR49–51 integration.
 - Release branch: `fix/voice-schema-sandbox-release-20261020`.
 - [PR52](https://github.com/Gnoscenti/realestate-ai/pull/52) includes current main and existing voice history. No reset or force push occurred.
-- This closeout changes documentation only. Resolve its current commit and checks from the PR; application acceptance corresponds to the unchanged application tree above.
+- `43a656b`: integrates newer PR49 onboarding, private feedback, fact-bound listing launch, Social Desk handoff fixes and both voice-schema lineages while retaining the sandbox changes. Resolve final exact-head CI and merge SHA from PR52.
+- PR49 merged as `8e0af808b32d7f14eb72f35330f855e037f9fa94`; PR50/51/52 follow in order. Duplicate PR53 was closed because its checkout/routes fixes and regression coverage are already included in merged PR49.
 
-## Verified candidate
+## Verification snapshots
+
+Integrated source `43a656b` passes **606 unit/integration tests in 74 files**, both TypeScript checks, zero-warning lint and production build. Its complete browser/native PostgreSQL and final remote gates are recorded on the PR as they finish; do not substitute the earlier snapshot below for those checks. PR49 exact-head [CI39537453462](https://github.com/Gnoscenti/realestate-ai/actions/runs/39537453462) passed before merge, including 29 browser workflows, three independent cold calendar starts, three development-auth and four compiled-production-auth cases with zero retries.
+
+The following table records the earlier PR52 application snapshot `3f54a94`:
 
 | Gate | Actual result |
 |---|---|
@@ -67,20 +72,18 @@ Production backup and upgrade rehearsal passed: a consistent 65-table snapshot r
 
 Production configuration now includes the sandbox enable flag and a generated Sensitive worker CRON_SECRET. Existing provider/auth/database secrets were retained. No production migration, new deployment or promotion has occurred. Live voice provider and billing configuration is still absent, so live calls/checkout are not verified.
 
-## Required next action and release sequence
+## Controlled release sequence
 
-GitHub requires **one approving review**, including for administrators. The owner chose Copilot, and repository Copilot approvals were enabled without changing the required-review count, checks or administrator enforcement. Copilot's final [review5592902738](https://github.com/Gnoscenti/realestate-ai/pull/52#pullrequestreview-5592902738) on verified application head3f54a94 found **no open issues**, but returned **COMMENTED** and called for human review of the schema upgrade and billing/provider rollout. GitHub still reports REVIEW_REQUIRED/BLOCKED. Auto-merge is disabled.
+The owner explicitly requested #49, #50, #51, then #52, and authorized removing outside approval as a blocker for the solo-maintainer repository. Required approvals changed from one to zero; strict `test`/`postgres` checks, administrator enforcement, resolved-conversation requirements and force-push/deletion restrictions are unchanged. Full policy snapshots were compared. No self-approval or admin merge override was used.
 
-Only the author Gnoscenti is currently listed as a collaborator. A trusted eligible human reviewer must approve the PR; the owner has been asked to identify that reviewer. No approval was manufactured and no protection was removed.
-After approval:
+1. Fetch main and preserve newer work. Require green exact-head CI before each normal expected-head merge in the requested order; keep local and remote refs synchronized.
+2. Recheck backup freshness and the pinned production target. The integrated source has **33 migration filenames**, with **10 pending** on the existing production database. Rehearse both migration orders and a fresh production backup/restore before applying the guarded production upgrade; verify preserved records/timestamps and repeat no-op.
+3. Keep main Git auto-deployment held. Stage the exact merged source as a production-environment Vercel deployment without domain assignment; verify project/team/SHA/readiness, then promote the same artifact.
+4. Use ordinary login for production acceptance: retained data, fresh CiteLock public-source guide and saved progress, real AI Social Desk draft through approval/manual handoff, persisted fractionalization simulation/revocation/refund/export/mobile, voice setup, unsigned-worker rejection, logout/private-media denial.
+5. Record deployment-scoped runtime checks and the actual source/deployment IDs in the operator ledger and a PR52 receipt. These are post-deploy facts and are not claimed by this pre-release commit.
 
-1. Fetch main, preserve any newer changes, and confirm all checks and approval apply to the final PR head. Merge normally; verify ancestry and a clean local checkout.
-2. Recheck the target and backup freshness. Run the guarded production migration from that exact reviewed SHA; verify all32 migration names, original timestamps and repeat no-op.
-3. Stage a production Vercel deployment with domain assignment skipped, confirm project/team/SHA/environment and readiness, then promote that same build.
-4. Run the prepared ordinary-login production acceptance: prior saved data; a fresh source-backed CiteLock guide; a real AI Social Desk draft through approval/manual handoff; sandbox creation, identity gating, precise deposit/allocation, reload, revocation, refund/export/mobile; voice setup and unsigned-worker rejection; logout and private-media denial.
-5. Inspect deployment-scoped runtime logs and record the deployment, final SHA and actual results in the ledger.
+Live voice provider activation and real fractional issuance remain outside this release. No actual social publication, phone provisioning, payment or blockchain transaction is claimed.
 
-**Not completed:** merge, production migration/deployment of this candidate, fresh production CiteLock/Social Desk output, and production voice/sandbox acceptance. Local and compiled-production tests do not substitute for these remaining checks. No actual social publication, phone provisioning, payment or blockchain transaction is claimed.
 ## Final review corrections
 
 Automated review identified two additional edge cases after the initial complete gates above. Both are fixed with regressions:
@@ -96,4 +99,4 @@ Copilot's follow-up found that saved simulations beyond the first100 properties 
 
 Local checks for this correction: sandbox20/20 on PGLite and native PostgreSQL, real browser2/2 with no retries, full TypeScript, zero-warning lint and production build. The browser regression creates101 real persisted cases, reopens the older one, refreshes it, refunds its test escrow, reloads and exports its history. No migration changes. Exact-head full CI passed598 unit/integration,160 native PostgreSQL and28 browser scenarios, plus the additional gates in the table above.
 
-Implementation and verification of the candidate are complete. Required human approval, merge, production migration/deployment and full acceptance of the new production release remain open. The existing production baseline does not verify the pending voice/sandbox features.
+The earlier sandbox fixes remain in the integrated candidate. The production baseline above verifies the existing deployment only; consult the final PR52 release receipt for the actual completed deployment and workflow checks.
