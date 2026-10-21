@@ -44,6 +44,7 @@ export function ListingLaunchPlan({
   useEffect(() => {
     if (initialPropertyId && listings.some((listing) => listing.id === initialPropertyId)) {
       setPropertyId(initialPropertyId);
+      setPlan(null);
     }
   }, [initialPropertyId, listings]);
 
