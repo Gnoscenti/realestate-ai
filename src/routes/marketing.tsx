@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -120,6 +120,7 @@ function SocialDeskPage() {
   const [lastDraft, setLastDraft] = useState<DraftResult | null>(null);
   const [history, setHistory] = useState<{ revision: number; action: string; createdAt: string }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const originLoadAttempted = useRef(false);
   const [channelId, setChannelId] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [receiptUrl, setReceiptUrl] = useState("");
@@ -179,10 +180,10 @@ function SocialDeskPage() {
     setReceiptUrl(draft.postUrl || "");
   };
 
-  const newDraft = () => {
+  const newDraft = (origin = originParam || "") => {
     setRightsReviewed(false);
     setSelectedId(null);
-    setComposer(emptyContent(composer.platform, originParam || ""));
+    setComposer(emptyContent(composer.platform, origin));
     setComposerDirty(false);
     setLastDraft(null);
   };
@@ -192,7 +193,8 @@ function SocialDeskPage() {
     if (!listing) return;
     setPropertyId(id);
     setGoal("just_listed");
-    newDraft();
+    originLoadAttempted.current = true;
+    newDraft("");
     toast.message(`${listing.title} is selected for a reviewed Social Desk draft`);
     requestAnimationFrame(() => {
       document
@@ -202,7 +204,9 @@ function SocialDeskPage() {
   };
 
   useEffect(()=>{
-    if(!originParam || !desk || selectedId) return;
+    if(!originParam || !desk || originLoadAttempted.current) return;
+    originLoadAttempted.current = true;
+    if(selectedId) return;
     const linked=desk.drafts.find(d=>d.content.origin.startsWith(originParam+":revision:"));
     if(linked) {setSelectedId(linked.id);setComposer(linked.content);setComposerDirty(false);}
   },[originParam,desk,selectedId]);
