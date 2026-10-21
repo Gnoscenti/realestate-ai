@@ -6,6 +6,7 @@ import {
   normalizeCode,
   findFreeCode,
   hasAppAccess,
+  hasFeedbackAccess,
   emptyBilling,
   activateFreeCode,
   startIntroAccess,
@@ -46,6 +47,17 @@ describe("access codes", () => {
     expect(billing).not.toBeNull();
     expect(hasAppAccess(billing)).toBe(true);
     expect(hasAppAccess(emptyBilling())).toBe(false);
+  });
+
+  it("keeps feedback visible after an active server code grant rehydrates without exposing the code", () => {
+    const billing = {
+      ...emptyBilling(),
+      status: "code" as const,
+      source: "free_code" as const,
+      currentPeriodEnd: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    expect(billing.redeemedCode).toBeNull();
+    expect(hasFeedbackAccess(billing)).toBe(true);
   });
 
   it("intro access unlocks app for 30 days", () => {

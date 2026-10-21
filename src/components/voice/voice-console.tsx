@@ -338,6 +338,10 @@ function ProvisioningPanel({
 
   async function provision() {
     if (!confirmed || !state.entitlement.canProvision || activationComplete) return;
+    if (areaCode.length !== 3) {
+      setError("Choose a three-digit US area code before requesting a number.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const stableKey =
@@ -348,7 +352,7 @@ function ProvisioningPanel({
         data: {
           workspaceId: state.workspaceId,
           idempotencyKey: stableKey,
-          areaCode: areaCode || undefined,
+          areaCode,
           confirmation: "PROVISION_NUMBER",
         },
       });
@@ -426,7 +430,7 @@ function ProvisioningPanel({
         {!activationComplete ? (
           <>
             <div className="max-w-xs">
-              <Label htmlFor="voice-area-code">Preferred US area code (optional)</Label>
+              <Label htmlFor="voice-area-code">Choose a US area code</Label>
               <Input
                 id="voice-area-code"
                 className="mt-1.5 h-11"
@@ -440,7 +444,8 @@ function ProvisioningPanel({
                 aria-describedby="voice-area-code-help"
               />
               <p id="voice-area-code-help" className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                Availability is not guaranteed. Leave blank for any available US number.
+                Required. Twilio selects an available dedicated number in this
+                area code; the app does not yet present exact-number inventory.
               </p>
             </div>
             <label className="flex min-h-[44px] cursor-pointer items-start gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3 text-sm">
@@ -471,7 +476,7 @@ function ProvisioningPanel({
                 !confirmed ||
                 !state.entitlement.canProvision ||
                 !state.profile.ready ||
-                (areaCode.length > 0 && areaCode.length !== 3)
+                areaCode.length !== 3
               }
               onClick={() => void provision()}
             >

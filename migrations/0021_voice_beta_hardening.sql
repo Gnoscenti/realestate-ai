@@ -1,3 +1,5 @@
+-- Constraint guards preserve compatibility with the parallel cumulative voice
+-- reconciliation migration. Existing migration names and records remain intact.
 -- Safe beta hardening for the inbound voice assistant.
 --
 -- This migration intentionally corrects relationships introduced by 0005 in a
@@ -77,24 +79,51 @@ alter table voice_provisioning_jobs
 alter table voice_provisioning_jobs
   drop constraint if exists voice_provisioning_jobs_state_check;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_state_check
-  check (state in (
-    'pending', 'running', 'completed', 'failed', 'canceled',
-    'setup_required', 'blocked', 'dead_letter'
-  ));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_state_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_state_check
+      check (state in (
+        'pending', 'running', 'completed', 'failed', 'canceled',
+        'setup_required', 'blocked', 'dead_letter'
+      ));
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_operation_check
-  check (operation in ('provision_number', 'prompt_sync'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_operation_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_operation_check
+      check (operation in ('provision_number', 'prompt_sync'));
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_step_check
-  check (step in (
-    'create_llm', 'create_agent', 'configure_agent', 'publish_agent',
-    'reserve_number', 'configure_sip', 'bind_number',
-    'activate', 'completed'
-  ));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_step_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_step_check
+      check (step in (
+        'create_llm', 'create_agent', 'configure_agent', 'publish_agent',
+        'reserve_number', 'configure_sip', 'bind_number',
+        'activate', 'completed'
+      ));
+  end if;
+end $$;
 
 alter table voice_provisioning_jobs
   alter column step set default 'create_llm';
@@ -103,36 +132,81 @@ update voice_provisioning_jobs
    set step = 'create_llm'
  where step = 'create_agent' and retell_llm_id is null;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_failure_count_check
-  check (failure_count >= 0);
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_failure_count_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_failure_count_check
+      check (failure_count >= 0);
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_alert_state_check
-  check (alert_state in ('not_required', 'pending', 'sent', 'unroutable'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_alert_state_check'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_alert_state_check
+      check (alert_state in ('not_required', 'pending', 'sent', 'unroutable'));
+  end if;
+end $$;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_id_workspace_unique
-  unique (id, workspace_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_id_workspace_unique'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_id_workspace_unique
+      unique (id, workspace_id);
+  end if;
+end $$;
 
 -- Replace the cross-workspace-capable single-column relationships from 0005.
 alter table voice_assistants
   drop constraint if exists voice_assistants_provisioning_job_fk;
 
-alter table voice_assistants
-  add constraint voice_assistants_provisioning_job_workspace_fk
-  foreign key (provisioning_job_id, workspace_id)
-  references voice_provisioning_jobs(id, workspace_id)
-  on delete no action deferrable initially deferred;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_assistants'::regclass
+      and conname = 'voice_assistants_provisioning_job_workspace_fk'
+  ) then
+    alter table voice_assistants
+      add constraint voice_assistants_provisioning_job_workspace_fk
+      foreign key (provisioning_job_id, workspace_id)
+      references voice_provisioning_jobs(id, workspace_id)
+      on delete no action deferrable initially deferred;
+  end if;
+end $$;
 
 alter table voice_provisioning_jobs
   drop constraint if exists voice_provisioning_jobs_prompt_version_fk;
 
-alter table voice_provisioning_jobs
-  add constraint voice_provisioning_jobs_prompt_version_workspace_fk
-  foreign key (prompt_version_id, workspace_id)
-  references voice_prompt_versions(id, workspace_id)
-  on delete no action deferrable initially deferred;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_provisioning_jobs'::regclass
+      and conname = 'voice_provisioning_jobs_prompt_version_workspace_fk'
+  ) then
+    alter table voice_provisioning_jobs
+      add constraint voice_provisioning_jobs_prompt_version_workspace_fk
+      foreign key (prompt_version_id, workspace_id)
+      references voice_prompt_versions(id, workspace_id)
+      on delete no action deferrable initially deferred;
+  end if;
+end $$;
 
 drop index if exists voice_assistants_provider_agent_idx;
 
@@ -170,12 +244,21 @@ alter table voice_calls
 alter table voice_calls
   add column if not exists provider_delete_error text;
 
-alter table voice_calls
-  add constraint voice_calls_consent_evidence_source_check
-  check (
-    consent_evidence_source is null
-    or consent_evidence_source in ('retell_post_call_classification')
-  );
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_calls'::regclass
+      and conname = 'voice_calls_consent_evidence_source_check'
+  ) then
+    alter table voice_calls
+      add constraint voice_calls_consent_evidence_source_check
+      check (
+        consent_evidence_source is null
+        or consent_evidence_source in ('retell_post_call_classification')
+      );
+  end if;
+end $$;
 
 alter table voice_webhook_events
   add column if not exists quarantine_reason text;
@@ -192,13 +275,31 @@ alter table voice_webhook_events
 alter table voice_webhook_events
   drop constraint if exists voice_webhook_events_processing_state_check;
 
-alter table voice_webhook_events
-  add constraint voice_webhook_events_processing_state_check
-  check (processing_state in (
-    'received', 'processing', 'completed', 'failed', 'ignored',
-    'quarantined', 'dead_letter'
-  ));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_webhook_events'::regclass
+      and conname = 'voice_webhook_events_processing_state_check'
+  ) then
+    alter table voice_webhook_events
+      add constraint voice_webhook_events_processing_state_check
+      check (processing_state in (
+        'received', 'processing', 'completed', 'failed', 'ignored',
+        'quarantined', 'dead_letter'
+      ));
+  end if;
+end $$;
 
-alter table voice_webhook_events
-  add constraint voice_webhook_events_alert_state_check
-  check (alert_state in ('not_required', 'pending', 'sent', 'unroutable'));
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'voice_webhook_events'::regclass
+      and conname = 'voice_webhook_events_alert_state_check'
+  ) then
+    alter table voice_webhook_events
+      add constraint voice_webhook_events_alert_state_check
+      check (alert_state in ('not_required', 'pending', 'sent', 'unroutable'));
+  end if;
+end $$;

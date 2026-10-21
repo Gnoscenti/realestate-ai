@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("voice schema upgrade", () => {
-  it("preserves foundation rows, backfills stable identity, and never fabricates billing verification", async () => {
+  it.each(["reconciliation-first", "original-first"] as const)("preserves foundation data and billing provenance upgrading %s", async (order) => {
     const db = new PGlite();
     const folder = new URL("../../migrations/", import.meta.url);
     const names = (await readdir(folder)).filter(name => name.endsWith(".sql")).sort();
@@ -31,6 +31,11 @@ describe("voice schema upgrade", () => {
         insert into voice_calls(id, workspace_id, assistant_id, retell_call_id, consent_state, transcript)
           values ('upgrade-call', 'upgrade-voice', 'upgrade-assistant', 'existing-call', 'accepted', 'Original consented transcript');
       `);
+      const reconciliation = names.filter(name => name === "0020_voice_runtime_reconciliation.sql");
+      const originals = names.filter(name => /^002[0-5]_voice_/.test(name) && !reconciliation.includes(name));
+      expect(originals).toHaveLength(6);
+      expect(reconciliation).toHaveLength(1);
+      await apply(order === "reconciliation-first" ? reconciliation : originals);
       await apply(names);
       const assistant = (await db.query("select provider_agent_id, provisioning_identity, status from voice_assistants")).rows[0];
       expect(assistant).toMatchObject({ provider_agent_id: "existing-provider-agent", status: "paused" });

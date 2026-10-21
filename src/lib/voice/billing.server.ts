@@ -400,6 +400,12 @@ function objectId(value: unknown): string | null {
   return null;
 }
 
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some(
+    (character) => (character.codePointAt(0) ?? 0) < 32,
+  );
+}
+
 function subscriptionIdFromInvoice(invoice: StripeInvoiceLike): string | null {
   if (invoice.parent?.type === "subscription_details") {
     const current = objectId(invoice.parent.subscription_details?.subscription);
@@ -564,11 +570,11 @@ export async function resolveVoiceBillingEvent(
     !workspaceId ||
     workspaceId.length > 240 ||
     workspaceId !== workspaceId.trim() ||
-    [...workspaceId].some((character) => character.charCodeAt(0) < 32) ||
+    hasControlCharacter(workspaceId) ||
     !userId ||
     userId.length > 240 ||
     userId !== userId.trim() ||
-    [...userId].some((character) => character.charCodeAt(0) < 32) ||
+    hasControlCharacter(userId) ||
     product !== VOICE_BILLING_PRODUCT
   ) {
     return ignored(event, payloadSha256, "METADATA_MISMATCH", {

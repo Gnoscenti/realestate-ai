@@ -45,6 +45,9 @@ test("first outcomes and keyboard coach do not require a lead", async ({ page })
   await showOutcomes(page);
   const guide = page.getByTestId("fresh-workspace-guide");
   await expect(guide.getByRole("button", { name: "Prepare marketing" })).toBeVisible();
+  await expect(
+    guide.getByRole("link", { name: "Plan a listing launch", exact: true }),
+  ).toHaveAttribute("href", "/marketing");
   await expect(guide.getByRole("link", { name: "Inspect visibility" })).toHaveAttribute(
     "href",
     "/aieo",
@@ -79,4 +82,87 @@ test("sample inquiry is useful without creating real leads", async ({ page }) =>
     page.getByRole("button", { name: /Try a sample inquiry|Scan sample inbox again/ }),
   ).toBeVisible();
   expect((await readWorkspaceState(page))?.leads).toBe(0);
+});
+
+test("listing launch plan keeps a fresh workspace empty until its owner adds a listing", async ({
+  page,
+}) => {
+  await resetApp(page);
+  await grantTestAccess(page);
+  await page.goto("/marketing");
+
+  await expect(
+    page.getByRole("button", { name: "Open beta feedback drawer", exact: true }),
+  ).toBeVisible();
+  const planner = page.getByTestId("listing-launch-plan");
+  await expect(
+    planner.getByRole("heading", {
+      name: "Build a four-week, fact-bound listing launch plan",
+    }),
+  ).toBeVisible();
+  await expect(
+    planner.getByText(
+      "Add or import one of your own active listings in Listings & Data before building a launch plan.",
+    ),
+  ).toBeVisible();
+  await expect(planner.getByRole("button", { name: "Build launch plan" })).toHaveCount(0);
+  expect((await readWorkspaceState(page))?.props).toBe(0);
+});
+
+test("feedback floats, can be moved, and keeps its position after reload", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 667 });
+  await resetApp(page);
+  await grantTestAccess(page);
+  await page.goto("/marketing");
+
+  const trigger = page.getByTestId("beta-feedback-trigger");
+  const grip = page.getByTitle("Drag to place the feedback button");
+  const gripBox = await grip.boundingBox();
+  expect(gripBox).not.toBeNull();
+  await page.mouse.move(gripBox!.x + 4, gripBox!.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(12, 440, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(trigger).toBeVisible();
+  await expect
+    .poll(() => trigger.evaluate((element) => element.getAttribute("style") || ""))
+    .toContain("left");
+  await page.getByRole("button", { name: "Position feedback button" }).click();
+  const positionMenu = page.getByRole("dialog", { name: "Position feedback button" });
+  await expect(positionMenu).toBeVisible();
+  const menuBox = await positionMenu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(667);
+  await expect(positionMenu.getByRole("button", { name: "Reset position" })).toBeVisible();
+  await page.getByRole("button", { name: "Position feedback button" }).click();
+  await expect(page.getByRole("heading", { name: "Beta Feedback" })).toBeHidden();
+
+  await page.getByRole("button", { name: "Open beta feedback drawer", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Beta Feedback" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Beta Feedback" })).toBeHidden();
+
+  await page.reload();
+  await expect
+    .poll(() => trigger.evaluate((element) => element.getAttribute("style") || ""))
+    .toContain("left");
+});
+
+test("Voice Assistant is reachable and requires an explicit area-code preference", async ({
+  page,
+}) => {
+  await resetApp(page);
+  await grantTestAccess(page);
+  await page.goto("/voice");
+
+  await expect(
+    page.getByRole("heading", { name: "Missed-call assistant", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Choose a US area code", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Twilio selects an available dedicated number in this area code; the app does not yet present exact-number inventory.",
+    ),
+  ).toBeVisible();
 });

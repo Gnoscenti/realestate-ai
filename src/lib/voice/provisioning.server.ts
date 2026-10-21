@@ -490,7 +490,7 @@ export async function provisionVoiceAssistant(
      ) values ($1,$2,$3,$4,'pending','provision_number','create_llm',$5,$6,$7)
      on conflict (workspace_id, idempotency_key) do nothing`,
     [id, input.workspaceId, stableKey, input.idempotencyKey, userId,
-      input.areaCode ?? null, prompt.id],
+      input.areaCode, prompt.id],
   );
   const jobs = await sql.query<{ id: string; state: JobState; area_code: string | null }>(
     `select id, state, area_code from voice_provisioning_jobs
@@ -507,7 +507,16 @@ export async function provisionVoiceAssistant(
     error.status = 409;
     throw error;
   }
-  if (job.area_code !== (input.areaCode ?? null)) {
+  const requestedAreaCode = job.area_code;
+  if (!requestedAreaCode) {
+    const error = new Error(
+      "This existing voice request is missing its required area-code preference. Review it before retrying.",
+    ) as Error & { code?: string; status?: number };
+    error.code = "VOICE_AREA_CODE_REVIEW_REQUIRED";
+    error.status = 409;
+    throw error;
+  }
+  if (requestedAreaCode !== input.areaCode) {
     const error = new Error(
       "This workspace already has a voice-number request for a different area code",
     ) as Error & { code?: string; status?: number };
@@ -842,6 +851,12 @@ async function advanceJobOneStep(
   }
 
   if (job.step === "reserve_number") {
+    const requestedAreaCode = job.area_code;
+    if (!requestedAreaCode) {
+      throw new Error(
+        "Voice provisioning cannot reserve a number without a three-digit area-code preference",
+      );
+    }
     let phone = await activeOrProvisioningPhone(job.workspace_id, job.assistant_id, sql);
     if (!phone) {
       const recheck = await getVoiceAllowanceStatus(job.workspace_id, sql);
@@ -854,7 +869,7 @@ async function advanceJobOneStep(
       await lease.assertOwned();
       const reserved = await providers.telephony.reserveLocalNumber({
         country: "US",
-        areaCode: job.area_code ?? undefined,
+        areaCode: requestedAreaCode,
         idempotencyKey: job.provisioning_identity,
       });
       await lease.assertOwned();

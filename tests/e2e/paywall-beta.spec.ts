@@ -18,6 +18,9 @@ test("the access gate is decided by the server, not by browser storage", async (
   await expect(
     page.getByRole("button", { name: /Build my workspace|Review profile and sources/ }).first(),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open beta feedback drawer", exact: true }),
+  ).toBeVisible();
 
   const state = await readWorkspaceState(page);
   // Server profile hydration can legitimately restore an onboarded identity;

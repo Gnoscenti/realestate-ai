@@ -56,16 +56,11 @@ export async function receiveStripeWebhook(
   }
   if (rawBody === null) return new Response("Payload too large", { status: 413 });
 
-  const stripe =
-    deps.stripe ?? (await createVoiceStripeClient(config.secretKey));
+  const stripe = deps.stripe ?? (await createVoiceStripeClient(config.secretKey));
   let event;
   try {
     // Stripe signs the exact raw bytes. Never call request.json() here.
-    event = stripe.webhooks.constructEvent(
-      rawBody,
-      signature,
-      config.webhookSecret,
-    );
+    event = stripe.webhooks.constructEvent(rawBody, signature, config.webhookSecret);
   } catch {
     return new Response("Invalid signature", { status: 400 });
   }
@@ -88,8 +83,7 @@ export async function receiveStripeWebhook(
 export const Route = createFileRoute("/api/webhooks/stripe")({
   server: {
     handlers: {
-      POST: async ({ request }: { request: Request }) =>
-        receiveStripeWebhook(request),
+      POST: async ({ request }: { request: Request }) => receiveStripeWebhook(request),
     },
   },
 });
