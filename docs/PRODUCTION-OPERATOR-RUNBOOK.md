@@ -4,9 +4,9 @@ This runbook governs releases of **Gnoscenti/realestate-ai** to the canonical Ve
 
 ## Release authority and baseline
 
-Only a release operator with approved GitHub, Vercel, database, and provider access may perform a release. `main` is protected: the `test` and `postgres` CI jobs must pass on an up-to-date branch, one pull-request approval is required, stale approval is dismissed on a new push, conversations must be resolved, and force-push/deletion are disabled including for administrators.
+Only a release operator with approved GitHub, Vercel, database, and provider access may perform a release. `main` is protected: the `test` and `postgres` CI jobs must pass on an up-to-date branch, the owner has authorized zero required outside approvals for the solo-maintainer workflow, conversations must be resolved, and force-push/deletion are disabled including for administrators.
 
-Vercel Git integration currently treats `main` as the production source. Before any release, verify in Vercel that the selected project is `cloud-realtor`, linked to `Gnoscenti/realestate-ai`; never use the similarly named `realestate-ai-workspace` project. Record the resulting deployment ID, commit SHA, timestamp, and operator in the release record.
+The release source is `main`; `vercel.json` holds Git auto-deployment for main. Production is released explicitly after the complete integration and database gates pass. Before any release, verify in Vercel that the selected project is `cloud-realtor`, linked to `Gnoscenti/realestate-ai`; never use the similarly named `realestate-ai-workspace` project. Record the resulting deployment ID, commit SHA, timestamp, and operator in the release record.
 
 ## Pre-release gate
 
@@ -30,7 +30,7 @@ After a successful migration, confirm the ledger contains the expected new filen
 
 ## Deploy and post-deploy smoke
 
-Merge only after the protection rule is satisfied, then verify Vercel deployed the merged `main` SHA to the canonical alias. A successful Vercel build is not acceptance evidence.
+Merge only after the protection rule is satisfied. Stage the exact clean merged `main` SHA with `vercel deploy --prod --skip-domain`, verify the production-environment artifact, and promote that same deployment. Verify its source SHA and canonical alias after promotion. A successful Vercel build is not acceptance evidence.
 
 Run safe HTTP checks first:
 
@@ -50,10 +50,31 @@ Voice remains release-blocked until all of the following are recorded by the acc
 3. Stripe has an approved $79/month Voice Assistant price, a signed endpoint at `/api/webhooks/stripe`, and only the subscription lifecycle events supported by the application. No test or live checkout is considered an entitlement until its signed webhook is stored.
 4. Twilio account authority, Elastic SIP trunk configuration, number pricing, number ownership, and Retell inbound routing are verified. Do not purchase or provision a number without explicit approval for that exact action.
 5. The Retell agent is set to the approved data-storage and retention policy. Retell currently defaults retention to indefinite unless an explicit agent retention value is configured; application-side expiry does not change Retell's provider policy.
-6. A monitored scheduler reaches `/api/internal/voice/process-webhooks` with the configured cron secret. The checked-in Vercel cron declaration runs daily at `04:17 UTC` after PR #49 is merged; confirm the active Vercel plan supports the configured frequency and inspect its scheduled-invocation logs.
+6. A monitored scheduler reaches `/api/internal/voice/process-webhooks` with the configured cron secret. PR #49 supplies a checked-in daily recovery cron at `04:17 UTC`; verify the final `vercel.json` schedule and invocation logs after deployment. This daily job is a recovery safety net only. Before a live voice pilot, provision and verify a higher-frequency schedule (at least every five minutes), a supporting Vercel plan or approved external scheduler, and alerts for missed/failed invocations. Failed webhooks become retry-eligible after five minutes and provider privacy deletion depends on maintenance; daily-only execution is not sufficient for the pilot.
 7. A narrow consent-first test uses only approved test numbers. It must cover accepted and declined recording consent, inbound missed call, conditional-forwarding rollback, signed Retell webhook ingestion, Stripe entitlement gating, dead-letter visibility, and retention deletion. The application must not originate calls, send SMS, transfer calls, or auto-merge code.
 
-A dead letter is visible to workspace operators through the persisted voice provisioning/webhook state and in-app notification records. This is not a substitute for an external on-call alert. Before a live pilot, name an owner, configure an external uptime/error alert destination, verify Vercel log access, and perform one deliberate failure/recovery drill.
+Dead letters are persisted but there is currently no in-app notification/dead-letter reader. Unmatched provider events can have `alert_state = 'unroutable'` without any workspace notification. Before a live pilot, name an operator with approved read-only database access, configure an external alert destination for failed/quarantined/dead-letter events and delayed reconciliation, verify Vercel log access, and perform a deliberate failure/recovery drill. Do not treat an `app_notifications` row or a successful cron response as proof that someone received an alert.
+
+The approved operator must inspect minimal metadata in the production database (never copy payloads, transcripts, phone numbers, or credentials into logs):
+
+```sql
+select id, processing_state, alert_state, attempt_count, next_attempt_at, received_at
+from voice_webhook_events
+where processing_state in ('failed', 'quarantined', 'dead_letter')
+order by received_at desc;
+
+select id, state, alert_state, failure_count, next_attempt_at, created_at
+from voice_provisioning_jobs
+where state in ('failed', 'blocked', 'dead_letter')
+order by created_at desc;
+
+select event_id, policy_reconciliation_state, policy_reconcile_attempts, policy_reconcile_after
+from voice_stripe_events
+where policy_reconciliation_state = 'pending'
+order by policy_reconcile_after nulls first;
+```
+
+Record the inspection time, aggregate counts, alert receipt and accountable owner. Escalate unroutable events to the operator; do not expose them to unrelated workspaces.
 
 ## Rollback and recovery
 
