@@ -178,8 +178,10 @@ Local automated coverage for the onboarding behavior lives in
 `tests/unit/onboarding-repository.test.ts` (workspace isolation, corrections,
 blocked-page completion) and `tests/e2e/onboarding-website-scrape.spec.ts`
 (390-pixel viewport, website confirmation, biography after a blocked page,
-correction retained on rescan, synthetic inquiry). Those commands were not run
-against production, and this note is not production acceptance.
+correction retained on rescan, synthetic inquiry). On October 19, a WSL run of
+the three onboarding unit files finished 26 passed and 1 timed out. The timeout
+was the first repository case, during workspace creation, before an assertion.
+The browser file was not rerun. None of this is production acceptance.
 
 The Neon production path does not apply migrations at runtime, and the Vercel
 build runs only `npm run build`. Before releasing this integration, an authorized
