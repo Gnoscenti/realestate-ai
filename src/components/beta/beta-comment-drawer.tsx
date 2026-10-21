@@ -305,9 +305,17 @@ export function BetaCommentDrawer() {
           <div
             role="dialog"
             aria-label="Position feedback button"
-            className={`absolute top-12 z-10 w-44 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg ${
-              triggerPosition.edge === "left" ? "left-0" : "right-0"
-            }`}
+            className={`absolute z-10 w-44 overflow-y-auto rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg ${
+              triggerPosition.yRatio > 0.5 ? "bottom-12" : "top-12"
+            } ${triggerPosition.edge === "left" ? "left-0" : "right-0"}`}
+            style={{
+              maxHeight: Math.max(
+                0,
+                (triggerPosition.yRatio > 0.5
+                  ? triggerTop
+                  : (viewportHeight || 800) - triggerTop) - 40,
+              ),
+            }}
           >
             <p className="px-2 pb-1 text-xs text-muted-foreground">Place feedback</p>
             <div className="grid grid-cols-2 gap-1">
