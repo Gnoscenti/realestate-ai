@@ -128,6 +128,14 @@ test("feedback floats, can be moved, and keeps its position after reload", async
   await expect
     .poll(() => trigger.evaluate((element) => element.getAttribute("style") || ""))
     .toContain("left");
+  await page.getByRole("button", { name: "Position feedback button" }).click();
+  const positionMenu = page.getByRole("dialog", { name: "Position feedback button" });
+  await expect(positionMenu).toBeVisible();
+  const menuBox = await positionMenu.boundingBox();
+  expect(menuBox).not.toBeNull();
+  expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(667);
+  await expect(positionMenu.getByRole("button", { name: "Reset position" })).toBeVisible();
+  await page.getByRole("button", { name: "Position feedback button" }).click();
   await expect(page.getByRole("heading", { name: "Beta Feedback" })).toBeHidden();
 
   await page.getByRole("button", { name: "Open beta feedback drawer", exact: true }).click();
