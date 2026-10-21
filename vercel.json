@@ -4,12 +4,19 @@
   "git": {
     "deploymentEnabled": {
       "feat/website-bio-onboarding": false,
-      "fix/citelock-source-provenance-20261014": false
+      "fix/citelock-source-provenance-20261014": false,
+      "main": false
     }
   },
   "installCommand": "npx --yes npm@12.2.0 ci",
   "buildCommand": "npx --yes npm@12.2.0 run build",
   "regions": [
     "sfo1"
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/voice/process-webhooks",
+      "schedule": "17 4 * * *"
+    }
   ]
 }

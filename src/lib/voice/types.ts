@@ -75,7 +75,10 @@ export const provisionVoiceInputSchema = z.object({
     .min(8)
     .max(120)
     .regex(/^[A-Za-z0-9._:-]+$/),
-  areaCode: z.string().regex(/^\d{3}$/).optional(),
+  // The current Twilio adapter searches inventory by area code. Require a
+  // deliberate preference rather than accepting a blank value that fails only
+  // after billing authorization and provider work have begun.
+  areaCode: z.string().regex(/^\d{3}$/),
   confirmation: z.literal("PROVISION_NUMBER"),
 });
 

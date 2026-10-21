@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -55,6 +55,7 @@ import { describeAiError } from "@/lib/ai-errors";
 import { ActualPhotoStudio } from "@/components/marketing/actual-photo-studio";
 import { SocialBillingControls } from "@/components/marketing/social-billing-controls";
 import { SocialMediaGenerator } from "@/components/marketing/social-media-generator";
+import { ListingLaunchPlan } from "@/components/marketing/listing-launch-plan";
 import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
 import { exportCampaignMarkdown, type CampaignPlan } from "@/lib/social-agent";
 
@@ -119,6 +120,7 @@ function SocialDeskPage() {
   const [lastDraft, setLastDraft] = useState<DraftResult | null>(null);
   const [history, setHistory] = useState<{ revision: number; action: string; createdAt: string }[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const originLoadAttempted = useRef(false);
   const [channelId, setChannelId] = useState("");
   const [scheduleAt, setScheduleAt] = useState("");
   const [receiptUrl, setReceiptUrl] = useState("");
@@ -178,16 +180,33 @@ function SocialDeskPage() {
     setReceiptUrl(draft.postUrl || "");
   };
 
-  const newDraft = () => {
+  const newDraft = (origin = originParam || "") => {
     setRightsReviewed(false);
     setSelectedId(null);
-    setComposer(emptyContent(composer.platform, originParam || ""));
+    setComposer(emptyContent(composer.platform, origin));
     setComposerDirty(false);
     setLastDraft(null);
   };
 
+  const useLaunchListingInDraft = (id: string) => {
+    const listing = properties.find((item) => item.id === id);
+    if (!listing) return;
+    setPropertyId(id);
+    setGoal("just_listed");
+    originLoadAttempted.current = true;
+    newDraft("");
+    toast.message(`${listing.title} is selected for a reviewed Social Desk draft`);
+    requestAnimationFrame(() => {
+      document
+        .getElementById("social-desk-composer")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   useEffect(()=>{
-    if(!originParam || !desk || selectedId) return;
+    if(!originParam || !desk || originLoadAttempted.current) return;
+    originLoadAttempted.current = true;
+    if(selectedId) return;
     const linked=desk.drafts.find(d=>d.content.origin.startsWith(originParam+":revision:"));
     if(linked) {setSelectedId(linked.id);setComposer(linked.content);setComposerDirty(false);}
   },[originParam,desk,selectedId]);
@@ -455,11 +474,18 @@ function SocialDeskPage() {
               your own scheduler connection or a manual handoff with a receipt — never a fake "published" badge.
             </p>
           </div>
-          <Button onClick={newDraft} variant="secondary">
+          <Button onClick={() => newDraft()} variant="secondary">
             <Sparkles className="h-4 w-4" /> New post
           </Button>
         </div>
       </div>
+
+      <ListingLaunchPlan
+        properties={properties}
+        initialPropertyId={propertyParam}
+        agentName={profile?.name}
+        onUseListingInDraft={useLaunchListingInDraft}
+      />
 
       {savedBrowserCampaigns.length > 0 && <details className="rounded border p-4">
         <summary className="cursor-pointer font-medium">Saved browser campaigns ({savedBrowserCampaigns.length})</summary>
@@ -595,7 +621,7 @@ function SocialDeskPage() {
         </div>
 
         <div className="space-y-4 lg:col-span-8">
-          <Card>
+          <Card id="social-desk-composer">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>

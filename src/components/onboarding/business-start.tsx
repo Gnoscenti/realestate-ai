@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Megaphone, Radar, Settings2, Zap } from "lucide-react";
+import { Megaphone, Phone, Radar, Settings2, Target, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppStore } from "@/lib/store";
@@ -111,7 +111,7 @@ function BusinessStartForUser({ name, email }: { name?: string | null; email?: s
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3" data-tour="business-outcomes">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" data-tour="business-outcomes">
           <Button
             variant="outline"
             className="min-h-14 whitespace-normal"
@@ -120,6 +120,12 @@ function BusinessStartForUser({ name, email }: { name?: string | null; email?: s
           >
             <Megaphone className="h-4 w-4" />
             Prepare marketing
+          </Button>
+          <Button asChild variant="outline" className="min-h-14 whitespace-normal">
+            <Link to="/marketing">
+              <Target className="h-4 w-4" />
+              Plan a listing launch
+            </Link>
           </Button>
           <Button asChild variant="outline" className="min-h-14 whitespace-normal">
             <Link to="/aieo">
@@ -133,6 +139,19 @@ function BusinessStartForUser({ name, email }: { name?: string | null; email?: s
               Try a sample inquiry
             </Link>
           </Button>
+          {profile ? (
+            <Button asChild variant="outline" className="min-h-14 whitespace-normal">
+              <Link to="/voice">
+                <Phone className="h-4 w-4" />
+                Set up missed-call assistant
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" className="min-h-14 whitespace-normal" disabled>
+              <Phone className="h-4 w-4" />
+              Set up missed-call assistant
+            </Button>
+          )}
         </div>
         {showDraft && profile && (
           <section

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, Globe, Loader2, RefreshCw, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -119,11 +119,25 @@ export function OnboardingWizard({
     if (phase !== "sources") stepHeading.current?.focus();
   }, [phase]);
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
     if (saving || !onCancel) return;
     request.current += 1;
     onCancel?.();
-  };
+  }, [onCancel, saving]);
+
+  // The embedded first-use card is optional. Its container-level key handler
+  // cannot receive Escape while focus is on the document after a scroll, so
+  // listen at the window only for this initial, cancellable source step.
+  useEffect(() => {
+    if (!embedded || !onCancel || phase !== "sources") return;
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || saving) return;
+      event.preventDefault();
+      cancel();
+    };
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [embedded, onCancel, phase, saving, cancel]);
 
   const updateUrl = (kind: SourceKind, value: string) => {
     request.current += 1;

@@ -15,7 +15,7 @@ describe("beta comments", () => {
     expect(buildFileName(7, "Email Alerts")).toBe("0007-email-alerts.md");
   });
 
-  it("formats anonymous markdown for Grok", () => {
+  it("formats reporter text as untrusted data for maintainer review", () => {
     const md = formatBetaCommentMarkdown({
       id: "x",
       pagePath: "/cma",
@@ -29,10 +29,12 @@ describe("beta comments", () => {
       globalNumber: 3,
       fileName: "0003-cma.md",
     });
-    expect(md).toMatch(/Beta Comment #0003/);
+    expect(md).toMatch(/Beta feedback #0003/);
     expect(md).toMatch(/CMA Studio/);
     expect(md).toMatch(/`cma`/);
     expect(md).toMatch(/Add export to PDF/);
+    expect(md).toMatch(/untrusted reporter input/i);
+    expect(md).toMatch(/`ai-ready`/);
     expect(md).not.toMatch(/@|email|name:/i);
   });
 });
