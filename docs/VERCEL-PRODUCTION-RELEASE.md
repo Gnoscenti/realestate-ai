@@ -32,14 +32,15 @@ The official workflow is documented in [Vercel Deployment Checks](https://vercel
 
 Production database changes remain an explicit operator step; build does not run migrations.
 
-1. Fetch main, preserve newer work, and inspect the final PR head, checks, review threads, and current protection policy. Merge normally after all current requirements are met. Verify main's ancestry, clean checkout, and equality with origin/main.
+1. Fetch main, preserve newer work, and inspect the final PR head, checks, review threads, and current protection policy. Do not merge yet.
 2. Recheck the exact Neon target privately. Take a fresh consistent backup and prove a restore in an empty isolated database. Preserve existing rows, migration names, and timestamps; never restore old data over newer customer writes.
-3. For a schema change, pause production domain auto-assignment **before merging**. Leave Git builds and required deployment checks enabled. Record the previous setting. This holds the new production artifact while the database gate is completed.
-4. Inject the approved production `DATABASE_URL` privately and run `npm run db:migrate` from the exact clean reviewed merge SHA. The operator wrapper must match the pinned target and migration manifest, require a successful fresh restore receipt, and reject unrecognized ledger entries. Verify every current filename, original applied timestamps, and a second no-op pass.
-5. Stage the exact production-environment build without domain assignment. With the temporary assignment hold, the native Git production artifact is staged. A manual equivalent is `vercel deploy --prod --skip-domain`. Do not promote a Preview artifact: that rebuilds under production configuration.
-6. Verify project, team, SHA, target=production, READY state, successful required checks, and safe HTTP/authentication checks on that deployment URL.
-7. Promote that same production deployment, verify the canonical alias and SHA, and restore normal domain auto-assignment. Do not force promotion around a failing check.
-8. Verify ordinary login and retained data plus the changed workflows. Record deployment ID, source SHA, CI run, migration/backup receipts, and observed limitations.
+3. For any schema change or controlled pipeline test, pause production domain auto-assignment **before merging**. Leave Git builds and required deployment checks enabled. Record the previous setting. This holds the new production artifact while the database gate is completed.
+4. After the hold is confirmed and all current requirements are met, merge normally. Verify main's ancestry, clean checkout, equality with origin/main, and record the exact merged SHA.
+5. Inject the approved production `DATABASE_URL` privately and run `npm run db:migrate` from the exact clean reviewed merge SHA. The operator wrapper must match the pinned target and migration manifest, require a successful fresh restore receipt, and reject unrecognized ledger entries. Verify every current filename, original applied timestamps, and a second no-op pass.
+6. Stage the exact production-environment build without domain assignment. With the temporary assignment hold, the native Git production artifact is staged. A manual equivalent is `vercel deploy --prod --skip-domain`. Do not promote a Preview artifact: that rebuilds under production configuration.
+7. Verify project, team, SHA, target=production, READY state, successful required checks, and safe HTTP/authentication checks on that deployment URL.
+8. Promote that same production deployment, verify the canonical alias and SHA, and restore normal domain auto-assignment. Do not force promotion around a failing check.
+9. Verify ordinary login and retained data plus the changed workflows. Record deployment ID, source SHA, CI run, migration/backup receipts, and observed limitations.
 
 Stop the release if a guard, check, migration, or smoke fails. Automatic deployment is not authorization to run destructive data changes.
 
