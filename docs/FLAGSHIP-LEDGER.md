@@ -1394,3 +1394,32 @@ Local validation and exact-head CI are required before each normal, expected-hea
 
 
 Session15 PR51 convergence: reproduced a duplicate `voice_webhook_events_attempt_count_check` when PR49 reconciliation ran before the six voice migrations. Guarded the 19 constraint additions in 0020_voice_runtime, 0021_voice_beta_hardening and 0025_voice_provider_fencing by table/name; kept all filenames, existing ledger records, constraint definitions and tenant relationships. These release migrations have not been applied to production. Added two populated-foundation upgrade tests (reconciliation-first and original-first), preserving assistant/provider identity, prompts, consented transcripts and unverified historical billing. Both orders and all three existing migration lineages pass (5 tests); included the voice suites in native PostgreSQL CI. Conflict resolution preserves PR49's newer onboarding/private feedback/social handoff, one checkout helper, one voice navigation entry, and the 04:17 daily recovery cron documented by PR50.
+
+## Session 16 — restore gated automatic production releases and activate voice checkout (2026-10-22)
+### Repo map and conventions
+- Continue in independent /home/ttroj/code/realestate-ai. Fresh fetch: clean main and origin/main at c8bd2d494130620258ddf9d693494c3492921755; no newer main changes. Work branch fix/production-pipeline-voice-billing-20261022. Preserve pre-existing worktrees/PR29.
+- Existing production is cloud-realtor in team blaines-projects-a6ff7e30; hosted Neon, stable auth secret, auth origin and isolated preview DB already configured. Do not provision another database or rotate auth/encryption secrets.
+### Audit findings
+- vercel.json contains duplicate main:false keys; native Git production deployment is held. Required GitHub checks are test/postgres; approval count0 was explicitly authorized for solo maintenance in Session15.
+- Production Stripe secret is present but voice price and webhook secret are absent. Local .env.local contains no Stripe credentials. Stripe connector requested/accepted authentication then returned UNAUTHORIZED/reconnect required. No key value was read or printed.
+- Last successful production ledger has33 migrations, not the older32-file snapshot. Verify all current names and original timestamps rather than deleting/renaming a migration to meet stale instructions.
+### CiteLock/GEO intent
+Preserve free/basic and paid/full source-qualified instructional guides, including public ranking scope/year and contradiction warnings; no MLS prerequisite or guaranteed ranking uplift. Keep Social Desk/sandbox behavior from the verified release.
+### Blocker register
+- Automatic main deployments need required checks before production aliasing, plus explicit migration order. Prefer native Vercel Deployment Checks per official docs/skill; inspect actual dashboard and available API support.
+- Voice checkout configuration requires access to the existing Stripe account, approved $79 USD/month price with200minutes, and the actual endpoint signing secret. Never invent whsec or disable signature validation.
+### Decisions made and why
+- User authorizes restoring automated deployment after checks, payment configuration, normal merge preserving newer main, fresh backup/guarded migrations, staged production --skip-domain and promotion of the same artifact. Current hosted DB/auth configuration is to be preserved.
+- Use native Git builds plus Deployment Checks when possible; avoid moving production credentials into GitHub unnecessarily. Required CI/security remain enforced.
+### Verification results
+Fresh Git0/0 clean; production env metadata confirms DB/auth/cron/provider keys and absent voice price/webhook. Existing production deployment READY at previously verified c8bd2d4. New verification pending.
+### Open items
+Inspect/configure gates; complete supported Stripe setup or report exact credential blocker; add durable operator checks/tests/docs as needed; validate/commit/push/normal merge; fresh backup and guarded current33-file migration/no-op; stage/verify/promote exact SHA; exercise hosted pipeline and app workflows; record final receipt and clean local/Git sync.
+
+
+### Session16 investigation update
+- Vercel dashboard confirms existing GitHub test/postgres checks configured as blocking for Production; autoAssignCustomDomains=true and Git link main are confirmed. The checked-in main:false hold is the remaining build blocker; removed duplicate key and set main:true.
+- Updated configure-vercel-production runtime settings from stale Node22/npm12.0 to the actual declared Node24/npm12.2. Updated current release/runbook documents while preserving historical ledger entries.
+- Fresh logical backup restored74tables/197rows with identical schema/content, but its migration comparison failed. Diagnosed in the isolated restore: every name/timestamp matched by key; source/local collations ordered 0020_voice_runtime.sql versus 0020_voice_runtime_reconciliation.sql differently. Fixed the private harness to ORDER BY name COLLATE "C" in both ledger queries; repeating the full fresh backup proof. No production writes occurred. Initial failing receipt/diagnostics retained in tmp/session16.
+- Stripe remains UNAUTHORIZED through connector; project-local env has no usable Stripe key and historical production env pulls contain unreadable/omitted values, not a usable private key. Requested reconnection without requesting any secret in chat; independent deployment work continues.
+- Current local type/lint/billing regression/build checks running. Whole required CI and actual automatic main artifact/gate behavior must be verified before reporting success.

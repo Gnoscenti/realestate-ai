@@ -6,7 +6,7 @@ This runbook governs releases of **Gnoscenti/realestate-ai** to the canonical Ve
 
 Only a release operator with approved GitHub, Vercel, database, and provider access may perform a release. `main` is protected: the `test` and `postgres` CI jobs must pass on an up-to-date branch, the owner has authorized zero required outside approvals for the solo-maintainer workflow, conversations must be resolved, and force-push/deletion are disabled including for administrators.
 
-The release source is `main`; `vercel.json` holds Git auto-deployment for main. Production is released explicitly after the complete integration and database gates pass. Before any release, verify in Vercel that the selected project is `cloud-realtor`, linked to `Gnoscenti/realestate-ai`; never use the similarly named `realestate-ai-workspace` project. Record the resulting deployment ID, commit SHA, timestamp, and operator in the release record.
+The release source is `main`; `vercel.json` enables Git deployment. Vercel must hold production domain assignment until the exact deployed commit passes the blocking GitHub `test` and `postgres` checks. For schema changes, temporarily pause domain auto-assignment before merging, complete the explicit database gate, then verify and promote the staged production artifact and restore normal assignment. Before any release, verify in Vercel that the selected project is `cloud-realtor`, linked to `Gnoscenti/realestate-ai`; never use the similarly named `realestate-ai-workspace` project. Record the resulting deployment ID, commit SHA, timestamp, and operator in the release record.
 
 ## Pre-release gate
 
@@ -30,7 +30,7 @@ After a successful migration, confirm the ledger contains the expected new filen
 
 ## Deploy and post-deploy smoke
 
-Merge only after the protection rule is satisfied. Stage the exact clean merged `main` SHA with `vercel deploy --prod --skip-domain`, verify the production-environment artifact, and promote that same deployment. Verify its source SHA and canonical alias after promotion. A successful Vercel build is not acceptance evidence.
+Merge only after the protection rule is satisfied. Normal Git releases build automatically and promote only after both blocking deployment checks pass. For a schema change or controlled pipeline test, hold production domain assignment before merge, stage the exact clean merged `main` SHA (native Git under that hold, or `vercel deploy --prod --skip-domain`), verify the production-environment artifact and successful current checks, then promote that same deployment and restore normal assignment. Verify its source SHA and canonical alias after promotion. A successful Vercel build is not acceptance evidence.
 
 Run safe HTTP checks first:
 

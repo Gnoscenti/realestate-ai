@@ -13,8 +13,8 @@ const ORIGIN = "https://cloud-realtor.vercel.app";
 const PROVIDER_KEYS = ["XAI_API_KEY","OPENAI_API_KEY","PERPLEXITY_API_KEY","GEMINI_API_KEY","RAPIDAPI_KEY"];
 const OPTIONAL_KEYS = ["STRIPE_SECRET_KEY","BETA_ACCESS_CODES","GROK_AUTH_CLIENT_ID","GROK_AUTH_CLIENT_SECRET"];
 const REQUIRED = ["DATABASE_URL","BETTER_AUTH_SECRET","BETTER_AUTH_URL"];
-const SETTINGS = { framework:null, rootDirectory:null, outputDirectory:null, nodeVersion:"22.x",
-  installCommand:"npx --yes npm@12.0.0 ci",buildCommand:"npx --yes npm@12.0.0 run build" };
+const SETTINGS = { framework:null, rootDirectory:null, outputDirectory:null, nodeVersion:"24.x",
+  installCommand:"npx --yes npm@12.2.0 ci",buildCommand:"npx --yes npm@12.2.0 run build" };
 const apply = process.argv.includes("--apply");
 async function fileEnv(name) {
   try { return parseEnv(await readFile(path.join(ROOT,name),"utf8")); }
