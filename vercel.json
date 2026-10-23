@@ -3,10 +3,9 @@
   "framework": null,
   "git": {
     "deploymentEnabled": {
-      "main": false,
+      "main": true,
       "feat/website-bio-onboarding": false,
-      "fix/citelock-source-provenance-20261014": false,
-      "main": false
+      "fix/citelock-source-provenance-20261014": false
     }
   },
   "installCommand": "npx --yes npm@12.2.0 ci",
