@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { getSql, type Sql } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { getEntitlement } from "@/lib/billing/entitlement.server";
-import { fetchPublicPage } from "./visibility/expertise.server";
+import { classifyPublicPageError, fetchPublicPage } from "./visibility/expertise.server";
 import { nameAppears } from "./visibility/evaluate";
-import { guideInputSchema, type GuideInput, type GuideAnalysis, type GuideSource, type RankingFact, type GuideStep, type GuideView } from "./guide";
+import { displayCase, guideInputSchema, type GuideInput, type GuideAnalysis, type GuideSource, type GuideSourceFailure, type RankingFact, type GuideStep, type GuideView } from "./guide";
 
 const METHOD = "https://developers.google.com/search/docs/fundamentals/ai-optimization-guide";
 const normalize = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -35,11 +35,23 @@ export function readRealTrendsRanking(input: GuideInput, url: string, text: stri
   return { year, city: location.split(",")[0].trim(), sides, citySidesRank: rank, volumeMillions: Number(block[3].replaceAll(",", "")), url };
 }
 
-export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideSource["role"]; url: string; text?: string; error?: boolean }>, observedAt: string): GuideAnalysis {
+/** Specific, actionable notes for pages CiteLock could not read. Nothing is inferred from them. */
+const UNAVAILABLE_NOTES: Record<GuideSourceFailure, string> = {
+  blocked: "This site blocks automated reading (common on large brokerage and portal sites), so CiteLock could not inspect it. Add your personal bio page or another public page with the same details instead. No claims were inferred.",
+  not_found: "This page was not found. Open the link in a browser, copy the exact address of your profile and retry. No claims were inferred.",
+  redirect: "This link sends visitors to a different website. Open it in a browser and paste the final address you land on. No claims were inferred.",
+  no_text: "This page shows no readable text without JavaScript. Ask your web editor for a text version of your bio; search and AI crawlers benefit from readable text too. No claims were inferred.",
+  not_html: "This link is not a web page (for example a PDF or image). Use the web page that shows the same information. No claims were inferred.",
+  unreachable: "This site did not respond in time or could not be reached safely. Check the address and retry later. No claims were inferred.",
+};
+const DEFAULT_UNAVAILABLE_NOTE = "Could not read this public page. Check the URL and access permissions, then retry. No claims were inferred.";
+
+export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideSource["role"]; url: string; text?: string; error?: boolean; reason?: GuideSourceFailure }>, observedAt: string): GuideAnalysis {
   let ranking: RankingFact | null = null;
   const annualClaims: Array<{ amount: number; year: number; url: string; qualifier: string }> = [];
   const sources = pages.map((page): GuideSource => {
-    if (!page.text) return { role: page.role, url: page.url, status: "unavailable", observedAt, facts: [], note: "Could not read this public page. Check the URL and access permissions, then retry. No claims were inferred." };
+    if (!page.text) return { role: page.role, url: page.url, status: "unavailable", observedAt, facts: [],
+      ...(page.reason ? { reason: page.reason } : {}), note: page.reason ? UNAVAILABLE_NOTES[page.reason] : DEFAULT_UNAVAILABLE_NOTE };
     const text = page.text.replace(/\s+/g, " ");
     const city = normalize(input.area.split(",")[0]);
     const matched = nameAppears(text, input.name) && normalize(text).includes(city);
@@ -70,7 +82,7 @@ export function analyzeGuidePages(input: GuideInput, pages: Array<{ role: GuideS
   const rank = ranking as RankingFact | null;
   const conflicts = rank ? annualClaims.filter(c => c.year === rank.year && rank.volumeMillions !== undefined && Math.abs(c.amount - rank.volumeMillions) > 0.01 && (!/^(?:over|more than|at least) /.test(c.qualifier) || c.amount > rank.volumeMillions))
     .map(c => `${c.url} states ${c.qualifier}$${c.amount}M for ${c.year}; RealTrends reports $${rank.volumeMillions}M. Confirm reporting scope, credit, and cutoff before publishing a volume comparison; disagreement alone does not establish an error.`) : [];
-  return { input, sources, ranking: rank, conflicts, version: "guide-1.0",
+  return { input, sources, ranking: rank, conflicts, version: "guide-1.1",
     recommendedClaim: rank ? `${input.name} ranked No. ${rank.citySidesRank} by transaction sides among RealTrends-ranked agents in ${rank.city}, based on ${rank.year} sales data.` : null };
 }
 
@@ -225,9 +237,14 @@ export async function createGuide(userId: string, workspaceId: string, raw: Guid
       if (!cache.has(asset.url)) cache.set(asset.url, (deps.fetchPage || fetchPublicPage)(asset.url));
       const page = await cache.get(asset.url)!;
       return { ...asset, url: page.url, text: page.text };
-    } catch { return { ...asset, error: true }; }
+    } catch (error) { return { ...asset, error: true, reason: classifyPublicPageError(error) }; }
   }));
-  const analysis = analyzeGuidePages(input, pages, new Date().toISOString());
+  // Display the name, locale and brokerage the way the public pages write them
+  // (or tidy all-lowercase typing) so the guide reads professionally.
+  const observed = pages.flatMap(page => ("text" in page && page.text ? [page.text.replace(/\s+/g, " ")] : []));
+  const display: GuideInput = { ...input, name: displayCase(input.name, observed), area: displayCase(input.area, observed),
+    brokerage: input.brokerage ? displayCase(input.brokerage, observed) : input.brokerage };
+  const analysis = analyzeGuidePages(display, pages, new Date().toISOString());
   const rows = await sql.query<Row>(
     "insert into citelock_guides(id,workspace_id,created_by_user_id,analysis) values($1,$2,$3,$4::jsonb) returning *",
     [randomUUID(), workspaceId, userId, JSON.stringify(analysis)]);
