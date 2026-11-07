@@ -7,6 +7,8 @@ import {
   type AgentProfile,
 } from "@/data/seed";
 import { useAppStore } from "@/lib/store";
+import { resetWorkspaceIfBoundTo } from "@/lib/auth/workspace-scope";
+import { DEMO_WORKSPACE_STORAGE_KEY } from "@/lib/demo-mode";
 
 /**
  * Fictional sample identity for the guest demo. Clearly labelled sample data:
@@ -80,5 +82,16 @@ export function seedDemoWorkspace(nowMs = Date.now()): boolean {
     agentProfile: clone(DEMO_AGENT_PROFILE),
     onboarded: true,
   });
+  return true;
+}
+
+/**
+ * Start the demo over when it is already loaded in this tab (for example after
+ * using Back to return to the login page): discard the visitor's edits and
+ * reseed. Does nothing when another workspace is bound.
+ */
+export function restartDemoWorkspace(nowMs = Date.now()): boolean {
+  if (!resetWorkspaceIfBoundTo(DEMO_WORKSPACE_STORAGE_KEY)) return false;
+  seedDemoWorkspace(nowMs);
   return true;
 }
