@@ -4,7 +4,7 @@ import { requireWorkspaceAccess } from "@/lib/workspaces/repository.server";
 import { VOICE_BETA_ALLOWANCE_SECONDS } from "./policy.server";
 
 export const VOICE_BILLING_PRODUCT = "voice_assistant" as const;
-export const VOICE_MONTHLY_PRICE_CENTS = 7_900 as const;
+export const VOICE_MONTHLY_PRICE_CENTS = 2_300 as const;
 export const VOICE_INCLUDED_MINUTES = 200 as const;
 const VOICE_CURRENCY = "usd";
 
@@ -162,7 +162,7 @@ export function assertVoicePrice(
     (price.recurring.usage_type && price.recurring.usage_type !== "licensed")
   ) {
     throw new Error(
-      "Voice billing is unavailable because the configured Stripe price is not the expected $79 USD monthly plan.",
+      "Voice billing is unavailable because the configured Stripe price is not the expected $23 USD monthly plan.",
     );
   }
 }
@@ -195,7 +195,7 @@ export async function getVoiceBillingAvailability(
   workspaceId: string,
   sqlOverride?: Sql,
 ): Promise<{
-  monthlyPriceCents: 7900;
+  monthlyPriceCents: 2300;
   includedMinutes: 200;
   checkoutAvailable: boolean;
   portalAvailable: boolean;
@@ -223,7 +223,7 @@ export async function getVoiceBillingAvailability(
   const checkoutAvailable = configured && !existingSubscription;
 
   let message =
-    "$79 per month includes 200 completed inbound AI minutes. New calls pause after completed-call usage reaches 200 minutes; calls already in progress may finish. No overage is charged.";
+    "$23 per month includes 200 completed inbound AI minutes. New calls pause after completed-call usage reaches 200 minutes; calls already in progress may finish. No overage is charged.";
   if (!configured) {
     message =
       "Checkout is not configured. An administrator must add the Stripe voice price and verified webhook secrets.";
