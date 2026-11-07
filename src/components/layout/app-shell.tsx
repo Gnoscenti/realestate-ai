@@ -563,9 +563,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {isDemo && <DemoBanner />}
+        {/* Header and demo banner stick together so the banner never scrolls away. */}
+        <div className="sticky top-0 z-30">
         <header
-          className="glass-header sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg)_88%,transparent)] px-3 backdrop-blur-md sm:px-5"
+          className="glass-header flex items-center gap-3 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg)_88%,transparent)] px-3 backdrop-blur-md sm:px-5"
           style={{
             paddingTop: "max(0.5rem, env(safe-area-inset-top))",
             minHeight: "calc(4rem + env(safe-area-inset-top))",
@@ -707,6 +708,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onEditProfile={() => setEditProfile(true)}
           />
         </header>
+        {isDemo && <DemoBanner />}
+        </div>
 
         <main className="main-content flex-1 p-4 sm:p-6 lg:p-8">
           {children}
