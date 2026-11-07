@@ -62,10 +62,10 @@ Standalone scripts do not automatically load `.env.local`; load a dedicated priv
 Voice checkout requires all three server-only Production variables:
 
 - `STRIPE_SECRET_KEY`: a valid key for the intended merchant and mode; prefer a restricted key with only the customer/price/Checkout/subscription/invoice/portal permissions this integration needs.
-- `STRIPE_VOICE_PRICE_ID`: an active **USD 7,900 cents, monthly, interval_count=1, per_unit, licensed recurring** price in that same account and mode.
+- `STRIPE_VOICE_PRICE_ID`: an active **USD 2,300 cents, monthly, interval_count=1, per_unit, licensed recurring** price in that same account and mode.
 - `STRIPE_WEBHOOK_SECRET`: the actual signing secret for the registered **https://cloud-realtor.vercel.app/api/webhooks/stripe** endpoint. It is not interchangeable with a Stripe CLI forwarding secret or the social webhook's secret.
 
-The code validates the $79/month price and includes 200 completed inbound AI minutes, with no overage authorization. Supported voice events are:
+The code validates the $23/month price and includes 200 completed inbound AI minutes, with no overage authorization. Supported voice events are:
 
 ```text
 customer.subscription.created
