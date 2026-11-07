@@ -152,3 +152,26 @@ describe("printable guide", () => {
     expect(html).not.toMatch(/<link|src=/);
   });
 });
+
+describe("review follow-ups", () => {
+  it("keeps short biographies that merely mention a CAPTCHA", () => {
+    expect(looksLikeAccessChallenge("Lisa Schoelen helps sellers in San Diego. Contact form: name, email, CAPTCHA.")).toBe(false);
+    expect(looksLikeAccessChallenge("Access denied. Your request was flagged by bot protection. Ray ID: 8f2a")).toBe(true);
+    expect(looksLikeAccessChallenge("Please complete the security check to access sothebysrealty.com")).toBe(true);
+  });
+
+  it("describes redirect failures without claiming the destination is another site", () => {
+    const analysis = analyzeGuidePages(base, [{ role: "website", url: base.website, error: true, reason: "redirect" }], new Date().toISOString());
+    expect(analysis.sources[0].note).toContain("could not follow this page's redirects");
+    expect(analysis.sources[0].note).toContain("No claims were inferred.");
+  });
+
+  it("treats a failed server sign-out as an error, but an already-missing session as signed out", async () => {
+    const { assertSignedOut } = await import("@/lib/auth/client");
+    expect(() => assertSignedOut({ error: { status: 500, message: "Internal error" } })).toThrow("Internal error");
+    expect(() => assertSignedOut({ error: { status: 403 } })).toThrow("Sign-out failed");
+    expect(() => assertSignedOut({ error: { status: 401, message: "Unauthorized" } })).not.toThrow();
+    expect(() => assertSignedOut({ error: null })).not.toThrow();
+    expect(() => assertSignedOut(undefined)).not.toThrow();
+  });
+});
