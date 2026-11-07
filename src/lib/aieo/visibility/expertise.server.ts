@@ -50,10 +50,15 @@ export class PublicPageError extends Error {
   constructor(readonly reason: PublicPageFailure, message: string) { super(message); this.name = "PublicPageError"; }
 }
 // Interstitials served instead of the requested page by bot-protection services.
-// Only short pages are checked so a real biography that mentions a CAPTCHA is not misread.
-const CHALLENGE = /\b(just a moment|attention required|verify (?:that )?you are (?:a )?human|are you a robot|enable javascript and cookies|checking your browser|request (?:was )?blocked|access denied|captcha)\b/i;
+// A phrase that only appears on such pages is enough; weaker words (for example a
+// contact form labelled "CAPTCHA") count only when at least two appear together.
+// Only short pages are checked so a real biography is never discarded.
+const CHALLENGE_PHRASE = /\b(?:just a moment\.\.\.|attention required!?\s*\|?\s*cloudflare|checking (?:if the site connection is secure|your browser before accessing)|verify (?:that )?you are (?:a )?human|are you a robot\?|enable javascript and cookies to continue|please complete the security check|request (?:was )?blocked by|access to this page has been denied)/i;
+const CHALLENGE_SIGNALS = [/\bcaptcha\b/i, /\bcloudflare\b/i, /\bray id\b/i, /\bsecurity check\b/i, /\bbot (?:protection|detection)\b/i, /\baccess denied\b/i, /\bunusual traffic\b/i];
 export function looksLikeAccessChallenge(text:string) {
-  return text.length < 3000 && CHALLENGE.test(text);
+  if (text.length >= 3000) return false;
+  if (CHALLENGE_PHRASE.test(text)) return true;
+  return CHALLENGE_SIGNALS.filter(signal => signal.test(text)).length >= 2;
 }
 export function classifyPublicPageError(error:unknown): PublicPageFailure {
   if (error instanceof PublicPageError) return error.reason;
