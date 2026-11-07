@@ -15,6 +15,7 @@ import { Route as AlertsRouteImport } from './routes/alerts'
 import { Route as BillingRouteImport } from './routes/billing'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as CmaRouteImport } from './routes/cma'
+import { Route as DemoRouteImport } from './routes/demo'
 import { Route as EdgeRouteImport } from './routes/edge'
 import { Route as FeedbackRouteImport } from './routes/feedback'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
@@ -64,6 +65,11 @@ const CalendarRoute = CalendarRouteImport.update({
 const CmaRoute = CmaRouteImport.update({
   id: '/cma',
   path: '/cma',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EdgeRoute = EdgeRouteImport.update({
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/demo': typeof DemoRoute
   '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/demo': typeof DemoRoute
   '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/billing': typeof BillingRoute
   '/calendar': typeof CalendarRoute
   '/cma': typeof CmaRoute
+  '/demo': typeof DemoRoute
   '/edge': typeof EdgeRoute
   '/feedback': typeof FeedbackRoute
   '/knowledge': typeof KnowledgeRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/demo'
     | '/edge'
     | '/feedback'
     | '/knowledge'
@@ -290,6 +300,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/demo'
     | '/edge'
     | '/feedback'
     | '/knowledge'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/calendar'
     | '/cma'
+    | '/demo'
     | '/edge'
     | '/feedback'
     | '/knowledge'
@@ -347,6 +359,7 @@ export interface RootRouteChildren {
   BillingRoute: typeof BillingRoute
   CalendarRoute: typeof CalendarRoute
   CmaRoute: typeof CmaRoute
+  DemoRoute: typeof DemoRoute
   EdgeRoute: typeof EdgeRoute
   FeedbackRoute: typeof FeedbackRoute
   KnowledgeRoute: typeof KnowledgeRoute
@@ -411,6 +424,13 @@ declare module '@tanstack/react-router' {
       path: '/cma'
       fullPath: '/cma'
       preLoaderRoute: typeof CmaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/edge': {
@@ -563,6 +583,7 @@ const rootRouteChildren: RootRouteChildren = {
   BillingRoute: BillingRoute,
   CalendarRoute: CalendarRoute,
   CmaRoute: CmaRoute,
+  DemoRoute: DemoRoute,
   EdgeRoute: EdgeRoute,
   FeedbackRoute: FeedbackRoute,
   KnowledgeRoute: KnowledgeRoute,
