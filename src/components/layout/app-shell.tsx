@@ -26,6 +26,7 @@ import {
   Swords,
   Bell,
   Phone,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -33,7 +34,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ensureHydrationHook, useAppStore } from "@/lib/store";
-import { Badge } from "@/components/ui/badge";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import { getMlsLabel, myListings } from "@/lib/mls";
 import { toast } from "sonner";
@@ -47,6 +47,8 @@ import { syncNotificationBadges } from "@/lib/app-badge";
 import { unreadCount as emailUnreadCount } from "@/lib/email-alerts";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
+import { AccountMenu, SignedInAs } from "@/components/layout/account-menu";
+import { useSignOut } from "@/lib/auth/use-sign-out";
 import {
   bindWorkspaceToUser,
   currentWorkspaceKey,
@@ -394,6 +396,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Paywall
         agentName={profile?.name ?? user.displayName ?? undefined}
         onAccessGranted={handleAccessGranted}
+        footer={<SignedInAs label={user.primaryEmail ?? user.displayName ?? "this account"} />}
       />
     );
   }
@@ -570,6 +573,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Settings2 className="h-4 w-4" />
                   {profile ? "Edit profile" : "Set up profile"}
                 </Button>
+                <MobileSignOutButton />
               </div>
             </SheetContent>
           </Sheet>
@@ -639,9 +643,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </>
           )}
 
-          <Badge variant="secondary" className="hidden sm:inline-flex">
-            {profile?.name.split(" ")[0] ?? user.displayName?.split(" ")[0] ?? "Account"}
-          </Badge>
+          <AccountMenu
+            name={profile?.name ?? user.displayName}
+            email={user.primaryEmail}
+            hasProfile={Boolean(profile)}
+            onEditProfile={() => setEditProfile(true)}
+          />
         </header>
 
         <main className="main-content flex-1 p-4 sm:p-6 lg:p-8">
@@ -652,5 +659,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <IosTabBar />
       </div>
     </div>
+  );
+}
+
+function MobileSignOutButton() {
+  const { signingOut, signOut } = useSignOut();
+  return (
+    <Button
+      variant="ghost"
+      className="mt-2 min-h-[44px] w-full text-[var(--color-danger)]"
+      disabled={signingOut}
+      onClick={() => void signOut()}
+    >
+      <LogOut className="h-4 w-4" />
+      {signingOut ? "Signing out…" : "Sign out"}
+    </Button>
   );
 }
