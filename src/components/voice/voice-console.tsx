@@ -259,7 +259,7 @@ function VoiceBillingPanel({
           Voice Assistant billing
         </CardTitle>
         <CardDescription>
-          $79 USD each month includes {state.billing.includedMinutes} completed
+          $23 USD each month includes {state.billing.includedMinutes} completed
           inbound AI minutes for this workspace. New calls pause after that
           completed-call usage threshold; calls already in progress may finish.
           No metered overage is charged.
@@ -296,7 +296,7 @@ function VoiceBillingPanel({
               )}
               {busy === "checkout"
                 ? "Opening secure checkout…"
-                : "Subscribe — $79/month"}
+                : "Subscribe — $23/month"}
             </Button>
           ) : null}
           {state.billing.portalAvailable ? (

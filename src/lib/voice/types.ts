@@ -158,7 +158,7 @@ export interface VoiceConsoleState {
     canProvision: boolean;
   };
   billing: {
-    monthlyPriceCents: 7900;
+    monthlyPriceCents: 2300;
     includedMinutes: 200;
     checkoutAvailable: boolean;
     portalAvailable: boolean;

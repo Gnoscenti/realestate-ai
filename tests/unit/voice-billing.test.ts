@@ -32,7 +32,7 @@ const price: StripePriceLike = {
   livemode: false,
   currency: "usd",
   type: "recurring",
-  unit_amount: 7_900,
+  unit_amount: 2_300,
   billing_scheme: "per_unit",
   recurring: {
     interval: "month",
@@ -155,16 +155,20 @@ describe("Voice Assistant Stripe billing", () => {
     }
   });
 
-  it("accepts only the configured active $79 USD monthly licensed price", () => {
+  it("accepts only the configured active $23 USD monthly licensed price", () => {
     expect(() =>
       assertVoicePrice(price, config.priceId, false),
     ).not.toThrow();
     expect(() =>
-      assertVoicePrice({ ...price, unit_amount: 7_899 }, config.priceId, false),
-    ).toThrow(/\$79 USD monthly plan/);
+      assertVoicePrice({ ...price, unit_amount: 2_299 }, config.priceId, false),
+    ).toThrow(/\$23 USD monthly plan/);
+    // The retired $79 plan must no longer be accepted.
+    expect(() =>
+      assertVoicePrice({ ...price, unit_amount: 7_900 }, config.priceId, false),
+    ).toThrow(/\$23 USD monthly plan/);
     expect(() =>
       assertVoicePrice({ ...price, livemode: true }, config.priceId, false),
-    ).toThrow(/\$79 USD monthly plan/);
+    ).toThrow(/\$23 USD monthly plan/);
   });
 
   it("uses one server-owned checkout key per trusted billing generation", async () => {
@@ -292,7 +296,7 @@ describe("Voice Assistant Stripe billing", () => {
         config,
         badPriceStripe,
       ),
-    ).rejects.toThrow(/\$79 USD monthly plan/);
+    ).rejects.toThrow(/\$23 USD monthly plan/);
   });
 
   it("atomically grants only an exact workspace owner and deduplicates event replay", async () => {
