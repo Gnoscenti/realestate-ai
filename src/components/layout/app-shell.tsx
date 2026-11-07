@@ -27,6 +27,8 @@ import {
   Bell,
   Phone,
   LogOut,
+  UserPlus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -49,6 +51,15 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import { AccountMenu, SignedInAs } from "@/components/layout/account-menu";
 import { useSignOut } from "@/lib/auth/use-sign-out";
+import { DemoBanner } from "@/components/layout/demo-banner";
+import {
+  DEMO_ENTRY_PATH,
+  DEMO_LOCKED_MESSAGE,
+  endDemoSession,
+  isDemoSession,
+  leaveDemo,
+} from "@/lib/demo-mode";
+import { seedDemoWorkspace } from "@/lib/demo-workspace";
 import {
   bindWorkspaceToUser,
   currentWorkspaceKey,
@@ -220,6 +231,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, isPending: authPending } = useCurrentUserState();
+  const isDemo = Boolean(user?.isDemo);
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const setCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const onboarded = useAppStore((s) => s.onboarded);
@@ -254,8 +266,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     void initNativeShell();
   }, []);
 
+  // A real session ends any guest demo left in this tab, so server calls work.
   useEffect(() => {
-    const openProfileSetup = () => setEditProfile(true);
+    if (user && !user.isDemo && isDemoSession()) endDemoSession();
+  }, [user]);
+
+  useEffect(() => {
+    const openProfileSetup = () => {
+      // Profile setup saves to the server, which needs a real account.
+      if (isDemoSession()) {
+        toast.message(DEMO_LOCKED_MESSAGE);
+        return;
+      }
+      setEditProfile(true);
+    };
     window.addEventListener(
       "realestate-ai:open-profile-setup",
       openProfileSetup,
@@ -280,7 +304,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setProfileSyncError(false);
     void bindWorkspaceToUser(user?.id).then(async () => {
       if (cancelled || currentWorkspaceKey() !== requestedKey) return;
-      if (user?.id) {
+      if (user?.isDemo) {
+        // Browser-only sample workspace; there is no saved profile to fetch.
+        seedDemoWorkspace();
+      } else if (user?.id) {
         try {
           const { getOnboardingProfile } = await import("@/lib/onboarding/api");
           const saved = await getOnboardingProfile();
@@ -297,7 +324,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [authPending, user?.id, profileSyncAttempt]);
+  }, [authPending, user?.id, user?.isDemo, profileSyncAttempt]);
 
   // The product tour is opt-in from the help button. Automatically opening an
   // 11-step modal on first use obscures the task the tester came to complete.
@@ -306,6 +333,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // cannot unlock the shell while loading or after a failed server request.
   useEffect(() => {
     if (!workspaceReady || !user?.id) return;
+    if (user.isDemo) {
+      // The demo shows every module with sample data. Nothing here unlocks the
+      // server: authenticated requests are refused while the demo is active.
+      setServerAccess("active");
+      return;
+    }
     let cancelled = false;
     setServerAccess("pending");
     void import("@/lib/billing/api")
@@ -337,7 +370,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [workspaceReady,user?.id,accessAttempt,setServerAccess,activateBilling,clearBilling]);
+  }, [workspaceReady,user?.id,user?.isDemo,accessAttempt,setServerAccess,activateBilling,clearBilling]);
 
   // App icon + favicon notification dots
   useEffect(() => {
@@ -356,7 +389,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // /login is a full-screen landing. It must render outside the shell, and we
   // must never redirect away from it, or the sign-in page would loop.
-  if (pathname === SIGN_IN_PATH) return <>{children}</>;
+  if (pathname === SIGN_IN_PATH || pathname === DEMO_ENTRY_PATH) return <>{children}</>;
 
   // The session is still resolving. Rendering the signed-out path here would
   // flash the login screen at signed-in users on every hard reload.
@@ -459,7 +492,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
             }}
           >
-            {profile ? (
+            {isDemo ? (
+              <button
+                type="button"
+                onClick={() => leaveDemo("signup")}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-primary-soft)] p-2.5 text-left text-xs font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-surface-2)]"
+              >
+                <UserPlus className="h-4 w-4 shrink-0" />
+                Create free account
+              </button>
+            ) : profile ? (
               <button
                 type="button"
                 onClick={() => setEditProfile(true)}
@@ -521,6 +563,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {isDemo && <DemoBanner />}
         <header
           className="glass-header sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--color-border)] bg-[color-mix(in_oklab,var(--color-bg)_88%,transparent)] px-3 backdrop-blur-md sm:px-5"
           style={{
@@ -562,18 +605,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     "max(0.75rem, env(safe-area-inset-bottom))",
                 }}
               >
-                <Button
-                  variant="secondary"
-                  className="min-h-[44px] w-full"
-                  onClick={() => {
-                    setMobileOpen(false);
-                    setEditProfile(true);
-                  }}
-                >
-                  <Settings2 className="h-4 w-4" />
-                  {profile ? "Edit profile" : "Set up profile"}
-                </Button>
-                <MobileSignOutButton />
+                {isDemo ? (
+                  <>
+                    <Button className="min-h-[44px] w-full" onClick={() => leaveDemo("signup")}>
+                      <UserPlus className="h-4 w-4" /> Create free account
+                    </Button>
+                    <Button variant="ghost" className="mt-2 min-h-[44px] w-full" onClick={() => leaveDemo("login")}>
+                      <X className="h-4 w-4" /> Exit demo
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="secondary"
+                      className="min-h-[44px] w-full"
+                      onClick={() => {
+                        setMobileOpen(false);
+                        setEditProfile(true);
+                      }}
+                    >
+                      <Settings2 className="h-4 w-4" />
+                      {profile ? "Edit profile" : "Set up profile"}
+                    </Button>
+                    <MobileSignOutButton />
+                  </>
+                )}
               </div>
             </SheetContent>
           </Sheet>
@@ -644,9 +700,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <AccountMenu
-            name={profile?.name ?? user.displayName}
+            name={isDemo ? user.displayName : profile?.name ?? user.displayName}
             email={user.primaryEmail}
             hasProfile={Boolean(profile)}
+            isDemo={isDemo}
             onEditProfile={() => setEditProfile(true)}
           />
         </header>

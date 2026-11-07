@@ -1,13 +1,16 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Loader2, LogOut, Settings2 } from "lucide-react";
+import { Loader2, LogOut, Settings2, UserPlus, X } from "lucide-react";
 import { authEnabled } from "@/lib/auth/client";
 import { useSignOut } from "@/lib/auth/use-sign-out";
+import { leaveDemo } from "@/lib/demo-mode";
 import { initials } from "@/lib/utils";
 
 type AccountMenuProps = {
   name: string | null;
   email: string | null;
   hasProfile: boolean;
+  /** Guest demo: offer Create account / Exit demo instead of profile and Sign out. */
+  isDemo?: boolean;
   onEditProfile: () => void;
 };
 
@@ -15,14 +18,14 @@ type AccountMenuProps = {
  * Header account control: who is signed in, profile access and Sign out.
  * Shown at every screen width so a shared device can always switch accounts.
  */
-export function AccountMenu({ name, email, hasProfile, onEditProfile }: AccountMenuProps) {
+export function AccountMenu({ name, email, hasProfile, isDemo = false, onEditProfile }: AccountMenuProps) {
   const { signingOut, signOut: runSignOut } = useSignOut();
   const label = name?.trim() || email || "Account";
   const firstName = label.split(/[\s@]/)[0] || "Account";
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
-        aria-label={`Account menu for ${label}`}
+        aria-label={isDemo ? "Demo menu" : `Account menu for ${label}`}
         data-testid="account-menu"
         className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-1 pl-1 pr-1 text-sm font-medium text-[var(--color-fg)] transition-colors hover:bg-[var(--color-surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] sm:pr-3"
       >
@@ -37,6 +40,30 @@ export function AccountMenu({ name, email, hasProfile, onEditProfile }: AccountM
           sideOffset={8}
           className="z-50 min-w-[15rem] rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 text-sm text-[var(--color-fg)] shadow-[var(--shadow-lg)]"
         >
+          {isDemo ? (
+            <>
+              <div className="px-2.5 py-2">
+                <div className="font-medium">Exploring the demo</div>
+                <div className="text-xs text-[var(--color-fg-muted)]">Sample data · not signed in</div>
+              </div>
+              <DropdownMenu.Separator className="my-1 h-px bg-[var(--color-border)]" />
+              <DropdownMenu.Item
+                onSelect={() => leaveDemo("signup")}
+                className="flex min-h-[40px] cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2.5 font-medium text-[var(--color-primary)] outline-none data-[highlighted]:bg-[var(--color-surface-2)]"
+              >
+                <UserPlus className="h-4 w-4" />
+                Create free account
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => leaveDemo("login")}
+                className="flex min-h-[40px] cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2.5 outline-none data-[highlighted]:bg-[var(--color-surface-2)]"
+              >
+                <X className="h-4 w-4" />
+                Exit demo
+              </DropdownMenu.Item>
+            </>
+          ) : (
+          <>
           <div className="px-2.5 py-2">
             <div className="text-xs text-[var(--color-fg-muted)]">Signed in as</div>
             <div className="truncate font-medium">{name?.trim() || "Your account"}</div>
@@ -62,6 +89,8 @@ export function AccountMenu({ name, email, hasProfile, onEditProfile }: AccountM
               {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
               {signingOut ? "Signing out…" : "Sign out"}
             </DropdownMenu.Item>
+          )}
+          </>
           )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
