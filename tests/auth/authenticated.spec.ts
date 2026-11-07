@@ -248,6 +248,16 @@ test("a visitor can explore the demo workspace without an account, and the serve
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("button", { name: "Demo menu" })).toBeVisible();
 
+  // Going Back to the login page and exploring again starts the demo over.
+  // (The sidebar's collapsed state is saved in the demo workspace.)
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByTestId("open-demo").click();
+  await expect(page.getByTestId("demo-banner")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
+
   // Sample data fills client-side modules.
   await page.goto("/leads");
   await expect(page.getByTestId("demo-banner")).toBeVisible();
@@ -257,6 +267,9 @@ test("a visitor can explore the demo workspace without an account, and the serve
   await page.goto("/voice");
   await expect(page.getByRole("heading", { name: "Missed-call assistant" })).toBeVisible();
   await expect(page.getByTestId("demo-locked-notice")).toBeVisible();
+  // The banner stays on screen on long pages.
+  await page.mouse.wheel(0, 5000);
+  await expect(page.getByTestId("demo-banner")).toBeInViewport();
   await page.getByRole("button", { name: "Subscribe — $23/month" }).click();
   await expect(page.getByText("You're exploring the demo with sample data. Create a free account to use this feature.").first()).toBeVisible();
 
