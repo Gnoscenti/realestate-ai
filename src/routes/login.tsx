@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
@@ -10,6 +10,7 @@ import {
   Shield,
   ArrowRight,
   LogOut,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState, type AppUser } from "@/lib/auth/use-current-user";
 import { useSignOut } from "@/lib/auth/use-sign-out";
+import { endDemoSession, startDemoSession } from "@/lib/demo-mode";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { cn } from "@/lib/utils";
 
@@ -59,11 +61,29 @@ function recentlySignedIn(): boolean {
   } catch { return false; }
 }
 
+function initialMode(): "signin" | "signup" {
+  if (typeof window === "undefined") return "signin";
+  try {
+    return new URLSearchParams(window.location.search).get("signup") === "1" ? "signup" : "signin";
+  } catch {
+    return "signin";
+  }
+}
+
+const noopSubscribe = () => () => {};
+/** False during SSR and hydration, true afterwards: keeps the first client render identical to the server's. */
+function useHydrated(): boolean {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false);
+}
+
 function LoginPage() {
   const navigate = useNavigate();
-  const { user, isPending } = useCurrentUserState();
+  const hydrated = useHydrated();
+  const { user: currentUser, isPending } = useCurrentUserState();
+  // The guest demo is not a sign-in: show the normal form to demo visitors.
+  const user = currentUser && !currentUser.isDemo ? currentUser : null;
   const [busy, setBusy] = useState<string | null>(null);
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -94,6 +114,7 @@ function LoginPage() {
           name: name.trim() || trimmed.split("@")[0] || "Agent",
         });
         if (error) throw new Error(error.message ?? "Sign-up failed");
+        endDemoSession();
         markJustSignedIn();
         toast.success("Account created — welcome in");
       } else {
@@ -102,6 +123,7 @@ function LoginPage() {
           password,
         });
         if (error) throw new Error(error.message ?? "Sign-in failed");
+        endDemoSession();
         markJustSignedIn();
       }
       void navigate({ to: "/" });
@@ -112,11 +134,19 @@ function LoginPage() {
     }
   };
 
-  if (isPending || (user && (busy || autoContinue))) {
+  const openDemo = () => {
+    startDemoSession();
+    void navigate({ to: "/" });
+  };
+
+  // The server always renders "Checking session…". If the session resolves before
+  // this route's code finishes loading, rendering the form during hydration would
+  // mismatch the server HTML, so wait until hydration has finished.
+  if (!hydrated || isPending || (user && (busy || autoContinue))) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-transparent text-sm text-[var(--color-fg-muted)]">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        {user ? "Opening your workspace…" : "Checking session…"}
+        {hydrated && user ? "Opening your workspace…" : "Checking session…"}
       </div>
     );
   }
@@ -276,8 +306,7 @@ function LoginPage() {
               </Button>
 
               <p className="text-center text-xs leading-relaxed text-[var(--color-fg-muted)]">
-                First time here? Choose Create account above. No profile setup
-                is required to enter the workspace.
+                First time here? Choose Create account above.
               </p>
             </form>
           ) : (
@@ -291,6 +320,27 @@ function LoginPage() {
 
           {/* Broker OAuth buttons stay hidden until the server exposes a
               same-origin capability confirming that federation is configured. */}
+
+          <button
+            type="button"
+            onClick={openDemo}
+            data-testid="open-demo"
+            className="group mt-5 flex min-h-[52px] w-full items-center gap-3 rounded-[var(--radius-md)] border-2 border-[var(--color-primary)] bg-[var(--color-primary-soft)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--color-primary)_22%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2"
+          >
+            <Eye className="h-5 w-5 shrink-0 text-[var(--color-primary)]" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-[var(--color-fg)]">
+                Just looking?{" "}
+                <span className="text-[var(--color-primary)] underline underline-offset-4">
+                  Click here to explore the workspace without an account
+                </span>
+              </span>
+              <span className="mt-0.5 block text-xs text-[var(--color-fg-muted)]">
+                Sample data · no sign-up · nothing is saved
+              </span>
+            </span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-[var(--color-primary)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+          </button>
 
           <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
             Open the workspace first. Add your profile and website later from
