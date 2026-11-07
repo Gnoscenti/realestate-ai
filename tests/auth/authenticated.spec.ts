@@ -158,6 +158,32 @@ test("real sessions enforce the paywall, persist social drafts and isolate anoth
 });
 
 
+test("a shared device can see who is signed in, sign out and switch accounts", async ({ page }) => {
+  await signUp(page);
+  // The access gate already offers a way out before any code is redeemed.
+  await expect(page.getByRole("button", { name: "Not you? Sign out" })).toBeVisible();
+  await unlock(page);
+
+  // A later visit to the sign-in page (here, a new tab) explains who is signed in
+  // instead of silently opening the previous person's workspace.
+  const later = await page.context().newPage();
+  await later.goto("/login");
+  await expect(later.getByTestId("signed-in-chooser")).toBeVisible();
+  await expect(later.getByTestId("signed-in-chooser")).toContainText("@example.test");
+  await later.getByRole("button", { name: "Continue to workspace", exact: true }).click();
+  await expect(later.getByTestId("entitled-workspace")).toBeVisible();
+
+  // The header account menu signs out and returns to a usable sign-in form.
+  await later.getByTestId("account-menu").click();
+  await expect(later.getByRole("menu")).toContainText("Signed in as");
+  await later.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(later).toHaveURL(/\/login/);
+  await expect(later.getByRole("button", { name: "Create account", exact: true })).toBeVisible();
+  await later.goto("/marketing");
+  await expect(later).toHaveURL(/\/login/);
+  await later.close();
+});
+
 test("compiled production auth rejects unrelated loopback origins", async ({request}) => {
   test.skip(process.env.PLAYWRIGHT_PRODUCTION !== "1", "Development explicitly permits local dev origins.");
   const response = await request.post("/api/auth/sign-in/email", {
