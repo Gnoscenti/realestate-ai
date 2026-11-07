@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, CheckCircle2, Download, ExternalLink, FileText, Loader2, Lock, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, ExternalLink, FileText, Loader2, Lock, Printer, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createMyGuide, exportMyGuide, getMyGuides, updateMyGuideStep } from "@/lib/aieo/guide-api";
-import { guideInputSchema, type GuideInput, type GuideView } from "@/lib/aieo/guide";
+import { guideInputSchema, guidePrintHtml, type GuideInput, type GuideView } from "@/lib/aieo/guide";
 import { useAppStore } from "@/lib/store";
 
 const fields = [
   ["name","Agent, team or brokerage name", "Your public name"],
   ["area","Target locale", "City, region or service area"],
-  ["website","Personal or business website", "https://your-website.com/about"],
+  ["website","Personal or business website", "your-website.com/about"],
   ["brokerage","Brokerage name (optional)", "Your current brokerage"],
   ["brokerUrl","Broker profile URL (optional)", "https://broker.com/your-profile"],
   ["rankingUrl","Ranking or recognition URL (optional)", "https://publisher.com/your-profile"],
@@ -31,6 +31,7 @@ export function GuidePanel() {
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
   const [exporting,setExporting] = useState(false);
+  const [printing,setPrinting] = useState(false);
   const [saving,setSaving] = useState<string | null>(null);
   const [error,setError] = useState("");
   const [historyError,setHistoryError] = useState("");
@@ -81,6 +82,23 @@ export function GuidePanel() {
     } catch { toast.error("Could not export the current guide. Check your connection and retry."); }
     finally { setExporting(false); }
   }
+  async function print() {
+    if (!guide) return;
+    // Open synchronously on the click so pop-up blockers allow it, then fill it.
+    const win = window.open("", "_blank");
+    if (!win) { toast.error("Allow pop-ups for this site to print the guide."); return; }
+    win.document.write("<p style=\"font-family:sans-serif\">Preparing your guide…</p>");
+    setPrinting(true);
+    try {
+      const current = await exportMyGuide({data:{id:guide.id}});
+      setGuides(old=>old.map(g=>g.id===current.guide.id ? current.guide : g));
+      win.document.open(); win.document.write(guidePrintHtml(current.guide)); win.document.close();
+      win.focus(); setTimeout(()=>win.print(), 250);
+    } catch {
+      win.close();
+      toast.error("Could not prepare the printable guide. Check your connection and retry.");
+    } finally { setPrinting(false); }
+  }
   return <div className="space-y-6" data-testid="citelock-guide">
     <section className="overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 sm:p-8">
       <Badge variant="accent"><FileText className="h-3 w-3" /> CiteLock · your visibility playbook</Badge>
@@ -109,7 +127,11 @@ export function GuidePanel() {
                 <label htmlFor={"guide-"+key} className="text-xs font-medium">{label}</label>
                 <Input id={"guide-"+key} className="mt-1" value={input[key]} placeholder={placeholder}
                   required={["name","area","website"].includes(key)} maxLength={key.includes("Url") || key==="website" ? 1000 : 160}
-                  type={key.includes("Url") || key==="website" ? "url" : "text"}
+                  /* Plain text with a URL keyboard: browsers reject "yoursite.com" in type="url",
+                     but the guide accepts it and adds https:// itself. */
+                  type="text" inputMode={key.includes("Url") || key==="website" ? "url" : "text"}
+                  autoCapitalize={key.includes("Url") || key==="website" ? "none" : "words"}
+                  autoCorrect="off" spellCheck={false}
                   onChange={e=>setInput(old=>({...old,[key]:e.target.value}))} />
               </div>)}
             </fieldset>
@@ -142,7 +164,10 @@ export function GuidePanel() {
                 {guides.map(g=><option key={g.id} value={g.id}>{g.analysis.input.name} · {new Date(g.createdAt).toLocaleString()}</option>)}
               </select>
             </div>
-            <Button variant="outline" disabled={exporting} onClick={()=>void download()}>{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export guide</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={printing} onClick={()=>void print()}>{printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Print or save PDF</Button>
+              <Button variant="outline" disabled={exporting} onClick={()=>void download()}>{exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export guide</Button>
+            </div>
           </div>
           <Card>
             <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><CardTitle className="text-lg">What your sources support</CardTitle><Badge variant={guide.tier==="full" ? "accent":"outline"}>{guide.tier==="full" ? "Full guide":"Free basic guide"}</Badge></div></CardHeader>
