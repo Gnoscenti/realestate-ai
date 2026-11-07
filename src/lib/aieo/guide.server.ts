@@ -39,7 +39,7 @@ export function readRealTrendsRanking(input: GuideInput, url: string, text: stri
 const UNAVAILABLE_NOTES: Record<GuideSourceFailure, string> = {
   blocked: "This site blocks automated reading (common on large brokerage and portal sites), so CiteLock could not inspect it. Add your personal bio page or another public page with the same details instead. No claims were inferred.",
   not_found: "This page was not found. Open the link in a browser, copy the exact address of your profile and retry. No claims were inferred.",
-  redirect: "This link sends visitors to a different website. Open it in a browser and paste the final address you land on. No claims were inferred.",
+  redirect: "CiteLock could not follow this page's redirects (it may send visitors to another website or loop). Open the link in a browser and paste the final public HTTPS address. No claims were inferred.",
   no_text: "This page shows no readable text without JavaScript. Ask your web editor for a text version of your bio; search and AI crawlers benefit from readable text too. No claims were inferred.",
   not_html: "This link is not a web page (for example a PDF or image). Use the web page that shows the same information. No claims were inferred.",
   unreachable: "This site did not respond in time or could not be reached safely. Check the address and retry later. No claims were inferred.",
