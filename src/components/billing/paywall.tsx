@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Check,
   CreditCard,
@@ -25,11 +25,13 @@ import { openExternalUrl } from "@/lib/native";
 
 type Props = {
   agentName?: string;
+  /** Optional content under the paywall, e.g. the signed-in account and Sign out. */
+  footer?: ReactNode;
   /** Called after the SERVER confirmed a grant (checkout or code). */
   onAccessGranted?: () => void;
 };
 
-export function Paywall({ agentName, onAccessGranted }: Props) {
+export function Paywall({ agentName, onAccessGranted, footer }: Props) {
   const completeDemoCheckout = useAppStore((s) => s.completeDemoCheckout);
   const completePaidCheckout = useAppStore((s) => s.completePaidCheckout);
   const activateBilling = useAppStore((s) => s.activateBilling);
@@ -295,6 +297,7 @@ export function Paywall({ agentName, onAccessGranted }: Props) {
           <Sparkles className="h-3 w-3" />
           One-time charge · No subscription · Nothing renews automatically
         </p>
+        {footer}
       </div>
     </div>
   );
