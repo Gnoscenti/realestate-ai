@@ -16,7 +16,7 @@
   "crons": [
     {
       "path": "/api/internal/voice/process-webhooks",
-      "schedule": "17 4 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
