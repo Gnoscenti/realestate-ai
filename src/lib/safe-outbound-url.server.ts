@@ -8,7 +8,27 @@ export type PublicUrlOptions = {
 export type SafeFetchOptions = PublicUrlOptions & {
   maxRedirects?: number;
   allowCrossOriginRedirects?: boolean;
+  /**
+   * Permit redirects that stay on the same site: an http->https upgrade on the
+   * same host, or a hop between `example.com` and `www.example.com`. Every hop
+   * is still re-validated by `assertPublicHttpUrl`. Ignored when
+   * `allowCrossOriginRedirects` is true.
+   */
+  allowSameSiteRedirects?: boolean;
 };
+
+const stripWww = (hostname: string) => hostname.toLowerCase().replace(/^www\./, "");
+
+/**
+ * True when `next` is the same site as `current`: identical host (ignoring a
+ * single leading `www.`), no protocol downgrade, and no change of port.
+ */
+export function isSameSiteRedirect(current: URL, next: URL): boolean {
+  // Same protocol, or an upgrade from http to https; never a downgrade.
+  if (next.protocol !== current.protocol && next.protocol !== "https:") return false;
+  if (next.port !== current.port) return false;
+  return stripWww(current.hostname) === stripWww(next.hostname);
+}
 
 const BLOCKED_HOST_SUFFIXES = [
   ".localhost",
@@ -178,7 +198,8 @@ export async function safeFetch(
     const next = new URL(location, current);
     if (
       !options.allowCrossOriginRedirects &&
-      next.origin !== current.origin
+      next.origin !== current.origin &&
+      !(options.allowSameSiteRedirects && isSameSiteRedirect(current, next))
     ) {
       await response.body?.cancel();
       throw new Error("Cross-origin redirects are not allowed");
