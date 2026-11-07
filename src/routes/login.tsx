@@ -20,6 +20,7 @@ import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState, type AppUser } from "@/lib/auth/use-current-user";
 import { useSignOut } from "@/lib/auth/use-sign-out";
 import { endDemoSession, startDemoSession } from "@/lib/demo-mode";
+import { restartDemoWorkspace } from "@/lib/demo-workspace";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { cn } from "@/lib/utils";
 
@@ -136,6 +137,8 @@ function LoginPage() {
 
   const openDemo = () => {
     startDemoSession();
+    // Back from the demo and in again: start over instead of keeping edits.
+    restartDemoWorkspace();
     void navigate({ to: "/" });
   };
 

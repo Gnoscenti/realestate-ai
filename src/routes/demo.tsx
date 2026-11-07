@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { startDemoSession } from "@/lib/demo-mode";
+import { restartDemoWorkspace } from "@/lib/demo-workspace";
 
 /**
  * Shareable demo link (for a QR code or a text message): opens the workspace
@@ -20,7 +21,10 @@ function DemoEntry() {
 
   useEffect(() => {
     if (isPending) return;
-    if (!signedIn) startDemoSession();
+    if (!signedIn) {
+      startDemoSession();
+      restartDemoWorkspace();
+    }
     void navigate({ to: "/", replace: true });
   }, [isPending, signedIn, navigate]);
 
