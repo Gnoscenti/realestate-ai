@@ -8,13 +8,16 @@ import {
   Zap,
   Calendar,
   Shield,
+  ArrowRight,
+  LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth/client";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { useCurrentUserState, type AppUser } from "@/lib/auth/use-current-user";
+import { useSignOut } from "@/lib/auth/use-sign-out";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +43,22 @@ const HIGHLIGHTS = [
   },
 ] as const;
 
+// Set when this tab has just signed in or created an account. The workspace can
+// briefly bounce back here while the new session propagates; within this window
+// /login continues automatically instead of showing the "already signed in" choice.
+const JUST_SIGNED_IN_KEY = "realestate-ai.just-signed-in";
+const JUST_SIGNED_IN_WINDOW_MS = 60_000;
+function markJustSignedIn() {
+  try { window.sessionStorage.setItem(JUST_SIGNED_IN_KEY, String(Date.now())); } catch { /* storage unavailable */ }
+}
+function recentlySignedIn(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const at = Number(window.sessionStorage.getItem(JUST_SIGNED_IN_KEY));
+    return Number.isFinite(at) && at > 0 && Date.now() - at < JUST_SIGNED_IN_WINDOW_MS;
+  } catch { return false; }
+}
+
 function LoginPage() {
   const navigate = useNavigate();
   const { user, isPending } = useCurrentUserState();
@@ -48,12 +67,11 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const autoContinue = Boolean(user) && recentlySignedIn();
 
-  // Already signed in → home (shell opens access/workspace; setup is optional)
+  // Right after signing in, keep going to the workspace (the session may still be propagating).
   useEffect(() => {
-    if (!isPending && user) {
-      void navigate({ to: "/" });
-    }
+    if (!isPending && user && recentlySignedIn()) void navigate({ to: "/" });
   }, [user, isPending, navigate]);
 
   const onEmailSubmit = async (e: React.FormEvent) => {
@@ -76,6 +94,7 @@ function LoginPage() {
           name: name.trim() || trimmed.split("@")[0] || "Agent",
         });
         if (error) throw new Error(error.message ?? "Sign-up failed");
+        markJustSignedIn();
         toast.success("Account created — welcome in");
       } else {
         const { error } = await authClient.signIn.email({
@@ -83,6 +102,7 @@ function LoginPage() {
           password,
         });
         if (error) throw new Error(error.message ?? "Sign-in failed");
+        markJustSignedIn();
       }
       void navigate({ to: "/" });
     } catch (err) {
@@ -92,13 +112,19 @@ function LoginPage() {
     }
   };
 
-  if (isPending || user) {
+  if (isPending || (user && (busy || autoContinue))) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-transparent text-sm text-[var(--color-fg-muted)]">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
         {user ? "Opening your workspace…" : "Checking session…"}
       </div>
     );
+  }
+
+  // Already signed in from an earlier visit: say who, and let a shared device
+  // switch accounts instead of silently bouncing into the previous workspace.
+  if (user) {
+    return <SignedInChooser user={user} onContinue={() => void navigate({ to: "/" })} />;
   }
 
   return (
@@ -271,6 +297,37 @@ function LoginPage() {
             inside the app.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SignedInChooser({ user, onContinue }: { user: AppUser; onContinue: () => void }) {
+  const { signingOut, signOut } = useSignOut();
+  const label = user.displayName?.trim() || user.primaryEmail || "your account";
+  return (
+    <div className="gradient-mesh flex min-h-dvh items-center justify-center p-4">
+      <div className="surface-card w-full max-w-md space-y-5 p-6 shadow-[var(--shadow-lg)] sm:p-8" data-testid="signed-in-chooser">
+        <div>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)]">You're already signed in</h1>
+          <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
+            Signed in as <span className="font-medium text-[var(--color-fg)]">{label}</span>
+            {user.primaryEmail && user.displayName ? <> ({user.primaryEmail})</> : null}.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Button className="min-h-[44px] w-full" onClick={onContinue} disabled={signingOut}>
+            Continue to workspace
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" className="min-h-[44px] w-full" onClick={() => void signOut()} disabled={signingOut}>
+            {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+            {signingOut ? "Signing out…" : "Sign out and use another account"}
+          </Button>
+        </div>
+        <p className="text-xs text-[var(--color-fg-muted)]">
+          On a shared phone or computer, sign out when you're done so the next person can create their own account.
+        </p>
       </div>
     </div>
   );

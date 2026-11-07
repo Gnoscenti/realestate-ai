@@ -203,12 +203,27 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
   });
 }
 
-/** Sign out of THIS app's local session, clear the preview token, then redirect. */
-export async function signOut(redirectTo = "/"): Promise<void> {
-  try {
-    await authClient.signOut();
-  } finally {
-    setBearerToken(null);
+type SignOutResult = { error?: { status?: number; message?: string } | null } | null | undefined;
+
+/**
+ * Throw when the server did not end the session. Better Auth reports HTTP
+ * failures in `{ error }` instead of throwing. A 401 means there was no valid
+ * session to end, which is already signed out.
+ */
+export function assertSignedOut(result: SignOutResult): void {
+  const error = result?.error;
+  if (error && error.status !== 401) {
+    throw new Error(error.message || "Sign-out failed");
   }
+}
+
+/**
+ * Sign out of THIS app's local session, then clear the preview token and
+ * redirect. If the server could not end the session this throws instead, so a
+ * shared device never shows the sign-in page while the old session is valid.
+ */
+export async function signOut(redirectTo = "/"): Promise<void> {
+  assertSignedOut((await authClient.signOut()) as SignOutResult);
+  setBearerToken(null);
   window.location.href = redirectTo;
 }

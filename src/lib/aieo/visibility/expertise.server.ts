@@ -44,17 +44,52 @@ export function visiblePageText(html:string) {
     .replace(/<[^>]*>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&")
     .replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/\s+/g," ").trim();
 }
+/** Why a public page could not be used. Shared with the guide so notes stay specific. */
+export type PublicPageFailure = "blocked" | "not_found" | "redirect" | "no_text" | "not_html" | "unreachable";
+export class PublicPageError extends Error {
+  constructor(readonly reason: PublicPageFailure, message: string) { super(message); this.name = "PublicPageError"; }
+}
+// Interstitials served instead of the requested page by bot-protection services.
+// A phrase that only appears on such pages is enough; weaker words (for example a
+// contact form labelled "CAPTCHA") count only when at least two appear together.
+// Only short pages are checked so a real biography is never discarded.
+const CHALLENGE_PHRASE = /\b(?:just a moment\.\.\.|attention required!?\s*\|?\s*cloudflare|checking (?:if the site connection is secure|your browser before accessing)|verify (?:that )?you are (?:a )?human|are you a robot\?|enable javascript and cookies to continue|please complete the security check|request (?:was )?blocked by|access to this page has been denied)/i;
+const CHALLENGE_SIGNALS = [/\bcaptcha\b/i, /\bcloudflare\b/i, /\bray id\b/i, /\bsecurity check\b/i, /\bbot (?:protection|detection)\b/i, /\baccess denied\b/i, /\bunusual traffic\b/i];
+export function looksLikeAccessChallenge(text:string) {
+  if (text.length >= 3000) return false;
+  if (CHALLENGE_PHRASE.test(text)) return true;
+  return CHALLENGE_SIGNALS.filter(signal => signal.test(text)).length >= 2;
+}
+export function classifyPublicPageError(error:unknown): PublicPageFailure {
+  if (error instanceof PublicPageError) return error.reason;
+  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+  if (/redirect/i.test(message)) return "redirect";
+  return "unreachable";
+}
 export async function fetchPublicPage(url:string) {
   const control=new AbortController(); const timer=setTimeout(()=>control.abort(),15000);
   try {
     const {response,finalUrl}=await safeFetch(url,
       {signal:control.signal,headers:{Accept:"text/html","User-Agent":"CiteLock-Expertise/1.0"}},
-      {allowCrossOriginRedirects:false,maxRedirects:2});
-    if(!response.ok) throw new Error("Public page returned HTTP "+response.status);
-    if(!/text\/html|text\/plain|application\/xhtml/i.test(response.headers.get("content-type") || "")) throw new Error("Use an HTML or text page");
+      // Same-site hops (http->https, apex<->www) are common on agent and broker sites.
+      {allowCrossOriginRedirects:false,allowSameSiteRedirects:true,maxRedirects:3});
+    if(!response.ok) {
+      await response.body?.cancel();
+      if([401,403,429,503].includes(response.status)) throw new PublicPageError("blocked","Public page refused automated access (HTTP "+response.status+")");
+      if([404,410].includes(response.status)) throw new PublicPageError("not_found","Public page was not found (HTTP "+response.status+")");
+      throw new PublicPageError("unreachable","Public page returned HTTP "+response.status);
+    }
+    if(!/text\/html|text\/plain|application\/xhtml/i.test(response.headers.get("content-type") || "")) {
+      await response.body?.cancel();
+      throw new PublicPageError("not_html","Use an HTML or text page");
+    }
     const text=visiblePageText(await readResponseText(response,1024*1024)).slice(0,40000);
-    if(text.length<40) throw new Error("No usable public text was returned; JavaScript-only pages need a text-accessible version.");
+    if(looksLikeAccessChallenge(text)) throw new PublicPageError("blocked","The site served a bot-check page instead of the profile.");
+    if(text.length<40) throw new PublicPageError("no_text","No usable public text was returned; JavaScript-only pages need a text-accessible version.");
     return {text,url:finalUrl.toString()};
+  } catch (error) {
+    if (error instanceof PublicPageError) throw error;
+    throw new PublicPageError(classifyPublicPageError(error), error instanceof Error ? error.message : "Public page could not be reached");
   } finally {clearTimeout(timer);}
 }
 export async function observeExpertisePage(userId:string,workspaceId:string,fingerprint:string,subject:VisibilitySubject,url:string,
