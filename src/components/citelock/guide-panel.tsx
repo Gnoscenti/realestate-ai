@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { createMyGuide, exportMyGuide, getMyGuides, updateMyGuideStep } from "@/lib/aieo/guide-api";
 import { guideInputSchema, guidePrintHtml, type GuideInput, type GuideView } from "@/lib/aieo/guide";
 import { useAppStore } from "@/lib/store";
+import { useDemoSession } from "@/lib/demo-mode";
+import { DemoLockedNotice } from "@/components/layout/demo-banner";
 
 const fields = [
   ["name","Agent, team or brokerage name", "Your public name"],
@@ -21,6 +23,7 @@ const fields = [
 ] as const;
 
 export function GuidePanel() {
+  const demo = useDemoSession();
   const profile = useAppStore(s => s.agentProfile);
   const [input, setInput] = useState<GuideInput>(() => ({
     name:profile?.name || "", area:profile?.areaOfOperations || "", website:profile?.website || "",
@@ -42,7 +45,11 @@ export function GuidePanel() {
     catch { setHistoryError("We could not load your saved guides. Retry to restore your history."); }
     finally { setLoading(false); }
   },[]);
-  useEffect(() => { void load(); },[load]);
+  useEffect(() => {
+    // Saved guides belong to an account; the demo has none to load.
+    if (demo) { setLoading(false); return; }
+    void load();
+  },[load, demo]);
   async function create(event: React.FormEvent) {
     event.preventDefault();
     const parsed = guideInputSchema.safeParse(input);
@@ -111,6 +118,10 @@ export function GuidePanel() {
         <span>Source-linked findings</span><span>•</span><span>No MLS connection required</span><span>•</span><span>Saved progress + export</span>
       </div>
     </section>
+    {demo && <DemoLockedNotice feature="Your personalized CiteLock guide">
+      CiteLock reads your own public pages (website, brokerage profile, awards) and builds a
+      step-by-step plan for your name, town and brokerage. The form below shows what you would enter.
+    </DemoLockedNotice>}
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,350px)_minmax(0,1fr)]">
       <Card>
         <CardHeader><CardTitle className="text-base">Start with the assets you have</CardTitle></CardHeader>
