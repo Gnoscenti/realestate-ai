@@ -234,3 +234,51 @@ test("free Citelock guide persists without MLS and upgrades the saved plan after
   await expect(page.getByRole("checkbox",{name:"Mark step 1 complete",exact:true})).toBeChecked();
   await expect(page.getByRole("button",{name:"Advanced workspace",exact:true})).toBeEnabled();
 });
+
+test("a visitor can explore the demo workspace without an account, and the server stays locked", async ({ page }) => {
+  const unauthorized: string[] = [];
+  page.on("response", response => {
+    if (response.status() === 401 && new URL(response.url()).origin === "http://localhost:8132") unauthorized.push(response.url());
+  });
+
+  await page.goto("/login");
+  await expect(page.getByText("First time here? Choose Create account above.")).toBeVisible();
+  await page.getByTestId("open-demo").click();
+  await expect(page.getByTestId("demo-banner")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("button", { name: "Demo menu" })).toBeVisible();
+
+  // Sample data fills client-side modules.
+  await page.goto("/leads");
+  await expect(page.getByTestId("demo-banner")).toBeVisible();
+  await expect(page.getByText("Sarah Johnson").first()).toBeVisible();
+
+  // Server-backed modules explain what an account unlocks instead of failing.
+  await page.goto("/voice");
+  await expect(page.getByRole("heading", { name: "Missed-call assistant" })).toBeVisible();
+  await expect(page.getByTestId("demo-locked-notice")).toBeVisible();
+  await page.getByRole("button", { name: "Subscribe — $23/month" }).click();
+  await expect(page.getByText("You're exploring the demo with sample data. Create a free account to use this feature.").first()).toBeVisible();
+
+  await page.goto("/aieo");
+  await expect(page.getByText("Your personalized CiteLock guide works with your own account.")).toBeVisible();
+  await page.goto("/marketing");
+  await expect(page.getByText("Social Desk works with your own account.")).toBeVisible();
+
+  // No authenticated request was attempted while browsing the demo.
+  expect(unauthorized).toEqual([]);
+
+  // Leaving the demo returns to a normal signed-out login page.
+  await page.getByTestId("demo-banner").getByRole("button", { name: "Exit demo" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByTestId("open-demo")).toBeVisible();
+  await page.goto("/leads");
+  await expect(page).toHaveURL(/\/login/);
+
+  // The shareable /demo link (QR code) opens the demo directly, fresh.
+  await page.goto("/demo");
+  await expect(page.getByTestId("demo-banner")).toBeVisible();
+  await page.getByTestId("demo-banner").getByRole("button", { name: "Create free account" }).click();
+  await expect(page).toHaveURL(/\/login\?signup=1$/);
+  await expect(page.getByRole("button", { name: "Create account with email" })).toBeVisible();
+});
