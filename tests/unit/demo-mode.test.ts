@@ -134,3 +134,45 @@ describe("demo workspace", () => {
     expect(state.readyForMissedCalls).toBe(false);
   });
 });
+
+describe("demo workspace isolation (review follow-ups)", () => {
+  const BASE = "realestate-ai-workspace-v12";
+  const legacy = JSON.stringify({ state: { onboarded: true, agentProfile: { name: "Real Legacy Agent", areaOfOperations: "San Diego, CA", mls: "sandicor", website: "", onboardedAt: "2026-01-01T00:00:00.000Z" }, leads: [] }, version: 0 });
+
+  it("never lets the guest demo claim a real user's legacy workspace", async () => {
+    const win = installWindow({ local: { [BASE]: legacy } });
+    const { bindWorkspaceToUser } = await import("@/lib/auth/workspace-scope");
+    const { useAppStore } = await import("@/lib/store");
+    const { seedDemoWorkspace } = await import("@/lib/demo-workspace");
+
+    await bindWorkspaceToUser("demo-visitor");
+    expect(useAppStore.getState().agentProfile).toBeNull();
+    seedDemoWorkspace();
+    expect(useAppStore.getState().agentProfile?.name).toBe("Demo Agent");
+    expect(win.localStorage.getItem(BASE)).toBe(legacy);
+
+    // The real user still gets their snapshot on their next sign-in.
+    await bindWorkspaceToUser("real-user");
+    expect(useAppStore.getState().agentProfile?.name).toBe("Real Legacy Agent");
+  });
+
+  it("restarts a loaded demo from scratch, and never resets a real workspace", async () => {
+    installWindow();
+    const { bindWorkspaceToUser } = await import("@/lib/auth/workspace-scope");
+    const { useAppStore } = await import("@/lib/store");
+    const { seedDemoWorkspace, restartDemoWorkspace } = await import("@/lib/demo-workspace");
+
+    await bindWorkspaceToUser("demo-visitor");
+    seedDemoWorkspace();
+    const seededLeads = useAppStore.getState().leads.length;
+    useAppStore.setState({ leads: [], completedPriorities: ["edited-by-visitor"] });
+    expect(restartDemoWorkspace()).toBe(true);
+    expect(useAppStore.getState().leads).toHaveLength(seededLeads);
+    expect(useAppStore.getState().completedPriorities).toEqual([]);
+
+    await bindWorkspaceToUser("real-user");
+    useAppStore.setState({ completedPriorities: ["real-work"] });
+    expect(restartDemoWorkspace()).toBe(false);
+    expect(useAppStore.getState().completedPriorities).toEqual(["real-work"]);
+  });
+});
