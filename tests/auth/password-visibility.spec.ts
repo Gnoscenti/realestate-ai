@@ -57,6 +57,28 @@ test("eye toggle works from the keyboard and keeps typing in place", async ({ pa
   await expect(password).toHaveValue("abcdef");
 });
 
+test("typing straight after the eye click lands at the caret, before any animation frame", async ({ page }) => {
+  const password = await openLogin(page, "Sign in");
+  await password.click();
+  await page.keyboard.type("abcdef");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+
+  // A busy device can take a long time to render the next frame. The caret must
+  // already be back in place when the click returns, so hold every frame callback.
+  await page.evaluate(() => {
+    window.requestAnimationFrame = () => 0;
+  });
+
+  await page.getByRole("button", { name: "Show password", exact: true }).click();
+  await page.keyboard.type("X");
+  await expect(password).toHaveValue("abcdXef");
+
+  await page.getByRole("button", { name: "Hide password", exact: true }).click();
+  await page.keyboard.type("Y");
+  await expect(password).toHaveValue("abcdXYef");
+});
+
 test("revealed password is masked again when the form submits", async ({ page }) => {
   const password = await openLogin(page, "Sign in");
   await page.locator("#login-email").fill("nobody-here@example.test");
