@@ -62,8 +62,17 @@ import type {
   VoiceSetup,
   VoiceSetupChecklist,
 } from "@/lib/voice/types";
+import {
+  DEMO_LOCKED_MESSAGE,
+  isDemoModeError,
+  isDemoSession,
+  useDemoSession,
+} from "@/lib/demo-mode";
+import { demoVoiceConsoleState } from "@/lib/voice/demo-console";
+import { DemoLockedNotice } from "@/components/layout/demo-banner";
 
 function errorMessage(error: unknown): string {
+  if (isDemoModeError(error)) return DEMO_LOCKED_MESSAGE;
   if (error instanceof Error && error.message.trim()) return error.message;
   return "The request could not be completed. Try again, then contact support if it continues.";
 }
@@ -1153,6 +1162,7 @@ function CallLogs({ state }: { state: VoiceConsoleState }) {
 }
 
 export function VoiceConsole() {
+  const demo = useDemoSession();
   const [state, setState] = useState<VoiceConsoleState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1160,6 +1170,12 @@ export function VoiceConsole() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (isDemoSession()) {
+      // Tour the console as a new workspace sees it; actions need an account.
+      setState(demoVoiceConsoleState());
+      setLoading(false);
+      return;
+    }
     try {
       setState(await getMyVoiceConsole());
     } catch (error) {
@@ -1242,6 +1258,14 @@ export function VoiceConsole() {
           </div>
         ) : null}
       </header>
+
+      {demo && (
+        <DemoLockedNotice feature="The missed-call assistant">
+          With an account you subscribe for $23/month, get a dedicated local number, forward
+          missed calls to it, and see each caller&apos;s message in Call Logs. Below is the setup a
+          new workspace sees.
+        </DemoLockedNotice>
+      )}
 
       <SetupSummary state={state} />
 

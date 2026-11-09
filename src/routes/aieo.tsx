@@ -57,6 +57,7 @@ import type { Intervention, InterventionKind } from "@/lib/aieo/visibility/inter
 import { useAppStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { describeAiError } from "@/lib/ai-errors";
+import { useDemoSession } from "@/lib/demo-mode";
 
 export const Route = createFileRoute("/aieo")({
   component: CiteLockPage,
@@ -98,14 +99,20 @@ function RateChip({ label, rate, hint }: { label: string; rate: Rate; hint?: str
 
 function CiteLockPage() {
   const [mode,setMode] = useState<"guide" | "advanced">("guide");
+  const demo = useDemoSession();
   const [access,setAccess] = useState<"loading" | "full" | "basic" | "error">("loading");
-  useEffect(()=>{let active=true; void getMyAccess().then(result=>{if(active)setAccess(result.active ? "full":"basic");}).catch(()=>{if(active)setAccess("error");});return()=>{active=false;};},[]);
+  useEffect(()=>{
+    // Demo visitors have no account to check; the guide explains what an account unlocks.
+    if(demo) return;
+    let active=true; void getMyAccess().then(result=>{if(active)setAccess(result.active ? "full":"basic");}).catch(()=>{if(active)setAccess("error");});return()=>{active=false;};
+  },[demo]);
   return <div className="mx-auto max-w-7xl space-y-5">
     <div className="flex flex-wrap gap-2">
       <Button variant={mode==="guide" ? "default":"outline"} onClick={()=>setMode("guide")}>Visibility guide</Button>
-      <Button variant={mode==="advanced" ? "default":"outline"} disabled={access!=="full"} onClick={()=>setMode("advanced")}>Advanced workspace</Button>
-      {access==="basic" && <Link to="/" className="self-center text-xs text-[var(--color-primary)]">Full access includes measurement + Social Desk</Link>}
-      {access==="error" && <p role="alert" className="text-xs">Could not verify advanced access. Reload to retry.</p>}
+      <Button variant={mode==="advanced" ? "default":"outline"} disabled={demo || access!=="full"} onClick={()=>setMode("advanced")}>Advanced workspace</Button>
+      {demo && <span className="self-center text-xs text-[var(--color-fg-muted)]">Advanced measurement needs a free account</span>}
+      {!demo && access==="basic" && <Link to="/" className="self-center text-xs text-[var(--color-primary)]">Full access includes measurement + Social Desk</Link>}
+      {!demo && access==="error" && <p role="alert" className="text-xs">Could not verify advanced access. Reload to retry.</p>}
     </div>
     {mode==="guide" ? <GuidePanel /> : <MeasurementWorkspace />}
   </div>;

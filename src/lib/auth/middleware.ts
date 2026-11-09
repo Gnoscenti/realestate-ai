@@ -26,6 +26,10 @@ import { createMiddleware } from "@tanstack/react-start";
  */
 export const authMiddleware = createMiddleware({ type: "function" })
   .client(async ({ next }) => {
+    // Guest demo: no session exists, so stop here with a friendly message
+    // instead of sending a request the server would reject anyway.
+    const { assertServerCallAllowed } = await import("@/lib/demo-mode");
+    assertServerCallAllowed();
     // Live preview (partitioned iframe): the session rides a bearer token, not a
     // cookie, so forward it to the server. Null when deployed (cookie auth), so
     // this is a no-op there.

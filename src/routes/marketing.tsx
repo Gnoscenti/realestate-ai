@@ -58,6 +58,8 @@ import { SocialMediaGenerator } from "@/components/marketing/social-media-genera
 import { ListingLaunchPlan } from "@/components/marketing/listing-launch-plan";
 import type { ManagedPhotoView } from "@/lib/social-media/managed-types";
 import { exportCampaignMarkdown, type CampaignPlan } from "@/lib/social-agent";
+import { isDemoSession, useDemoSession } from "@/lib/demo-mode";
+import { DemoLockedNotice } from "@/components/layout/demo-banner";
 
 const searchSchema = z.object({
   origin: z.string().max(200).optional(),
@@ -127,7 +129,13 @@ function SocialDeskPage() {
   const [postizKey, setPostizKey] = useState("");
   const [postizUrl, setPostizUrl] = useState("");
 
+  const demo = useDemoSession();
   const load = useCallback(async () => {
+    // Drafts live on the server under an account; the demo has none.
+    if (isDemoSession()) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
@@ -523,6 +531,13 @@ function SocialDeskPage() {
               <CardDescription>Stored on the server with a revision history.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
+              {demo && !desk && (
+                <DemoLockedNotice feature="Social Desk">
+                  Drafts are written from your listing facts, saved with a revision history and
+                  approved by you before anything is published. Pick a sample listing on the right to
+                  see the composer.
+                </DemoLockedNotice>
+              )}
               {loading && !desk && (
                 <div className="flex items-center gap-2 text-sm text-[var(--color-fg-muted)]">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading…

@@ -1,4 +1,5 @@
 import { authClient, authEnabled } from "./client";
+import { DEMO_USER_ID, useDemoSession } from "@/lib/demo-mode";
 
 /** Normalized user shape used across the app, auth on or off. */
 export type AppUser = {
@@ -8,6 +9,11 @@ export type AppUser = {
   profileImageUrl: string | null;
   /** True when this is the sandbox/dev fallback (auth not configured). */
   isDevFallback: boolean;
+  /**
+   * True for the signed-out guest demo. Browser-only identity: it has no
+   * session, so every authenticated server call is refused.
+   */
+  isDemo?: boolean;
 };
 
 /**
@@ -23,6 +29,16 @@ export const DEV_USER: AppUser = {
   primaryEmail: "dev@example.com",
   profileImageUrl: null,
   isDevFallback: true,
+};
+
+/** Local-only identity for the guest demo (see `@/lib/demo-mode`). */
+export const DEMO_USER: AppUser = {
+  id: DEMO_USER_ID,
+  displayName: "Demo visitor",
+  primaryEmail: null,
+  profileImageUrl: null,
+  isDevFallback: false,
+  isDemo: true,
 };
 
 /** `useCurrentUserState()` result: the user plus the session-loading flag. */
@@ -64,19 +80,24 @@ function useDevCurrentUserState(): CurrentUserState {
 
 function useAuthenticatedCurrentUserState(): CurrentUserState {
   const { data, isPending } = authClient.useSession();
+  const demo = useDemoSession();
   const user = data?.user;
-  return {
-    user: user
-      ? {
-          id: user.id,
-          displayName: user.name ?? null,
-          primaryEmail: user.email ?? null,
-          profileImageUrl: user.image ?? null,
-          isDevFallback: false,
-        }
-      : null,
-    isPending,
-  };
+  if (user) {
+    // A real session always wins over the guest demo.
+    return {
+      user: {
+        id: user.id,
+        displayName: user.name ?? null,
+        primaryEmail: user.email ?? null,
+        profileImageUrl: user.image ?? null,
+        isDevFallback: false,
+      },
+      isPending,
+    };
+  }
+  // Signed out and exploring the demo: a browser-only guest identity.
+  if (!isPending && demo) return { user: DEMO_USER, isPending: false };
+  return { user: null, isPending };
 }
 
 /**

@@ -9,6 +9,7 @@
  */
 import { ensureHydrationHook, useAppStore } from "@/lib/store";
 import { WORKSPACE_STORAGE_BASE_KEY } from "@/lib/auth/workspace-storage-keys";
+import { DEMO_WORKSPACE_STORAGE_KEY } from "@/lib/demo-mode";
 
 type AppStoreState = ReturnType<typeof useAppStore.getState>;
 type PersistedState = Partial<AppStoreState>;
@@ -57,7 +58,13 @@ export function workspaceStorageKey(userId: string | null | undefined): string {
 }
 
 function migrateLegacyIfNeeded(scopedKey: string): void {
-  if (typeof window === "undefined" || scopedKey.endsWith(":anon")) return;
+  // Neither a signed-out visitor nor the guest demo may claim a real user's
+  // legacy snapshot: it stays in place for that user's next real sign-in.
+  if (
+    typeof window === "undefined" ||
+    scopedKey.endsWith(":anon") ||
+    scopedKey === DEMO_WORKSPACE_STORAGE_KEY
+  ) return;
   try {
     if (window.localStorage.getItem(scopedKey)) return;
     if (window.localStorage.getItem(LEGACY_MIGRATION_OWNER_KEY)) return;
@@ -141,4 +148,18 @@ export async function bindWorkspaceToUser(
 
 export function currentWorkspaceKey(): string | null {
   return currentKey;
+}
+
+/**
+ * Reset the in-memory workspace to a clean state, but only if `key` is the one
+ * currently bound. Used to restart the guest demo without touching a real
+ * user's workspace.
+ */
+export function resetWorkspaceIfBoundTo(key: string): boolean {
+  if (currentKey !== key) return false;
+  useAppStore.setState({
+    ...clone(PRISTINE_PERSISTED),
+    hydrated: true,
+  });
+  return true;
 }
