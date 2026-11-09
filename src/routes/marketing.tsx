@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -619,7 +620,7 @@ function SocialDeskPage() {
                   }}
                 >
                   <Label htmlFor="postiz-key">Postiz API key</Label>
-                  <Input id="postiz-key" type="password" autoComplete="off" value={postizKey} onChange={(event) => setPostizKey(event.target.value)} placeholder="From Postiz → Settings → Public API" />
+                  <PasswordInput id="postiz-key" secretLabel="API key" autoComplete="off" value={postizKey} onChange={(event) => setPostizKey(event.target.value)} placeholder="From Postiz → Settings → Public API" />
                   <Label htmlFor="postiz-url">Self-hosted API URL (optional)</Label>
                   <Input id="postiz-url" value={postizUrl} onChange={(event) => setPostizUrl(event.target.value)} placeholder="https://api.postiz.com" />
                   <Button type="submit" size="sm" disabled={busy === "connect" || postizKey.trim().length < 8}>
