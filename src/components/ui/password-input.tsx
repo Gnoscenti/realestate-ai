@@ -49,20 +49,21 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputPro
       return () => form.removeEventListener("submit", mask);
     }, []);
 
-    // Switching the input type can move the caret; put it back where the user left it.
+    // Switching the input type moves the caret; put it back where the user left it.
+    //
+    // Chromium rebuilds the field's editor at the next layout after a type change
+    // and drops the caret to the start when it does. Restoring before that layout
+    // is undone by it, and restoring on a later frame races with typing: keys
+    // pressed before the frame land at the start, and the late restore then moves
+    // the caret again mid-word. So force the layout here, synchronously, and
+    // restore once. Nothing moves the caret after this effect returns.
     React.useLayoutEffect(() => {
       const selection = pendingSelection.current;
       const input = inputRef.current;
       pendingSelection.current = null;
-      if (!selection || !input) return;
-      const restore = () => {
-        if (document.activeElement === input) input.setSelectionRange(...selection);
-      };
-      restore();
-      // Chromium resets the caret to 0 again after a type change made during a
-      // mouse click, once the click finishes, so restore once more before paint.
-      const frame = requestAnimationFrame(restore);
-      return () => cancelAnimationFrame(frame);
+      if (!selection || !input || document.activeElement !== input) return;
+      input.getBoundingClientRect();
+      input.setSelectionRange(...selection);
     }, [visible]);
 
     const toggle = () => {
