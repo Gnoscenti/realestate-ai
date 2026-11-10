@@ -18,8 +18,7 @@ import {
   PLAN,
   daysLeft,
   formatMoney,
-  INTRO_PRICE_CENTS,
-  INTRO_DAYS,
+  ACCESS_PRICE_CENTS,
   FREE_ACCESS_CODES,
   hasAppAccess,
   hasFeedbackAccess,
@@ -58,8 +57,8 @@ function BillingPage() {
           Billing & access
         </h1>
         <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          One-time {formatMoney(INTRO_PRICE_CENTS)} for {INTRO_DAYS} days of{" "}
-          {PLAN.name}. Nothing renews automatically.
+          One-time {formatMoney(ACCESS_PRICE_CENTS)} for lifetime access to{" "}
+          {PLAN.name}. No subscription, and you are never charged again.
         </p>
       </div>
 
@@ -80,25 +79,31 @@ function BillingPage() {
               </CardDescription>
             </div>
             <Badge variant="secondary">
-              {left != null ? `${left}d remaining` : "Active"}
+              {left != null ? `${left}d remaining` : "Lifetime access"}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-[var(--color-fg-muted)]">
-          {billing.introEndsAt && (
-            <p>
-              Access ends{" "}
-              <span className="text-[var(--color-fg)]">
-                {new Date(billing.introEndsAt).toLocaleDateString()}
-              </span>
-              . Access does not renew automatically — purchase another{" "}
-                {INTRO_DAYS} days when it expires.
+          {left == null ? (
+            <p data-testid="lifetime-access-note">
+              Your access is for life. There is nothing to renew and you will
+              not be charged for {PLAN.name} again.
             </p>
+          ) : (
+            billing.introEndsAt && (
+              <p>
+                Demo test access ends{" "}
+                <span className="text-[var(--color-fg)]">
+                  {new Date(billing.introEndsAt).toLocaleDateString()}
+                </span>
+                . No payment was taken.
+              </p>
+            )
           )}
           {billing.redeemedCode && (
             <p className="flex items-start gap-2">
               <Ticket className="mt-0.5 h-4 w-4 text-[var(--color-warning)]" />
-              Free pilot code grants full access + feedback board for
+              Free pilot code grants lifetime access + feedback board for
               pre-launch optimization.
             </p>
           )}
