@@ -175,10 +175,6 @@ export async function grantVerifiedCheckout(
   if (session.demo && process.env.NODE_ENV === "production") {
     throw new Error("Demo checkout is disabled in production.");
   }
-  if (session.demo) {
-    const held = await getHeldLifetimeAccess(userId, workspace.id, sql);
-    if (held) return held;
-  }
   await sql.query(
     `with redeemed as (
        insert into checkout_grants (session_id, workspace_id, granted_to_user_id, demo)
@@ -192,7 +188,12 @@ export async function grantVerifiedCheckout(
        status = 'active', stripe_customer_id = excluded.stripe_customer_id,
        current_period_start = now(),
        current_period_end = excluded.current_period_end,
-       updated_at = now()`,
+       updated_at = now()
+     -- Enforced in the same statement, so even a concurrent demo confirmation
+     -- can never replace an active paid or code grant with time-limited access.
+     where not $4
+        or workspace_entitlements.status not in ('active', 'trialing')
+        or coalesce(workspace_entitlements.stripe_customer_id, '') in ('', 'demo')`,
     [session.sessionId, workspace.id, userId, session.demo, ENTITLEMENT_PRODUCT,
       session.demo ? "demo" : `stripe:${session.sessionId}`,
       // Only demo access has an end date; a paid grant stores none.
