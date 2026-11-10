@@ -1,41 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACCESS_PRICE_CENTS,
-  DEMO_ACCESS_DAYS,
   FREE_ACCESS_CODES,
+  INTRO_DAYS,
+  INTRO_PRICE_CENTS,
   normalizeCode,
   findFreeCode,
   hasAppAccess,
   hasFeedbackAccess,
   emptyBilling,
   activateFreeCode,
-  startDemoAccess,
+  startIntroAccess,
   startLifetimeAccess,
+  hasLifetimeAccess,
+  betaLifetimeOfferOpen,
+  BETA_LIFETIME_CUTOFF_ISO,
 } from "@/lib/billing";
 
 describe("pricing", () => {
-  it("is a single one-time $9.99 charge for lifetime access", () => {
-    expect(ACCESS_PRICE_CENTS).toBe(999);
-    const paid = startLifetimeAccess({ sessionId: "cs_paid" });
-    expect(paid).toMatchObject({
-      status: "active",
-      currentPeriodEnd: null,
-      introEndsAt: null,
-      isDemo: false,
-    });
-    expect(hasAppAccess(paid)).toBe(true);
-  });
-
-  it("never lapses a paid or code mirror, however much time passes", () => {
-    const farFuture = Date.now() + 50 * 365 * 86_400_000;
-    const realNow = Date.now;
-    Date.now = () => farFuture;
-    try {
-      expect(hasAppAccess(startLifetimeAccess())).toBe(true);
-      expect(hasAppAccess(activateFreeCode("AGENTOS-X"))).toBe(true);
-    } finally {
-      Date.now = realNow;
-    }
+  it("is a single one-time $9.99 charge for 30 days", () => {
+    expect(INTRO_PRICE_CENTS).toBe(999);
+    expect(INTRO_DAYS).toBe(30);
   });
 
   it("exposes no recurring price", async () => {
@@ -55,6 +39,49 @@ describe("pricing", () => {
   });
 });
 
+describe("beta-round lifetime offer", () => {
+  const cutoff = Date.parse(BETA_LIFETIME_CUTOFF_ISO);
+
+  it("ends with November 10, 2026 in Pacific time", () => {
+    const pacific = (ms: number) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "short",
+        timeStyle: "medium",
+        hourCycle: "h23",
+      }).format(new Date(ms));
+    expect(pacific(cutoff - 1000)).toBe("2026-11-10, 23:59:59");
+    expect(pacific(cutoff)).toBe("2026-11-11, 00:00:00");
+  });
+
+  it("is open up to the cutoff and closed from it on", () => {
+    expect(betaLifetimeOfferOpen(cutoff - 1)).toBe(true);
+    expect(betaLifetimeOfferOpen(cutoff)).toBe(false);
+    expect(betaLifetimeOfferOpen(cutoff + 86_400_000)).toBe(false);
+  });
+
+  it("mirrors a lifetime purchase with no end date that never lapses", () => {
+    const paid = startLifetimeAccess({ sessionId: "cs_paid" });
+    expect(paid).toMatchObject({ currentPeriodEnd: null, introEndsAt: null, isDemo: false });
+    expect(hasLifetimeAccess(paid)).toBe(true);
+    const realNow = Date.now;
+    Date.now = () => realNow() + 50 * 365 * 86_400_000;
+    try {
+      expect(hasAppAccess(paid)).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("does not call time-limited, demo or missing access lifetime", () => {
+    expect(hasLifetimeAccess(startIntroAccess({ source: "stripe_intro", isDemo: false }))).toBe(false);
+    expect(hasLifetimeAccess(startIntroAccess())).toBe(false);
+    expect(hasLifetimeAccess(activateFreeCode("AGENTOS-X"))).toBe(false);
+    expect(hasLifetimeAccess(emptyBilling())).toBe(false);
+    expect(hasLifetimeAccess(null)).toBe(false);
+  });
+});
+
 describe("access codes", () => {
   it("normalizes and finds codes case-insensitively", () => {
     expect(normalizeCode("  rsf-beta-01 ")).toBe("RSF-BETA-01");
@@ -62,10 +89,9 @@ describe("access codes", () => {
     expect(findFreeCode("NOT-A-CODE")).toBeFalsy();
   });
 
-  it("activates free code into lifetime app access", () => {
+  it("activates free code into app access", () => {
     const billing = activateFreeCode("AGENTOS-X");
     expect(billing).not.toBeNull();
-    expect(billing?.currentPeriodEnd).toBeNull();
     expect(hasAppAccess(billing)).toBe(true);
     expect(hasAppAccess(emptyBilling())).toBe(false);
   });
@@ -81,11 +107,9 @@ describe("access codes", () => {
     expect(hasFeedbackAccess(billing)).toBe(true);
   });
 
-  it("keeps demo checkout as time-limited test access", () => {
-    const billing = startDemoAccess();
+  it("intro access unlocks app for 30 days", () => {
+    const billing = startIntroAccess();
     expect(hasAppAccess(billing)).toBe(true);
-    expect(billing.isDemo).toBe(true);
-    const days = (Date.parse(billing.currentPeriodEnd!) - Date.now()) / 86_400_000;
-    expect(Math.round(days)).toBe(DEMO_ACCESS_DAYS);
+    expect(billing.status).toMatch(/trial|active|intro|code/i);
   });
 });

@@ -101,9 +101,8 @@ describe("Authenticated cache and quota",()=>{
   it.each(["expired","canceled"])("rejects %s access before serving cached observations or fetching a new query",async(state)=>{
     const {user,ws,fetch}=await setup(), sql=await getSql();
     expect((await queryRapidApi(user,ws.id,query(),{key:"test-secret",fetch,sql})).ok).toBe(true);
-    // Only time-limited demo access can expire; a paid grant is for life and ends only when revoked.
-    await sql.query("update workspace_entitlements set status=$2,current_period_end=$3::timestamptz,stripe_customer_id=case when $4 then 'demo' else stripe_customer_id end where workspace_id=$1",
-      [ws.id,state==="canceled"?"canceled":"active",new Date(Date.now()+(state==="expired"?-1:1)*86400000).toISOString(),state==="expired"]);
+    await sql.query("update workspace_entitlements set status=$2,current_period_end=$3::timestamptz where workspace_id=$1",
+      [ws.id,state==="canceled"?"canceled":"active",new Date(Date.now()+(state==="expired"?-1:1)*86400000).toISOString()]);
     const before=await sql.query("select scope,window_started_at,request_count from rapidapi_quota_buckets order by scope,window_started_at");
     for (const request of [query(),query({query:"Los Angeles, CA"})]) {
       await expect(queryRapidApi(user,ws.id,request,{key:"test-secret",fetch,sql})).rejects.toBeInstanceOf(EntitlementRequiredError);
