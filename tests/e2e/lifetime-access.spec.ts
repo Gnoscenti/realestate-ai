@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { grantTestAccess, resetApp } from "./helpers";
 
-test("an existing customer whose earlier 30-day window ran out keeps lifetime access", async ({
+// The test server keeps the beta round open (see playwright.config.ts), so the
+// workspace's server grant is a beta-round grant on any date.
+test("a beta-round customer whose earlier 30-day window ran out keeps lifetime access", async ({
   page,
 }) => {
   await resetApp(page);
@@ -38,13 +40,14 @@ test("an existing customer whose earlier 30-day window ran out keeps lifetime ac
 
   // The server grant is for life, so the app opens instead of the paywall.
   await expect(page.getByTestId("entitled-workspace")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("heading", { name: "Billing & access" })).toBeVisible();
-  await expect(page.getByText("Lifetime access", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("lifetime-access-note")).toContainText(
-    "you will not be charged",
-  );
-  await expect(page.getByText(/purchase another/i)).toHaveCount(0);
-  await expect(page.getByText(/d remaining/)).toHaveCount(0);
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { level: 1, name: "Billing & Access" })).toBeVisible();
+  await expect(main.getByText("Lifetime access", { exact: true })).toBeVisible();
+  await expect(main.getByTestId("lifetime-access-note")).toContainText("no end date");
+  await expect(main).toContainText("You will not be charged for it again");
+  await expect(main).not.toContainText("Access ends on");
+  await expect(main).not.toContainText("buy another");
+  await expect(main.getByText(/\d+ days? left/)).toHaveCount(0);
   await expect(page.locator("#access-code")).toHaveCount(0);
 
   const mirror = await page.evaluate(() => {
