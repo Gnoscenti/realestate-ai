@@ -253,9 +253,14 @@ export function generateClientBrief(lead: Lead, properties: Property[], deals: D
     (d) => d.stage !== "closed" && d.clientName.trim().toLowerCase() === leadName,
   );
 
-  const kb = searchKnowledge(`${location} ${lead.preferences}`, 2)
-    .map((h) => `• ${h.entry.title}: ${h.entry.summary}`)
-    .join("\n");
+  // A blank search returns the first articles in the library, whatever they
+  // are about. With nothing on record to search for, the brief cites none.
+  const knowledgeQuery = `${location} ${lead.preferences}`.trim();
+  const kb = knowledgeQuery
+    ? searchKnowledge(knowledgeQuery, 2)
+        .map((h) => `• ${h.entry.title}: ${h.entry.summary}`)
+        .join("\n")
+    : "";
 
   return `CLIENT BRIEF — ${lead.name}
 Score ${lead.score} · ${lead.heat.toUpperCase()} · ${lead.status.replace("_", " ")}

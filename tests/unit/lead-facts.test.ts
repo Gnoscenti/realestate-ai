@@ -168,6 +168,11 @@ describe("drafts for a lead with only a name and a phone number", () => {
     expect(brief).toContain("• Prefs: none entered");
     expect(brief).toContain("Notes\nNone on record");
     expect(brief).not.toMatch(/\$0|Metro|undefined/);
+    // No area or preference is on record, so no local article is picked for this client.
+    expect(brief).toContain(
+      "Local knowledge\n• Pull public amenity and association facts from approved sources before tour",
+    );
+    expect(brief).not.toMatch(/Rancho Santa Fe|Covenant/);
 
     const full = generateClientBrief(fullLead, [], []);
     expect(full).toContain("• Budget: $500,000–$900,000");
