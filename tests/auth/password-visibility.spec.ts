@@ -95,3 +95,24 @@ test("revealed password is masked again when the form submits", async ({ page })
   await expect(password).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "Show password", exact: true })).toBeVisible();
 });
+
+test("login fields are 16px on a phone, so iOS does not zoom the page when one is focused", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const mode of ["Sign in", "Create account"] as const) {
+    await openLogin(page, mode);
+    // Let the page settle, so the next navigation does not cut a request short.
+    await page.waitForLoadState("networkidle");
+    const sizes = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLInputElement>("input")]
+        .filter((input) => input.getClientRects().length > 0)
+        .map((input) => ({
+          id: input.id,
+          size: Number.parseFloat(getComputedStyle(input).fontSize),
+        })),
+    );
+    expect(sizes.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["login-email", "login-password"]),
+    );
+    expect(sizes.filter((entry) => entry.size < 16)).toEqual([]);
+  }
+});

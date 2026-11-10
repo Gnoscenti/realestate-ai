@@ -73,7 +73,10 @@ test("confirming profile edits preserves real customer records", async ({ page }
   await page.getByRole("button", { name: "Add lead", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("Existing Customer");
   await page.getByLabel("Phone", { exact: true }).fill("(858) 555-0142");
-  await page.getByRole("button", { name: "Create lead", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Add lead" })
+    .getByRole("button", { name: "Add lead", exact: true })
+    .click();
   await expect(page.getByText("Existing Customer").first()).toBeVisible();
   await completeOnboarding(page, { name: "Customer Book Agent", area: "Seattle, WA" });
   await page.getByRole("button", { name: "Confirm profile and open workspace" }).click();

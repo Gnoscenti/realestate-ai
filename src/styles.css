@@ -13,7 +13,8 @@
   --color-surface-hover: #22283a;
   --color-fg: #eef0f4;
   --color-fg-muted: #9aa3b5;
-  --color-fg-subtle: #6b7385;
+  /* 4.6:1 or better on bg, surface, surface-2 and surface-hover (WCAG AA). */
+  --color-fg-subtle: #8791a5;
   --color-border: #2a3040;
   --color-border-strong: #3a4258;
   --color-primary: #5b8def;
@@ -30,6 +31,19 @@
   --color-hot: #e86a6a;
   --color-warm: #e0a855;
   --color-cold: #6b8cce;
+
+  /* Aliases: several components use the conventional token names
+     (bg-background, text-muted-foreground, text-destructive ...). An unknown
+     colour token compiles to no CSS at all, so each one must resolve here. */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --color-muted: var(--color-surface-2);
+  --color-muted-foreground: var(--color-fg-muted);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-fg);
+  --color-primary-foreground: var(--color-primary-fg);
+  --color-destructive: var(--color-danger);
+  --color-ring: var(--color-primary);
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -101,15 +115,6 @@
   textarea,
   select {
     font: inherit;
-    font-size: 16px;
-  }
-
-  @media (min-width: 768px) {
-    input,
-    textarea,
-    select {
-      font-size: inherit;
-    }
   }
 
   .tabular {
@@ -166,6 +171,20 @@
 }
 
 
+/* Deliberately outside every @layer. iOS zooms the page when a focused field's
+   text is under 16px, and stays zoomed. This rule used to sit in the base
+   layer, where the text-sm on Input and Textarea (utilities layer) always beat
+   it: fields were 14px and only the viewport zoom lock hid the problem. Now
+   that pinch-zoom is allowed, the size itself has to hold, and unlayered CSS
+   outranks every layer. */
+@media (width < 48rem) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @layer utilities {
   .font-display {
     font-family: var(--font-display);
@@ -196,9 +215,12 @@
       color-mix(in oklab, var(--color-bg) 55%, transparent);
   }
 
+  /* Full-screen gates: comfortable padding that grows past a notch or home
+     indicator. Declared with max() because a bare env() value is 0 on most
+     devices and would override the element's own p-* utility. */
   .safe-pad-y {
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
   }
 
   .safe-pad-x {
@@ -217,8 +239,18 @@
     padding-bottom: calc(var(--ios-tab-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
   }
 
+  /* Phones: the page ends above both the tab bar and the floating feedback
+     button, so the last control on a page can always be scrolled out from
+     under them. The button's top edge at its lowest position is 16% of the
+     height plus half its own height from the bottom, or just above the tab bar
+     on a short (sideways) screen. Keep in step with feedbackTriggerTop(). */
   .main-content {
-    padding-bottom: calc(var(--ios-tab-height) + env(safe-area-inset-bottom, 0px) + 1.25rem);
+    padding-bottom: calc(
+      max(
+          16dvh + 22px,
+          var(--ios-tab-height) + max(0.35rem, env(safe-area-inset-bottom, 0px)) + 53px
+        ) + 0.75rem
+    );
   }
 
   @media (min-width: 768px) {

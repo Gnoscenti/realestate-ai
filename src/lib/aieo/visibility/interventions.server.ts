@@ -249,7 +249,7 @@ export async function requireLinkedSocialSupport(userId:string,workspaceId:strin
   if(!rows[0]) return; // Independently authored drafts rely on their explicit fact/rights review.
   const current=toIntervention(rows[0]);
   if(!["approved","deployed","verified"].includes(current.state))
-    throw new Error("The linked Citelock improvement needs approval before social distribution.");
+    throw new Error("The linked CiteLock improvement needs approval before social distribution.");
   const creation=await sql.query<{origin:string}>(
     "select snapshot->'content'->>'origin' as origin from social_draft_events where workspace_id=$1 and draft_id=$2 and action='create' order by revision limit 1",
     [workspaceId,draftId]);
@@ -258,6 +258,6 @@ export async function requireLinkedSocialSupport(userId:string,workspaceId:strin
     "select snapshot->>'content' as content from citelock_intervention_events where workspace_id=$1 and intervention_id=$2 and revision=$3",
     [workspaceId,current.id,revision]) : [];
   if(!original[0] || original[0].content!==current.content)
-    throw new Error("The linked Citelock improvement changed. Review a new social draft from the current approved content.");
+    throw new Error("The linked CiteLock improvement changed. Review a new social draft from the current approved content.");
   await requireCurrentSupport(userId,workspaceId,current.subjectFingerprint,current.package,sql);
 }

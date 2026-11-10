@@ -27,21 +27,19 @@ import { Button } from "@/components/ui/button";
 const modules = [
   {
     to: "/voice",
-    title: "Missed-call Assistant",
+    title: "Voice Assistant",
     description:
-      "A disclosed inbound receptionist for missed calls, with verified setup steps and call logs.",
+      "An AI receptionist that answers the calls you miss, tells callers it is AI, and logs each message.",
     icon: PhoneCall,
     features: ["Inbound only", "Call intake", "Consent"],
-    highlight: true,
   },
   {
     to: "/outreach",
     title: "Instant Response",
     description:
-      "Sub-5-minute SMS/email drafts, nurture sequences, client briefs, buyer agreements.",
+      "Text and email drafts for new leads in minutes, plus follow-up sequences and client briefs.",
     icon: Zap,
-    features: ["Speed-to-lead", "Nurture", "Post-NAR"],
-    highlight: true,
+    features: ["Fast replies", "Follow-up", "Agreements"],
   },
   {
     to: "/aieo",
@@ -50,16 +48,14 @@ const modules = [
       "Where AI answer engines send your clients, who they name instead, and drafted fixes you approve.",
     icon: Radar,
     features: ["Visibility", "Sources", "Fixes"],
-    highlight: true,
   },
   {
     to: "/calendar",
-    title: "Calendar & Contractors",
+    title: "Calendar & Vendors",
     description:
-      "Your appointments and vendors by trade with a Common list. No external calendar is imported.",
+      "Your appointments and trusted vendors by trade. Export to your own calendar; nothing syncs automatically.",
     icon: Calendar,
     features: ["Appointments", "Reminders", "Vendors"],
-    highlight: true,
   },
   {
     to: "/knowledge",
@@ -67,17 +63,15 @@ const modules = [
     description:
       "Local market knowledge plus AI memory that learns your practice over time.",
     icon: BookOpen,
-    features: ["Neighborhoods", "Comps rules", "Memory"],
-    highlight: true,
+    features: ["Neighborhoods", "Talking points", "Memory"],
   },
   {
     to: "/cma",
-    title: "Comparison Planning",
+    title: "CMA Studio",
     description:
-      "Review saved properties and learn what verified sold data is still required.",
+      "Compare saved listings and keep verified sold records. It does not pick comps or recommend a price yet.",
     icon: BarChart3,
     features: ["Saved records", "Source checks", "Workflow"],
-    highlight: true,
   },
   {
     to: "/marketing",
@@ -86,29 +80,28 @@ const modules = [
       "Use actual listing photos, review sourced drafts, approve the exact revision and export or hand off.",
     icon: Megaphone,
     features: ["Facts first", "Review", "Publish"],
-    highlight: true,
   },
   {
     to: "/leads",
     title: "Lead Intelligence",
     description:
-      "AI scoring, prioritization, and engagement for every prospect.",
+      "Your clients and prospects, scored and ranked so you know who to call first.",
     icon: Users,
     features: ["Scoring", "Follow-up", "Pipeline"],
   },
   {
     to: "/search",
-    title: "Smart Property Search",
+    title: "Smart Search",
     description:
-      "Natural-language search with ranked matches and favorites.",
+      "Describe a home in plain words and search the listings you have saved.",
     icon: Search,
-    features: ["NL search", "Match %", "Tours"],
+    features: ["Plain-language", "Ranked matches", "Saved homes"],
   },
   {
     to: "/market",
-    title: "Market Data Setup",
+    title: "Market & Valuation",
     description:
-      "Prepare authorized Closed/Sold sources before client-facing valuation work.",
+      "Set up authorized sold data before any client-facing valuation work.",
     icon: TrendingUp,
     features: ["Source checks", "MLS data", "Broker review"],
   },
@@ -124,7 +117,7 @@ const modules = [
     to: "/properties",
     title: "Property Management",
     description:
-      "Occupancy, rent optimization, and maintenance prioritization.",
+      "Rent, occupancy and maintenance for the rental units you manage.",
     icon: Building2,
     features: ["Rent", "Vacancy", "Maintenance"],
   },
@@ -135,10 +128,10 @@ export function ModuleGrid() {
     <section className="space-y-3">
       <div>
         <h2 className="font-display text-lg font-semibold tracking-tight">
-          Workspace modules
+          Everything in your workspace
         </h2>
         <p className="text-sm text-[var(--color-fg-muted)]">
-          Full agent workspace — knowledge, pipeline, and content in one place
+          Jump to any tool. The same list is in the menu.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -147,22 +140,12 @@ export function ModuleGrid() {
           return (
             <Card
               key={m.to}
-              className={
-                m.highlight
-                  ? "border-[color-mix(in_oklab,var(--color-primary)_25%,var(--color-border))]"
-                  : undefined
-              }
             >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-                    <Icon className="h-4 w-4" />
+                    <Icon aria-hidden="true" className="h-4 w-4" />
                   </div>
-                  {m.highlight && (
-                    <Badge variant="accent" className="text-[10px]">
-                      Core
-                    </Badge>
-                  )}
                 </div>
                 <CardTitle className="mt-2 text-base">{m.title}</CardTitle>
                 <CardDescription className="text-xs leading-relaxed">
@@ -172,15 +155,15 @@ export function ModuleGrid() {
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap gap-1">
                   {m.features.map((f) => (
-                    <Badge key={f} variant="secondary" className="text-[10px]">
+                    <Badge key={f} variant="secondary" className="text-[11px]">
                       {f}
                     </Badge>
                   ))}
                 </div>
                 <Button asChild size="sm" variant="outline" className="w-full">
-                  <Link to={m.to}>
+                  <Link to={m.to} aria-label={`Open ${m.title}`}>
                     Open
-                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
                   </Link>
                 </Button>
               </CardContent>

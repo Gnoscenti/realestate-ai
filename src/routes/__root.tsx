@@ -15,8 +15,10 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       {
         name: "viewport",
-        content:
-          "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no",
+        // No maximum-scale / user-scalable=no: pinch-zoom must stay available
+        // (WCAG 1.4.4). iOS would zoom on focusing a field under 16px, so
+        // styles.css holds every form control at 16px below the md breakpoint.
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       {
         title: "RealEstate AI — Agent Workspace",
@@ -24,7 +26,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "AI-native iOS-ready workspace for real estate: leads, CMA, calendar, RSF knowledge, content agent.",
+          "A workspace for real estate agents: see how AI search describes you, draft fact-based social posts, reply to leads fast and keep your day in order.",
       },
       { name: "theme-color", content: "#0c0d10" },
       { name: "color-scheme", content: "dark" },

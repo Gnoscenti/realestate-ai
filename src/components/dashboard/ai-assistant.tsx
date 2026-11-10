@@ -3,7 +3,10 @@ import {
   Bot,
   Home,
   Send,
+  ShieldCheck,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   TrendingUp,
   BookOpen,
   Brain,
@@ -30,7 +33,7 @@ const QUICK = [
       "Show my verified Closed/Sold records as unranked source data, including close date and source. Do not call them comps or recommend a price.",
   },
   {
-    label: "Sell stale listing",
+    label: "Revive a stale listing",
     icon: Sparkles,
     query:
       "Give me creative, practical ideas to sell my longest-standing active listings — fresh marketing angles, not generic advice.",
@@ -42,13 +45,13 @@ const QUICK = [
       "Explain the professional CMA workflow and what data I need before recommending a price.",
   },
   {
-    label: "Inventory",
+    label: "Social Desk listings",
     icon: Home,
     query:
       "Summarize my active server-saved listings using only objective property and transaction facts.",
   },
   {
-    label: "About me",
+    label: "My profile",
     icon: Brain,
     query: "Summarize the agent profile saved in my server workspace.",
   },
@@ -66,11 +69,47 @@ export function AIAssistant({ className }: { className?: string }) {
   const recordSignal = useAppStore((s) => s.recordSignal);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [rated, setRated] = useState<Record<string, "up" | "down">>({});
+  const logRef = useRef<HTMLDivElement>(null);
+  const seenMessages = useRef<{ count: number; thinking: boolean } | null>(null);
 
+  // Follow the conversation inside the chat panel only. scrollIntoView() also
+  // scrolls the page, which used to drag the Command Center past its own
+  // heading on every load, so the panel's viewport is moved directly, and only
+  // once the conversation actually changes.
+  //
+  // Messages and the "thinking" bubble are tracked separately. A reply arrives
+  // as one more message and one fewer bubble in the same render, so a combined
+  // count would not change and the reply would be left below the fold.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const previous = seenMessages.current;
+    seenMessages.current = { count: chat.length, thinking };
+    if (previous && previous.count === chat.length && previous.thinking === thinking) return;
+    const viewport = logRef.current?.closest<HTMLElement>(
+      "[data-radix-scroll-area-viewport]",
+    );
+    if (!viewport) return;
+    if (!previous) {
+      // First render: open a saved conversation at its latest reply. Setting the
+      // panel's own scroll position moves nothing else on the page.
+      viewport.scrollTop = viewport.scrollHeight;
+      return;
+    }
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
   }, [chat, thinking]);
+
+  const rate = (id: string, content: string, value: "up" | "down") => {
+    if (rated[id]) return;
+    setRated((current) => ({ ...current, [id]: value }));
+    recordSignal({
+      kind: value === "up" ? "feedback_up" : "feedback_down",
+      text: content.slice(0, value === "up" ? 80 : 120),
+    });
+  };
 
   const send = async (text: string) => {
     const q = text.trim();
@@ -78,7 +117,7 @@ export function AIAssistant({ className }: { className?: string }) {
     setInput("");
     pushChat({ role: "user", content: q });
     setThinking(true);
-    let reply = "The AI assistant is temporarily unavailable. Please try again.";
+    let reply = "The assistant is unavailable right now. Try again in a moment.";
     try {
       const { askLiveAssistant } = await import("@/lib/assistant-api");
       const live = await askLiveAssistant({
@@ -87,9 +126,9 @@ export function AIAssistant({ className }: { className?: string }) {
       if (live.ok) {
         const sourceNote =
           live.source === "verified-sold-records"
-            ? "Verified workspace Closed/Sold records · deterministic · unranked"
+            ? "From your verified Closed/Sold records, listed as-is. Not ranked as comps."
             : live.source === "workspace"
-              ? "AI analysis · server-owned workspace records · no public web or MLS lookup"
+              ? "AI answer from your saved profile, Social Desk listings and sold records. No web or MLS lookup."
               : null;
         reply = sourceNote
           ? `${live.answer}\n\n— ${sourceNote}`
@@ -100,8 +139,8 @@ export function AIAssistant({ className }: { className?: string }) {
     } catch (e) {
       reply =
         e instanceof Error && e.message === "Unauthorized"
-          ? "Sign in again to use the AI assistant."
-          : "The AI assistant could not complete that request. Please try again.";
+          ? "Your session ended. Sign in again to use the assistant."
+          : "The assistant couldn't finish that request. Your question wasn't lost. Send it again in a moment.";
     } finally {
       pushChat({ role: "assistant", content: reply });
       setThinking(false);
@@ -120,17 +159,20 @@ export function AIAssistant({ className }: { className?: string }) {
           <Bot className="h-4 w-4 text-[var(--color-primary)]" />
         </div>
         <CardTitle className="flex-1">AI assistant</CardTitle>
+        {/* States the boundary, not a promise about every answer: the model also
+            draws on general knowledge, but it never looks anything up. */}
         <Badge
           variant="success"
-          title="Authenticated AI using server-owned workspace records"
+          title="Reads your saved profile, the listings you add in Social Desk and your verified sold records. It does not search the web or an MLS."
         >
-          <Sparkles className="h-3 w-3" />
-          Server-secured
+          <ShieldCheck aria-hidden="true" className="h-3 w-3" />
+          No web or MLS lookup
         </Badge>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <ScrollArea className="min-h-0 flex-1 pr-3">
           <div
+            ref={logRef}
             className="space-y-3 pb-2"
             role="log"
             aria-live="polite"
@@ -154,38 +196,41 @@ export function AIAssistant({ className }: { className?: string }) {
                 >
                   {m.content}
                   {m.role === "assistant" && m.id !== "welcome" && (
-                    <div className="mt-2 flex gap-2 border-t border-[var(--color-border)]/50 pt-2">
-                      <button
-                        type="button"
-                        className="min-h-11 px-2 text-[10px] text-[var(--color-fg-subtle)] hover:text-[var(--color-success)]"
-                        onClick={() => {
-                          recordSignal({
-                            kind: "feedback_up",
-                            text: m.content.slice(0, 80),
-                          });
-                        }}
-                      >
-                        Helpful
-                      </button>
-                      <button
-                        type="button"
-                        className="min-h-11 px-2 text-[10px] text-[var(--color-fg-subtle)] hover:text-[var(--color-danger)]"
-                        onClick={() => {
-                          recordSignal({
-                            kind: "feedback_down",
-                            text: m.content.slice(0, 120),
-                          });
-                        }}
-                      >
-                        Missed
-                      </button>
+                    <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-[var(--color-border)]/50 pt-1">
+                      {rated[m.id] ? (
+                        // Confirm the tap: before this the buttons gave no sign they had worked.
+                        <p role="status" className="flex min-h-11 items-center px-1 text-xs text-[var(--color-fg-muted)]">
+                          {rated[m.id] === "up"
+                            ? "Thanks. Marked as helpful."
+                            : "Thanks. Marked as not helpful."}
+                        </p>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-success)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                            onClick={() => rate(m.id, m.content, "up")}
+                          >
+                            <ThumbsUp aria-hidden="true" className="h-3.5 w-3.5" />
+                            Helpful
+                          </button>
+                          <button
+                            type="button"
+                            className="flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                            onClick={() => rate(m.id, m.content, "down")}
+                          >
+                            <ThumbsDown aria-hidden="true" className="h-3.5 w-3.5" />
+                            Not helpful
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
             ))}
             {thinking && (
-              <div className="flex justify-start" aria-live="polite">
+              <div className="flex justify-start">
                 <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-fg-muted)]">
                   <span className="inline-flex items-center gap-2">
                     <span
@@ -197,11 +242,10 @@ export function AIAssistant({ className }: { className?: string }) {
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
           </div>
         </ScrollArea>
 
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Suggested questions">
           {QUICK.map((a) => (
             <Button
               key={a.label}
@@ -212,7 +256,7 @@ export function AIAssistant({ className }: { className?: string }) {
               disabled={thinking}
               onClick={() => send(a.query)}
             >
-              <a.icon className="h-3 w-3" />
+              <a.icon aria-hidden="true" className="h-3 w-3" />
               {a.label}
             </Button>
           ))}
@@ -229,7 +273,7 @@ export function AIAssistant({ className }: { className?: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             maxLength={2_000}
-            placeholder="Ask about server-saved listings, Closed/Sold records, or strategy…"
+            placeholder="Ask about your profile, sold records or strategy…"
             aria-label="Ask the AI assistant"
             className="min-h-11 flex-1"
           />
@@ -237,10 +281,10 @@ export function AIAssistant({ className }: { className?: string }) {
             type="submit"
             size="icon"
             disabled={thinking || !input.trim()}
-            aria-label="Send"
+            aria-label="Send question"
             className="min-h-11 min-w-11"
           >
-            <Send className="h-4 w-4" />
+            <Send aria-hidden="true" className="h-4 w-4" />
           </Button>
         </form>
       </CardContent>

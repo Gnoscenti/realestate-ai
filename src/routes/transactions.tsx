@@ -55,23 +55,23 @@ function TransactionsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
-            Transaction hub
+            Transaction Hub
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Deal milestones you track by hand. Document review and e-signature are not connected.
+            Track each deal's milestones by hand. Document review and e-signature aren't connected yet.
           </p>
         </div>
         <Badge variant="secondary">
-          <Clock className="h-3 w-3" />
+          <Clock aria-hidden="true" className="h-3 w-3" />
           Manual tracking
         </Badge>
       </div>
 
-      <Tabs defaultValue="documents">
+      <Tabs defaultValue="milestones">
         <TabsList className="h-auto flex-wrap">
-          <TabsTrigger value="documents">Document AI</TabsTrigger>
-          <TabsTrigger value="signatures">E-signature</TabsTrigger>
           <TabsTrigger value="milestones">Milestones</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsTrigger value="signatures">E-signature</TabsTrigger>
           <TabsTrigger value="fractionalization">Fractionalization lab</TabsTrigger>
         </TabsList>
 
@@ -81,42 +81,44 @@ function TransactionsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Upload className="h-5 w-5 text-[var(--color-warning)]" />
-                    Upload & analyze
+                    <Upload aria-hidden="true" className="h-5 w-5 text-[var(--color-fg-subtle)]" />
+                    Document upload and review
                   </CardTitle>
                   <CardDescription>
-                    Not connected in this release — no file is uploaded and no review runs.
+                    Not available yet. No file is uploaded and no review runs.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <button
-                    type="button"
-                    onClick={() => notConnected("Document upload and AI review")}
-                    className="flex w-full flex-col items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] px-6 py-10 text-center transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-soft)]/20"
+                  {/* A notice, not a drop zone: an upload prompt that cannot upload reads as broken. */}
+                  <div
+                    role="note"
+                    className="flex w-full flex-col items-center justify-center rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] bg-[var(--color-bg-elevated)] px-6 py-8 text-center"
                   >
-                    <Upload className="mb-3 h-10 w-10 text-[var(--color-fg-subtle)]" />
-                    <p className="text-sm text-[var(--color-fg-muted)]">
-                      Click to upload a contract package
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                      PDF, DOC, DOCX up to 10MB
-                    </p>
-                    <span className="mt-4 inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-warning-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-warning)]">
-                      <Zap className="h-3.5 w-3.5" />
-                      Not connected
+                    <span className="inline-flex items-center gap-2 rounded-[var(--radius-sm)] bg-[var(--color-warning-soft)] px-3 py-1.5 text-xs font-medium text-[var(--color-warning)]">
+                      <Zap aria-hidden="true" className="h-3.5 w-3.5" />
+                      Coming later
                     </span>
-                  </button>
+                    <p className="mt-3 max-w-sm text-sm text-[var(--color-fg-muted)]">
+                      Keep contracts in your transaction platform for now, and track
+                      the deal's progress under Milestones.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Documents on deal</CardTitle>
+                  <CardTitle>Documents on this deal</CardTitle>
                   <CardDescription>
-                    {deal?.propertyTitle ?? "Select a deal"}
+                    {deal?.propertyTitle ?? "No deal selected"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {!deal && (
+                    <p className="text-sm text-[var(--color-fg-muted)]">
+                      There are no deals yet, so there are no documents to show.
+                    </p>
+                  )}
                   {deal?.documents.map((doc) => (
                     <div
                       key={doc.id}
@@ -148,7 +150,7 @@ function TransactionsPage() {
                       <div className="flex items-center gap-3">
                         {doc.confidence > 0 && (
                           <span className="text-xs tabular text-[var(--color-fg-subtle)]">
-                            {doc.confidence}% conf.
+                            {doc.confidence}% confidence
                           </span>
                         )}
                         {doc.status === "pending" && (
@@ -169,12 +171,16 @@ function TransactionsPage() {
                   <CardTitle>Open deals</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                  {deals.length === 0 && (
+                    <p className="text-sm text-[var(--color-fg-muted)]">No deals yet.</p>
+                  )}
                   {deals.map((d) => (
                     <button
                       key={d.id}
                       type="button"
+                      aria-pressed={deal?.id === d.id}
                       onClick={() => setSelectedDealId(d.id)}
-                      className={`w-full rounded-[var(--radius-md)] border p-3 text-left transition-colors ${
+                      className={`w-full rounded-[var(--radius-md)] border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${
                         deal?.id === d.id
                           ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]/30"
                           : "border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)]"
@@ -222,6 +228,11 @@ function TransactionsPage() {
         </TabsContent>
 
         <TabsContent value="signatures" className="space-y-4">
+          {deals.length === 0 && (
+            <NoDealsNotice>
+              E-signature isn't connected yet. Keep signed documents in your transaction platform.
+            </NoDealsNotice>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             {deals.flatMap((d) =>
               d.documents
@@ -255,6 +266,13 @@ function TransactionsPage() {
         </TabsContent>
 
         <TabsContent value="milestones" className="space-y-4">
+          {deals.length === 0 && (
+            <NoDealsNotice>
+              Each deal shows its stage here, from offer to close, with one tap to move it
+              forward. Adding your own deals isn't available in this beta; the guest demo
+              shows this page with sample deals.
+            </NoDealsNotice>
+          )}
           {deals.map((d) => (
             <Card key={d.id}>
               <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
@@ -312,8 +330,8 @@ function TransactionsPage() {
                   })}
                 </div>
                 {d.stage !== "closed" && (
-                  <Button size="sm" onClick={() => advanceDeal(d.id)}>
-                    Advance stage
+                  <Button size="sm" className="min-h-[40px]" onClick={() => advanceDeal(d.id)}>
+                    Move to next stage
                   </Button>
                 )}
               </CardContent>
@@ -323,6 +341,20 @@ function TransactionsPage() {
         <TabsContent value="fractionalization"><ComplianceSandboxPanel /></TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function NoDealsNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
+          <FileText aria-hidden="true" className="h-5 w-5" />
+        </div>
+        <p className="text-sm font-medium text-[var(--color-fg)]">No deals yet</p>
+        <p className="max-w-md text-sm text-[var(--color-fg-muted)]">{children}</p>
+      </CardContent>
+    </Card>
   );
 }
 
