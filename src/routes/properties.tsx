@@ -40,92 +40,111 @@ function PropertiesPage() {
   );
   const occupied = rentals.filter((r) => r.occupancy === "occupied").length;
   const vacant = rentals.filter((r) => r.occupancy === "vacant").length;
-  const occRate = Math.round(
-    (rentals.filter((r) => r.occupancy !== "vacant").length / rentals.length) *
-      100,
-  );
+  const hasUnits = rentals.length > 0;
+  // No units means no rate at all. Dividing by zero used to print "NaN%".
+  const occRate = hasUnits
+    ? Math.round(
+        (rentals.filter((r) => r.occupancy !== "vacant").length / rentals.length) * 100,
+      )
+    : null;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
-            Property management
+            Property Management
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Dynamic pricing, maintenance signals, and tenant analytics
+            Rent, occupancy and maintenance for the rental units you manage.
           </p>
         </div>
-        <Badge variant="success">
-          <Building2 className="h-3 w-3" />
-          Portfolio live
-        </Badge>
+        {hasUnits && (
+          <Badge variant="secondary">
+            <Building2 aria-hidden="true" className="h-3 w-3" />
+            {rentals.length} {rentals.length === 1 ? "unit" : "units"}
+          </Badge>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           icon={DollarSign}
-          label="In-place rent"
+          label="Current rent"
           value={formatCurrency(monthly) + "/mo"}
         />
         <Stat
           icon={TrendingIcon}
-          label="Mark-to-market gap"
+          label="Below market"
           value={formatCurrency(marketGap) + "/mo"}
         />
         <Stat
           icon={Users}
           label="Occupancy"
-          value={`${occRate}%`}
-          hint={`${occupied} occ · ${vacant} vacant`}
+          value={occRate === null ? "—" : `${occRate}%`}
+          hint={hasUnits ? `${occupied} occupied · ${vacant} vacant` : "No units yet"}
         />
         <Stat
           icon={Wrench}
           label="Units"
           value={String(rentals.length)}
-          hint="Across portfolio"
+          hint="In your portfolio"
         />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="text-base">Pricing engine</CardTitle>
+            <CardTitle className="text-base">Rent check</CardTitle>
             <CardDescription>
-              AI recommends mark-to-market when gap exceeds 3%
+              Compares each unit's rent with the market rent on record
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-[var(--color-fg-muted)]">
             <p>
-              Units below market by more than 5% show an optimize action.
-              Applying updates rent and logs activity.
+              A unit more than 5% below market offers a one-tap update. Applying it
+              changes the rent here and adds a note to your activity log.
             </p>
           </CardContent>
         </Card>
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="text-base">Predictive maintenance</CardTitle>
+            <CardTitle className="text-base">Maintenance</CardTitle>
             <CardDescription>
-              Health scores from work-order history
+              A health score and open issues for each unit
             </CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-[var(--color-fg-muted)]">
-            Lower scores surface open issues. Clear items when resolved.
+            A lower score means more open issues. Clear each one when it is resolved.
           </CardContent>
         </Card>
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="text-base">Tenant analytics</CardTitle>
-            <CardDescription>Lease runway and notice status</CardDescription>
+            <CardTitle className="text-base">Leases</CardTitle>
+            <CardDescription>Lease end dates and notice status</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-[var(--color-fg-muted)]">
-            Notice and vacant units bubble to the top of your action list.
+            Vacant units and units renting below market appear in your Command Center priorities.
           </CardContent>
         </Card>
       </div>
 
       <div className="space-y-3">
         <h2 className="font-display text-lg font-semibold">Units</h2>
+        {!hasUnits && (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
+                <Building2 aria-hidden="true" className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-medium text-[var(--color-fg)]">No rental units yet</p>
+              <p className="max-w-md text-sm text-[var(--color-fg-muted)]">
+                Adding your own units isn't available in this beta. The guest demo
+                shows this page with sample units so you can see how it works.
+              </p>
+            </CardContent>
+          </Card>
+        )}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {rentals.map((unit) => {
             const gap = unit.marketRent - unit.rent;

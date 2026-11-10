@@ -40,7 +40,11 @@ function ListingsDataPage() {
     try {
       const r = await resyncFromWebsite();
       if (r.error) toast.message(r.error);
-      else toast.success(r.listings ? `Website scanned · ${r.listings} listing(s) observed` : "Website scanned — no listings found");
+      else toast.success(
+          r.listings
+            ? `Website scanned. ${r.listings} ${r.listings === 1 ? "listing" : "listings"} found.`
+            : "Website scanned. No listings found on it yet.",
+        );
     } finally {
       setBusy(false);
     }

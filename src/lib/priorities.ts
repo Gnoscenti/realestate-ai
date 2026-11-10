@@ -75,7 +75,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "A prompt, useful reply gives this inquiry a clear next step. Priority uses the recorded contact time, not a predicted conversion rate.",
         leadId: lead.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=instant`,
         score: 1000 + lead.score - hoursSince,
       });
@@ -91,7 +91,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Follow-up discipline is the #1 pipeline leak once speed-to-lead is fixed.",
         leadId: lead.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=nurture`,
         score: 800 + lead.score - daysSince * 2,
       });
@@ -107,7 +107,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Predictive scoring only helps if high-intent leads get same-day human attention.",
         leadId: lead.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=brief`,
         score: 700 + lead.score,
       });
@@ -123,7 +123,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Top CRMs mine existing databases for seller/buyer signals — cheaper than new portal leads.",
         leadId: lead.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=reactivate`,
         score: 400 + lead.score,
       });
@@ -143,7 +143,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Transaction delays and disclosure gaps are top agent stress points; AI flags them before they kill closings.",
         dealId: deal.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open Transaction Hub",
         href: "/transactions",
         score: 900 + deal.progress,
       });
@@ -157,7 +157,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Milestone tracking keeps deals from stalling between contract and clear-to-close.",
         dealId: deal.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open Transaction Hub",
         href: "/transactions",
         score: 500 + deal.progress,
       });
@@ -175,7 +175,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Vacancy is pure revenue leakage — dynamic pricing + ready-to-list copy close the gap faster.",
         rentalId: unit.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open Property Management",
         href: "/properties",
         score: 550,
       });
@@ -189,7 +189,7 @@ export function buildPriorityQueue(ctx: {
         researchNote:
           "Agents managing rentals leave money on the table without automated rent optimization.",
         rentalId: unit.id,
-        actionLabel: "Open action pack",
+        actionLabel: "Open Property Management",
         href: "/properties",
         score: 420,
       });
@@ -229,7 +229,7 @@ export function buildPriorityQueue(ctx: {
       reason: gap.reason,
       researchNote:
         "NAR tech surveys: ~78% of agent AI usage is writing — listings, social, email. Agentic packs beat one-off posts.",
-      actionLabel: "Open Content Agent",
+      actionLabel: "Open Social Desk",
       href: `/marketing?goal=${gap.goal}${gap.property ? `&property=${gap.property.id}` : ""}`,
       score: 620,
       meta: {
@@ -248,7 +248,7 @@ export function buildPriorityQueue(ctx: {
         reason: `${activeListing.title} — comps + list strategy + value script for listing or buyer consults`,
         researchNote:
           "Post-NAR: written value proof (CMA + agreement) justifies fees better than portal printouts.",
-        actionLabel: "Open action pack",
+        actionLabel: "Open CMA Studio",
         href: "/cma",
         score: 480,
         meta: { propertyId: activeListing.id },
@@ -264,7 +264,7 @@ export function buildPriorityQueue(ctx: {
     reason: "Post-NAR written representation — scope, fee, term, fair housing",
     researchNote:
       "Portals own search; agents win on counsel, risk, and clear agreements before tours.",
-    actionLabel: "Open action pack",
+    actionLabel: "Open in Instant Response",
     href: "/outreach?mode=agreement",
     score: 350,
   });

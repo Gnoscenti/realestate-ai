@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Calendar,
+  CalendarClock,
   Filter,
   Mail,
   MapPin,
@@ -11,7 +12,7 @@ import {
   Search,
   Star,
   Trash2,
-  TrendingUp,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -50,6 +51,7 @@ import {
   cn,
 } from "@/lib/utils";
 import type { Lead, LeadHeat, LeadSource, LeadStatus } from "@/data/seed";
+import { pickFollowUpLeads } from "@/lib/lead-follow-up";
 
 export const Route = createFileRoute("/leads")({
   component: LeadsPage,
@@ -162,8 +164,12 @@ function LeadsPage() {
     toast.success(`${lead.name} added · score ${lead.score}`);
   };
 
+  const followUpTargets = pickFollowUpLeads(leads);
+  const filtersActive = search.trim() !== "" || heatFilter !== "all";
+
   const scheduleFollowups = () => {
-    const targets = leads.filter((l) => l.heat !== "cold").slice(0, 5);
+    const targets = followUpTargets;
+    if (!targets.length) return;
     targets.forEach((l) =>
       updateLead(l.id, {
         nextFollowUp: new Date(Date.now() + 86400000).toISOString(),
@@ -175,13 +181,8 @@ function LeadsPage() {
       description: `Next follow-up set to tomorrow for ${targets.length} priority leads (rule: highest score first)`,
       badge: "Follow-up",
     });
-    toast.message(`Set a follow-up date for ${targets.length} leads. This is a rule, not an AI analysis; nothing was sent.`);
-  };
-
-  const sendNurture = () => {
-    if (!selected) return;
-    toast.message(
-      `Nothing is sent automatically. Open Instant Response to copy the nurture drafts for ${selected.name} into your own email or SMS.`,
+    toast.success(
+      `Follow-up set for tomorrow on ${targets.length} ${targets.length === 1 ? "lead" : "leads"}. Nothing was sent to them.`,
     );
   };
 
@@ -190,21 +191,27 @@ function LeadsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
-            Lead intelligence
+            Lead Intelligence
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            AI scoring, prioritization, and engagement for your pipeline
+            Your clients and prospects, scored and ranked so you know who to call first.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={scheduleFollowups}>
-            <TrendingUp className="h-4 w-4" />
-            Set follow-up dates
+          <Button
+            variant="secondary"
+            className="min-h-[44px]"
+            onClick={scheduleFollowups}
+            disabled={!followUpTargets.length}
+            title="Sets tomorrow as the next follow-up for your five highest-scoring warm and hot leads"
+          >
+            <CalendarClock aria-hidden="true" className="h-4 w-4" />
+            Set follow-ups for tomorrow
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
+              <Button className="min-h-[44px]">
+                <Plus aria-hidden="true" className="h-4 w-4" />
                 Add lead
               </Button>
             </DialogTrigger>
@@ -260,8 +267,9 @@ function LeadsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Location</Label>
+                  <Label htmlFor="lead-location">Location</Label>
                   <Input
+                    id="lead-location"
                     value={form.location}
                     onChange={(e) =>
                       setForm({ ...form, location: e.target.value })
@@ -270,8 +278,9 @@ function LeadsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Property type</Label>
+                  <Label htmlFor="lead-property-type">Property type</Label>
                   <Input
+                    id="lead-property-type"
                     value={form.propertyType}
                     onChange={(e) =>
                       setForm({ ...form, propertyType: e.target.value })
@@ -279,9 +288,12 @@ function LeadsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Budget min</Label>
+                  <Label htmlFor="lead-budget-min">Lowest budget ($)</Label>
                   <Input
+                    id="lead-budget-min"
                     type="number"
+                    inputMode="numeric"
+                    min={0}
                     value={form.budgetMin}
                     onChange={(e) =>
                       setForm({ ...form, budgetMin: e.target.value })
@@ -289,9 +301,12 @@ function LeadsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Budget max</Label>
+                  <Label htmlFor="lead-budget-max">Highest budget ($)</Label>
                   <Input
+                    id="lead-budget-max"
                     type="number"
+                    inputMode="numeric"
+                    min={0}
                     value={form.budgetMax}
                     onChange={(e) =>
                       setForm({ ...form, budgetMax: e.target.value })
@@ -299,8 +314,9 @@ function LeadsPage() {
                   />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label>Preferences</Label>
+                  <Label htmlFor="lead-preferences">Preferences</Label>
                   <Textarea
+                    id="lead-preferences"
                     value={form.preferences}
                     onChange={(e) =>
                       setForm({ ...form, preferences: e.target.value })
@@ -329,7 +345,7 @@ function LeadsPage() {
                   Cancel
                 </Button>
                 <Button className="min-h-[44px]" onClick={createLead}>
-                  Create lead
+                  Add lead
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -373,11 +389,43 @@ function LeadsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {filtered.length === 0 && (
-                <p className="py-8 text-center text-sm text-[var(--color-fg-muted)]">
-                  No leads match your filters.
-                </p>
-              )}
+              {filtered.length === 0 &&
+                (leads.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
+                      <Users aria-hidden="true" className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-fg)]">No leads yet</p>
+                      <p className="mx-auto mt-1 max-w-sm text-sm text-[var(--color-fg-muted)]">
+                        Add your first client or prospect. They'll be scored and ranked here, and
+                        show up in your Command Center priorities.
+                      </p>
+                    </div>
+                    <Button className="min-h-[44px]" onClick={() => setOpen(true)}>
+                      <Plus aria-hidden="true" className="h-4 w-4" />
+                      Add your first lead
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center">
+                    <p className="text-sm text-[var(--color-fg-muted)]">
+                      No leads match {filtersActive ? "this search or filter" : "yet"}.
+                    </p>
+                    {filtersActive && (
+                      <Button
+                        variant="secondary"
+                        className="min-h-[44px]"
+                        onClick={() => {
+                          setSearch("");
+                          setHeatFilter("all");
+                        }}
+                      >
+                        Clear search and filter
+                      </Button>
+                    )}
+                  </div>
+                ))}
               {filtered.map((lead) => (
                 <LeadRow
                   key={lead.id}
@@ -408,28 +456,32 @@ function LeadsPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>AI insights</CardTitle>
+              <CardTitle>Insights</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {selected && selected.score >= 88 && (
                 <Insight
                   tone="success"
-                  title="High-value opportunity"
-                  body={`${selected.name} shows ${selected.score}% conversion signal. Prioritize a showing this week.`}
+                  title="Strong lead"
+                  body={`${selected.name} scores ${selected.score} out of 100. Consider offering a showing this week.`}
                 />
               )}
               {staleCount > 0 && (
                 <Insight
                   tone="primary"
                   title="Follow-up needed"
-                  body={`${staleCount} lead${staleCount === 1 ? "" : "s"} haven't been contacted in 5+ days.`}
+                  body={`${staleCount} ${staleCount === 1 ? "lead hasn't" : "leads haven't"} been contacted in 5 or more days.`}
                 />
               )}
-              <Insight
-                tone="accent"
-                title="Market signal"
-                body="ADU interest up ~40% this month — surface conversion-ready homes to warm buyers."
-              />
+              {!(selected && selected.score >= 88) && staleCount === 0 && (
+                <p className="text-sm text-[var(--color-fg-muted)]">
+                  {leads.length === 0
+                    ? "Insights appear here once you have leads. They come only from your own records."
+                    : // Only what the check proves. "Last contact" starts at the moment a
+                      // lead is added, so this cannot claim anyone was contacted.
+                      "No overdue follow-ups. A lead is flagged here after 5 days with no contact logged."}
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -438,35 +490,32 @@ function LeadsPage() {
               <CardTitle>Quick actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Button className="w-full justify-start" onClick={scheduleFollowups}>
-                <Calendar className="h-4 w-4" />
-                Schedule follow-ups
-              </Button>
               <Button
-                className="w-full justify-start"
-                variant="outline"
-                onClick={sendNurture}
-                disabled={!selected}
+                className="min-h-[44px] w-full justify-start"
+                onClick={scheduleFollowups}
+                disabled={!followUpTargets.length}
               >
-                <MessageSquare className="h-4 w-4" />
-                Send AI nurture
+                <Calendar aria-hidden="true" className="h-4 w-4" />
+                Set follow-ups for tomorrow
               </Button>
-              <Button
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => {
-                  toast.success("Lead report exported (demo)");
-                  pushActivity({
-                    type: "lead",
-                    title: "Lead report generated",
-                    description: `Portfolio report · ${leads.length} leads · avg score ${Math.round(leads.reduce((s, l) => s + l.score, 0) / Math.max(1, leads.length))}`,
-                    badge: "Report",
-                  });
-                }}
-              >
-                <TrendingUp className="h-4 w-4" />
-                Generate report
-              </Button>
+              {selected ? (
+                <Button asChild className="min-h-[44px] w-full justify-start" variant="outline">
+                  <Link to="/outreach" search={{ lead: selected.id, mode: "nurture" }}>
+                    <MessageSquare aria-hidden="true" className="h-4 w-4" />
+                    <span className="truncate">Draft follow-ups for {selected.name.split(" ")[0]}</span>
+                  </Link>
+                </Button>
+              ) : (
+                <Button className="min-h-[44px] w-full justify-start" variant="outline" disabled>
+                  <MessageSquare aria-hidden="true" className="h-4 w-4" />
+                  Draft follow-up messages
+                </Button>
+              )}
+              <p className="text-xs text-[var(--color-fg-subtle)]">
+                {leads.length === 0
+                  ? "Add a lead to use these."
+                  : "Drafts open in Instant Response for you to copy. Nothing is sent automatically."}
+              </p>
             </CardContent>
           </Card>
 

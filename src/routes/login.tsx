@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
-  BarChart3,
   Check,
   Loader2,
+  Megaphone,
+  Radar,
+  Smartphone,
   Sparkles,
-  Zap,
-  Calendar,
   Shield,
   ArrowRight,
   LogOut,
@@ -29,21 +29,22 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+// Each point adds something the headline does not already say.
 const HIGHLIGHTS = [
   {
-    icon: Zap,
-    title: "Get discovered for the work you do best",
-    body: "Connect supported expertise to real AI discovery questions and usable public-content improvements.",
+    icon: Radar,
+    title: "See how AI search describes you",
+    body: "Match your real expertise to the questions clients ask AI, and get specific improvements for your public pages.",
   },
   {
-    icon: BarChart3,
-    title: "Social content with sources and review",
-    body: "Draft from facts, approve the exact revision and distribute through your authorized accounts.",
+    icon: Megaphone,
+    title: "Social posts you can stand behind",
+    body: "Draft from facts, approve the exact wording, then publish through your own connected accounts.",
   },
   {
-    icon: Calendar,
-    title: "One focused workspace, phone or desktop",
-    body: "Use the beta app on either device. For now, profile and listings stay in each browser.",
+    icon: Smartphone,
+    title: "Works on your phone and your desktop",
+    body: "Use the beta on either device. For now, profile and listings stay in each browser.",
   },
 ] as const;
 
@@ -89,6 +90,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const autoContinue = Boolean(user) && recentlySignedIn();
 
   // Right after signing in, keep going to the workspace (the session may still be propagating).
@@ -99,14 +101,28 @@ function LoginPage() {
   const onEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailAndPasswordEnabled) {
-      toast.message("Email/password is not enabled");
+      setFormError("Sign-in is temporarily unavailable. Please try again shortly.");
       return;
     }
     const trimmed = email.trim();
-    if (!trimmed || password.length < 8) {
-      toast.error("Use a valid email and a password of at least 8 characters");
+    // One problem at a time, named, and shown next to the form.
+    if (!trimmed) {
+      setFormError("Enter your email address.");
       return;
     }
+    if (!/^\S+@\S+\.\S+$/.test(trimmed)) {
+      setFormError("Enter a full email address, like you@brokerage.com.");
+      return;
+    }
+    if (password.length < 8) {
+      setFormError(
+        mode === "signup"
+          ? "Choose a password with at least 8 characters."
+          : "Enter your password. Passwords are at least 8 characters.",
+      );
+      return;
+    }
+    setFormError(null);
     setBusy("email");
     try {
       if (mode === "signup") {
@@ -115,22 +131,28 @@ function LoginPage() {
           password,
           name: name.trim() || trimmed.split("@")[0] || "Agent",
         });
-        if (error) throw new Error(error.message ?? "Sign-up failed");
+        if (error) throw new Error(error.message ?? "");
         endDemoSession();
         markJustSignedIn();
-        toast.success("Account created — welcome in");
+        toast.success("Account created. Welcome!");
       } else {
         const { error } = await authClient.signIn.email({
           email: trimmed,
           password,
         });
-        if (error) throw new Error(error.message ?? "Sign-in failed");
+        if (error) throw new Error(error.message ?? "");
         endDemoSession();
         markJustSignedIn();
       }
       void navigate({ to: "/" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Authentication failed");
+      const detail = err instanceof Error ? err.message.trim() : "";
+      setFormError(
+        detail ||
+          (mode === "signup"
+            ? "We couldn't create your account. Try again in a moment."
+            : "We couldn't sign you in. Check your email and password, then try again."),
+      );
     } finally {
       setBusy(null);
     }
@@ -175,7 +197,7 @@ function LoginPage() {
         {/* Dazzle copy */}
         <div className="space-y-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--color-primary)]">
-            <Sparkles className="h-3.5 w-3.5" />
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
             RealEstate AI · Private beta
           </div>
 
@@ -184,9 +206,9 @@ function LoginPage() {
               Get discovered for the work you do best.
             </h1>
             <p className="mt-4 max-w-xl text-base leading-relaxed text-[var(--color-fg-muted)] sm:text-lg">
-              Citelock finds evidence-supported discovery gaps, creates useful
-              improvements and connects them to your Social Desk. Track what you
-              publish and what later AI answers actually say.
+              CiteLock shows, with evidence, where AI answers overlook you. It
+              drafts the improvements and sends them to your Social Desk, then
+              tracks what you publish and what AI answers say next.
             </p>
           </div>
 
@@ -196,7 +218,7 @@ function LoginPage() {
               return (
                 <li key={h.title} className="flex gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-                    <Icon className="h-4 w-4" />
+                    <Icon aria-hidden="true" className="h-4 w-4" />
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-[var(--color-fg)]">
@@ -212,8 +234,8 @@ function LoginPage() {
           </ul>
 
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
-            <Shield className="h-3.5 w-3.5" />
-            One-time access · No monthly subscription · Your data stays yours
+            <Shield aria-hidden="true" className="h-3.5 w-3.5" />
+            Pay once for workspace access. Nothing renews on its own.
           </div>
         </div>
 
@@ -221,27 +243,37 @@ function LoginPage() {
         <div className="glass-panel surface-shine mx-auto w-full max-w-md p-6 sm:p-8">
           <div className="mb-6">
             <h2 className="font-display text-xl font-semibold tracking-tight text-[var(--color-fg)]">
-              Get started
+              {mode === "signup" ? "Create your account" : "Sign in to your workspace"}
             </h2>
             <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-              Sign in to open your workspace. Profile setup can wait until you’re ready.
+              {mode === "signup"
+                ? "It takes about a minute. You can set up your profile later."
+                : "Welcome back. Your workspace opens as soon as you sign in."}
             </p>
           </div>
 
           {emailAndPasswordEnabled ? (
-            <form className="space-y-4" onSubmit={(e) => void onEmailSubmit(e)}>
-              <div className="flex gap-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-1">
+            <form className="space-y-4" noValidate onSubmit={(e) => void onEmailSubmit(e)}>
+              <div
+                role="group"
+                aria-label="Sign in or create an account"
+                className="flex gap-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-1"
+              >
                 {(["signin", "signup"] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
+                    aria-pressed={mode === m}
                     className={cn(
-                      "flex-1 rounded-[var(--radius-sm)] py-2.5 text-sm font-medium transition-colors",
+                      "min-h-[44px] flex-1 rounded-[var(--radius-sm)] py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]",
                       mode === m
                         ? "bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm"
-                        : "text-[var(--color-fg-muted)]",
+                        : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                     )}
-                    onClick={() => setMode(m)}
+                    onClick={() => {
+                      setMode(m);
+                      setFormError(null);
+                    }}
                   >
                     {m === "signin" ? "Sign in" : "Create account"}
                   </button>
@@ -269,7 +301,10 @@ function LoginPage() {
                   type="email"
                   className="mt-1.5 h-11"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFormError(null);
+                  }}
                   placeholder="you@brokerage.com"
                   autoComplete="email"
                   autoFocus
@@ -284,8 +319,11 @@ function LoginPage() {
                   containerClassName="mt-1.5"
                   className="h-11"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setFormError(null);
+                  }}
+                  placeholder={mode === "signup" ? "At least 8 characters" : "Your password"}
                   autoComplete={
                     mode === "signup" ? "new-password" : "current-password"
                   }
@@ -294,15 +332,24 @@ function LoginPage() {
                 />
               </div>
 
+              {formError && (
+                <p
+                  role="alert"
+                  className="rounded-[var(--radius-sm)] border border-[color-mix(in_oklab,var(--color-danger)_35%,transparent)] bg-[var(--color-danger-soft)] px-3 py-2 text-sm text-[var(--color-fg)]"
+                >
+                  {formError}
+                </p>
+              )}
+
               <Button
                 type="submit"
                 className="min-h-[48px] w-full text-base"
                 disabled={Boolean(busy)}
               >
                 {busy === "email" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Check className="h-4 w-4" />
+                  <Check aria-hidden="true" className="h-4 w-4" />
                 )}
                 {mode === "signup"
                   ? "Create account with email"
@@ -336,20 +383,16 @@ function LoginPage() {
               <span className="block text-sm font-semibold text-[var(--color-fg)]">
                 Just looking?{" "}
                 <span className="text-[var(--color-primary)] underline underline-offset-4">
-                  Click here to explore the workspace without an account
+                  Explore the demo workspace
                 </span>
               </span>
               <span className="mt-0.5 block text-xs text-[var(--color-fg-muted)]">
-                Sample data · no sign-up · nothing is saved
+                No account needed. Sample data only, and nothing is saved.
               </span>
             </span>
             <ArrowRight className="h-4 w-4 shrink-0 text-[var(--color-primary)] transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
           </button>
 
-          <p className="mt-6 text-center text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-            Open the workspace first. Add your profile and website later from
-            inside the app.
-          </p>
         </div>
       </div>
     </div>

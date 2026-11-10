@@ -22,7 +22,7 @@ const TABS: Tab[] = [
   { to: "/outreach", label: "Respond", icon: Zap },
   { to: "/search", label: "Search", icon: Search },
   { to: "/calendar", label: "Calendar", icon: Calendar },
-  { to: "/marketing", label: "Content", icon: Megaphone },
+  { to: "/marketing", label: "Social", icon: Megaphone },
 ];
 
 /**
@@ -38,7 +38,7 @@ export function IosTabBar() {
       style={{
         paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))",
       }}
-      aria-label="Primary"
+      aria-label="Main sections"
     >
       <ul className="mx-auto flex max-w-lg items-stretch justify-between px-1 pt-1">
         {TABS.map((tab) => {
@@ -54,13 +54,14 @@ export function IosTabBar() {
                   void hapticLight();
                 }}
                 className={cn(
-                  "flex min-h-[48px] flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10px] font-medium tracking-wide transition-colors",
+                  "flex min-h-[48px] flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] font-medium tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary)]",
                   active
                     ? "text-[var(--color-primary)]"
-                    : "text-[var(--color-fg-subtle)] active:text-[var(--color-fg-muted)]",
+                    : "text-[var(--color-fg-muted)] active:text-[var(--color-fg)]",
                 )}
               >
                 <Icon
+                  aria-hidden="true"
                   className={cn(
                     "h-[22px] w-[22px]",
                     active && "drop-shadow-[0_0_8px_color-mix(in_oklab,var(--color-primary)_55%,transparent)]",

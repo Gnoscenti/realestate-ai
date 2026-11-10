@@ -214,14 +214,16 @@ const STAGE_PROGRESS: Record<Deal["stage"], number> = {
 
 function welcomeFor(name?: string, area?: string): ChatMessage[] {
   const greet = name ? `Hi ${name.split(" ")[0]}` : "Hello";
+  // The assistant reads server-side records only. Local market notes are a page
+  // to browse, not something it can answer from, so they are offered as a link.
   const local = isRsfCorridor(area)
-    ? " RSF corridor knowledge is loaded — ask about Covenant, comps, or schools."
-    : " Import your leads and listings — we never invent client or inventory data.";
+    ? " Local notes for Rancho Santa Fe are on the Market Knowledge page."
+    : "";
   return [
     {
       id: "welcome",
       role: "assistant",
-      content: `${greet} — I'm your AI real estate copilot.${local} Your book starts empty. Import CSV or add records so priorities and CMAs use YOUR data.`,
+      content: `${greet}. I'm your AI assistant. I answer from your saved profile, the listings you add in Social Desk and your verified sold records. I can't read your leads or imported listings yet, I don't search the web or an MLS, and I never invent data.${local}`,
       createdAt: new Date(0).toISOString(),
     },
   ];
@@ -1185,13 +1187,12 @@ export const useAppStore = create<AppState>()(
 
       clearChat: () => {
         const name = get().agentProfile?.name;
-        const area = get().agentProfile?.areaOfOperations;
         set({
           chat: [
             {
               id: "welcome",
               role: "assistant",
-              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about calendars, RSF knowledge, or CMAs${area && isRsfCorridor(area) ? " — corridor KB is still online" : ""}.`,
+              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about your profile, sold records or strategy.`,
               createdAt: new Date().toISOString(),
             },
           ],
