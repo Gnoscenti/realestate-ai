@@ -70,6 +70,29 @@ const KIND_ICON: Record<PriorityKind, typeof Zap> = {
   calendar_prep: Calendar,
 };
 
+/** Reader-facing names. The queue's internal kinds are snake_case identifiers. */
+const KIND_LABEL: Record<PriorityKind, string> = {
+  speed_to_lead: "New lead",
+  overdue_followup: "Overdue follow-up",
+  hot_lead: "Hot lead",
+  deal_risk: "Deal at risk",
+  deal_milestone: "Deal milestone",
+  sphere_reactivate: "Reconnect",
+  vacancy: "Vacancy",
+  rent_gap: "Rent below market",
+  content_gap: "Content idea",
+  social_campaign: "Social campaign",
+  cma_package: "Listing comparison",
+  compliance_package: "Buyer agreement",
+  calendar_prep: "Appointment prep",
+};
+
+const URGENCY_LABEL: Record<"critical" | "high" | "medium", string> = {
+  critical: "Urgent",
+  high: "High",
+  medium: "Normal",
+};
+
 const ARTIFACT_ICON: Record<CommandArtifact["kind"], typeof Package> = {
   words: MessageSquare,
   cma: BarChart3,
@@ -81,9 +104,9 @@ const ARTIFACT_ICON: Record<CommandArtifact["kind"], typeof Package> = {
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text);
-    toast.success("Copied");
+    toast.success("Copied to clipboard");
   } catch {
-    toast.message("Select text to copy");
+    toast.error("Couldn't copy automatically. Select the text and copy it yourself.");
   }
 }
 
@@ -127,17 +150,20 @@ function DashboardPage() {
   );
 
   const insight = useMemo(() => responseTimeInsight(leads), [leads]);
+  const hasActiveLeads = leads.some(
+    (lead) => !["closed_won", "closed_lost"].includes(lead.status),
+  );
   const isFreshWorkspace =
     leads.length === 0 &&
     properties.length === 0 &&
     deals.length === 0 &&
     appointments.length === 0;
-  const first = profile?.name?.split(" ")[0] ?? "Agent";
+  const first = profile?.name?.split(" ")[0];
 
   const markDone = (id: string) => {
     completePriority(id);
     if (selectedId === id) setSelectedId(null);
-    toast.success("Marked done");
+    toast.success("Done. Removed from today's list.");
   };
 
   return (
@@ -154,39 +180,42 @@ function DashboardPage() {
           <div className="max-w-2xl">
             <div className="flex flex-wrap gap-2">
               <Badge variant="accent">
-                <Sparkles className="h-3 w-3" />
+                <Sparkles aria-hidden="true" className="h-3 w-3" />
                 Command Center
               </Badge>
               <Badge variant="secondary">
-                {queue.length} ranked work items
+                {queue.length === 1 ? "1 priority" : `${queue.length} priorities`}
               </Badge>
               {profile && (
                 <Badge variant="secondary">{profile.areaOfOperations}</Badge>
               )}
             </div>
             <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-              Good focus, {first}
+              {first ? `Here's your day, ${first}` : "Here's your day"}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Agent-first Action Desk: ranked queue for speed-to-lead, follow-ups,
-              calendar prep, CMAs, and compliance — with the words ready in one
-              place.
+              Your work, ranked: leads to answer, follow-ups, deal deadlines and
+              appointment prep. Each one comes with wording you can copy and send.
             </p>
-            <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
-              Avg touch lag ~{insight.avgHours}h · {insight.underFiveMinPotential}
-            </p>
+            {hasActiveLeads && (
+              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
+                On average it has been about {insight.avgHours}{" "}
+                {insight.avgHours === 1 ? "hour" : "hours"} since you last contacted
+                your active leads.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="secondary">
               <Link to="/calendar">
-                <Calendar className="h-4 w-4" />
-                Calendar & vendors
+                <Calendar aria-hidden="true" className="h-4 w-4" />
+                Calendar & Vendors
               </Link>
             </Button>
             <Button asChild>
               <Link to="/outreach">
-                <Zap className="h-4 w-4" />
-                Instant response
+                <Zap aria-hidden="true" className="h-4 w-4" />
+                Instant Response
               </Link>
             </Button>
           </div>
@@ -210,12 +239,20 @@ function DashboardPage() {
                 Action Desk
               </h2>
               <p className="text-xs text-[var(--color-fg-muted)]">
-                Select a priority → pack opens with words + CMA + compliance
+                Pick a priority to see its message, notes and next step.
               </p>
             </div>
             {completed.length > 0 && (
-              <Button size="sm" variant="ghost" onClick={() => clearCompleted()}>
-                Reset done
+              <Button
+                size="sm"
+                variant="ghost"
+                className="min-h-[40px] shrink-0"
+                onClick={() => {
+                  clearCompleted();
+                  toast.message("Completed items are back on your list.");
+                }}
+              >
+                Restore {completed.length} completed
               </Button>
             )}
           </div>
@@ -229,9 +266,10 @@ function DashboardPage() {
                   <button
                     key={item.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setSelectedId(item.id)}
                     className={cn(
-                      "glass-card w-full p-3 text-left transition-[transform,background-color,border-color] duration-150 hover:-translate-y-0.5",
+                      "glass-card w-full p-3 text-left transition-[transform,background-color,border-color] duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]",
                       active
                         ? "border-[color-mix(in_oklab,var(--color-primary)_40%,var(--color-border))] bg-[var(--color-surface)]"
                         : "border-[var(--color-border)] bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface-2)]/50",
@@ -248,7 +286,7 @@ function DashboardPage() {
                               : "bg-[var(--color-primary-soft)] text-[var(--color-primary)]",
                         )}
                       >
-                        <Icon className="h-4 w-4" />
+                        <Icon aria-hidden="true" className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -260,12 +298,12 @@ function DashboardPage() {
                                   ? "warning"
                                   : "secondary"
                             }
-                            className="text-[10px]"
+                            className="text-[11px]"
                           >
-                            {item.urgency}
+                            {URGENCY_LABEL[item.urgency]}
                           </Badge>
-                          <span className="text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                            {item.kind.replaceAll("_", " ")}
+                          <span className="text-[11px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                            {KIND_LABEL[item.kind] ?? item.kind.replaceAll("_", " ")}
                           </span>
                         </div>
                         <div className="mt-1 text-sm font-medium text-[var(--color-fg)]">
@@ -275,7 +313,7 @@ function DashboardPage() {
                           {item.reason}
                         </p>
                       </div>
-                      <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
+                      <ChevronRight aria-hidden="true" className="mt-2 h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
                     </div>
                   </button>
                 );
@@ -284,8 +322,8 @@ function DashboardPage() {
                 <Card>
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
                     {isFreshWorkspace
-                      ? "Choose a business outcome above. Your real client work will appear here when available."
-                      : "Queue clear. Reset done items or add an appointment for new preparation tasks."}
+                      ? "Nothing to do yet. Your priorities appear here once you add a lead, a listing or an appointment."
+                      : "You're all caught up. Restore completed items, or add an appointment to get prep tasks."}
                   </CardContent>
                 </Card>
               )}
@@ -299,7 +337,9 @@ function DashboardPage() {
               <CardHeader className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="accent">Action pack</Badge>
-                  <Badge variant="secondary">{selectedItem.kind.replaceAll("_", " ")}</Badge>
+                  <Badge variant="secondary">
+                    {KIND_LABEL[selectedItem.kind] ?? selectedItem.kind.replaceAll("_", " ")}
+                  </Badge>
                 </div>
                 <CardTitle className="text-xl">{pack.headline}</CardTitle>
                 <CardDescription>{pack.subtitle}</CardDescription>
@@ -316,7 +356,7 @@ function DashboardPage() {
                       markDone(selectedItem.id);
                     }}
                   >
-                    <Check className="h-3.5 w-3.5" />
+                    <Check aria-hidden="true" className="h-3.5 w-3.5" />
                     Mark done
                   </Button>
                   <Button
@@ -341,7 +381,7 @@ function DashboardPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-primary-soft)] text-[var(--color-primary)]">
-                              <AIcon className="h-4 w-4" />
+                              <AIcon aria-hidden="true" className="h-4 w-4" />
                             </div>
                             <div>
                               <div className="text-sm font-medium">
@@ -355,13 +395,20 @@ function DashboardPage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            className="shrink-0"
+                            aria-label={`Copy ${art.title}`}
                             onClick={() => void copyText(art.body)}
                           >
-                            <Copy className="h-3.5 w-3.5" />
+                            <Copy aria-hidden="true" className="h-3.5 w-3.5" />
                             Copy
                           </Button>
                         </div>
-                        <pre className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                        <pre
+                          // Focusable so the keyboard can scroll a long draft.
+                          tabIndex={0}
+                          aria-label={`${art.title} text`}
+                          className="scrollbar-thin mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-[var(--radius-sm)] font-sans text-xs leading-relaxed text-[var(--color-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+                        >
                           {art.body}
                         </pre>
                         {art.href && (
@@ -373,7 +420,7 @@ function DashboardPage() {
                           >
                             <Link to={art.href as "/"}>
                               {art.hrefLabel ?? "Open"}
-                              <ChevronRight className="h-3.5 w-3.5" />
+                              <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
                             </Link>
                           </Button>
                         )}
@@ -386,7 +433,7 @@ function DashboardPage() {
           ) : (
             <Card>
               <CardContent className="py-16 text-center text-sm text-[var(--color-fg-muted)]">
-                Select a ranked work item to open its action pack.
+                Pick a priority on the left to see its action pack.
               </CardContent>
             </Card>
           )}
@@ -432,7 +479,7 @@ function EdgeBriefBar() {
     >
       <div className="min-w-0">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-primary)]">
-          Competitive edge · today
+          Today's edge
         </div>
         <p className="mt-1 line-clamp-2 text-sm text-[var(--color-fg-muted)]">
           {brief.split("\n").slice(1, 3).join(" · ").replace(/^• /g, "")}
@@ -443,7 +490,7 @@ function EdgeBriefBar() {
           <Link to="/edge">Edge Playbook</Link>
         </Button>
         <Button asChild size="sm" className="min-h-[40px]">
-          <Link to="/outreach">5-min protocol</Link>
+          <Link to="/outreach">Reply to new leads</Link>
         </Button>
       </div>
     </div>

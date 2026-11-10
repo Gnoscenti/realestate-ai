@@ -44,7 +44,7 @@ async function signUp(page:Page) {
 }
 async function unlock(page:Page) {
   await page.locator("#access-code").fill("TEST-ACCESS-NOT-PRODUCTION");
-  await page.getByRole("button",{name:"Redeem",exact:true}).click();
+  await page.getByRole("button",{name:"Redeem code",exact:true}).click();
   await expect(page.getByTestId("entitled-workspace")).toBeVisible();
 }
 
@@ -97,7 +97,7 @@ test("real sessions enforce the paywall, persist social drafts and isolate anoth
   await expect(page.locator("#access-code")).toBeVisible();
   await expect(page.getByTestId("entitled-workspace")).toHaveCount(0);
   await page.locator("#access-code").fill("NOT-A-VALID-CODE");
-  await page.getByRole("button",{name:"Redeem",exact:true}).click();
+  await page.getByRole("button",{name:"Redeem code",exact:true}).click();
   await expect(page.getByText(/Invalid code/).first()).toBeVisible();
   await unlock(page);
   await page.getByRole("link",{name:"Social Desk",exact:true}).click();

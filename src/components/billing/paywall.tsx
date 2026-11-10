@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  ArrowRight,
   Check,
   CreditCard,
   Gift,
   Loader2,
   Lock,
-  Sparkles,
   Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
 
   // Return from Stripe.
   //
@@ -63,7 +64,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
     };
 
     if (!sessionId) {
-      toast.error("That checkout could not be verified — no access granted.");
+      toast.error("We couldn't verify that checkout, so access wasn't unlocked.");
       stripCheckoutParams();
       return;
     }
@@ -80,7 +81,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
           completePaidCheckout(verified.sessionId);
           onAccessGranted?.();
           toast.success(
-            `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
+            `Payment confirmed. You have full access for ${INTRO_DAYS} days.`,
           );
         } else if (verified.demo) {
           completeDemoCheckout(verified.sessionId);
@@ -90,7 +91,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
           );
         } else {
           toast.error(
-            "We could not confirm that payment with Stripe — no access granted.",
+            "Stripe didn't confirm that payment, so access wasn't unlocked.",
           );
         }
       } catch {
@@ -98,7 +99,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
         // session_id in the URL so a reload can retry the confirmation.
         if (!cancelled) {
           toast.error(
-            "We could not reach Stripe to confirm that payment. Reload this page to retry — your purchase is not lost.",
+            "We couldn't reach Stripe to confirm your payment. Reload this page to try again. Your purchase isn't lost.",
           );
         }
       } finally {
@@ -136,13 +137,13 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
         return;
       }
       await openExternalUrl(result.url);
-      toast.message("Complete payment in the secure Stripe window");
+      toast.message("Finish paying in the Stripe window, then come back to this page.");
     } catch (err) {
       console.error(err);
       // A failure here must never unlock the app. Failing open would make every
       // server error a free subscription.
       toast.error(
-        "Checkout is unavailable right now. You were not charged and no access was granted.",
+        "Checkout is unavailable right now. You were not charged and no access was granted. Try again in a few minutes.",
       );
     } finally {
       setBusy(false);
@@ -150,7 +151,9 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
   };
 
   const onRedeem = async () => {
+    if (!code.trim() || codeBusy) return;
     setCodeBusy(true);
+    setCodeError(null);
     try {
       // The server validates the code and records the grant; the browser
       // never holds the code list.
@@ -169,10 +172,16 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
         isDemo: false,
       });
       onAccessGranted?.();
-      toast.success(`Code ${res.code} unlocked — feedback board open`);
+      toast.success("Code accepted. Your workspace is unlocked.");
       setCode("");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Invalid code");
+      // Shown beside the field, where the fix happens, instead of in a toast
+      // that disappears before the code can be compared with the message.
+      setCodeError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Invalid code. Check spelling and try again.",
+      );
     } finally {
       setCodeBusy(false);
     }
@@ -182,24 +191,28 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
       <div className="w-full max-w-lg">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary)] text-[var(--color-primary-fg)] shadow-[var(--shadow-md)]">
-            <Lock className="h-5 w-5" />
+            <Lock aria-hidden="true" className="h-5 w-5" />
           </div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
             Unlock {PLAN.name}
           </h1>
           <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
-            {agentName ? `Hi ${agentName.split(" ")[0]} — ` : ""}
-            Pay once —{" "}
+            {agentName ? `Hi ${agentName.split(" ")[0]}. ` : ""}
+            Pay{" "}
             <span className="font-semibold text-[var(--color-fg)]">
               {formatMoney(INTRO_PRICE_CENTS)}
-            </span>
-            {" "}for {INTRO_DAYS} days of full access. No subscription and nothing
-          renews automatically.
+            </span>{" "}
+            once for {INTRO_DAYS} days of full access. No subscription, and
+            nothing renews on its own.
           </p>
         </div>
 
-        <Link to="/aieo" className="mb-4 block rounded-xl border border-[var(--color-primary)] bg-[var(--color-primary-soft)] p-4 text-center text-sm font-semibold text-[var(--color-primary)]">
-          Try the free Citelock visibility guide
+        <Link
+          to="/aieo"
+          className="mb-4 flex min-h-[48px] items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-primary)] bg-[var(--color-primary-soft)] p-4 text-center text-sm font-semibold text-[var(--color-primary)] transition-colors hover:bg-[color-mix(in_oklab,var(--color-primary)_22%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
+        >
+          Try the free CiteLock visibility guide
+          <ArrowRight aria-hidden="true" className="h-4 w-4" />
         </Link>
         <div className="surface-card overflow-hidden shadow-[var(--shadow-lg)]">
           <div className="border-b border-[var(--color-border)] bg-[var(--color-primary-soft)] px-5 py-4">
@@ -210,13 +223,13 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
                 </div>
                 <div className="mt-1 font-display text-3xl font-semibold tabular text-[var(--color-fg)]">
                   {formatMoney(INTRO_PRICE_CENTS)}
-                  <span className="ml-1 text-base font-medium text-[var(--color-fg-muted)]">
-                    / {INTRO_DAYS} days
+                  <span className="ml-1.5 text-base font-medium text-[var(--color-fg-muted)]">
+                    for {INTRO_DAYS} days
                   </span>
                 </div>
               </div>
-              <div className="rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
-                One-time payment
+              <div className="rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)]">
+                No renewal
               </div>
             </div>
           </div>
@@ -227,7 +240,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
                 key={f}
                 className="flex items-start gap-2.5 text-sm text-[var(--color-fg-muted)]"
               >
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" />
+                <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-accent)]" />
                 <span>{f}</span>
               </li>
             ))}
@@ -240,42 +253,50 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
               onClick={() => void onCheckout()}
             >
               {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
               ) : (
-                <CreditCard className="h-4 w-4" />
+                <CreditCard aria-hidden="true" className="h-4 w-4" />
               )}
-              Pay {formatMoney(INTRO_PRICE_CENTS)} · unlock {INTRO_DAYS} days
+              {busy
+                ? "Opening checkout…"
+                : `Pay ${formatMoney(INTRO_PRICE_CENTS)} for ${INTRO_DAYS} days`}
             </Button>
-            <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
-              Payment is processed by Stripe and verified before access is
-              granted.
+            <p className="text-center text-xs text-[var(--color-fg-subtle)]">
+              Secure checkout by Stripe. Your workspace opens as soon as the
+              payment is confirmed.
             </p>
           </div>
         </div>
 
         <div className="surface-card mt-4 p-5">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
-            <Ticket className="h-4 w-4 text-[var(--color-warning)]" />
+            <Ticket aria-hidden="true" className="h-4 w-4 text-[var(--color-warning)]" />
             Have a free beta code?
           </div>
           <p className="mb-3 text-xs text-[var(--color-fg-muted)]">
-            Free codes unlock full app access{" "}
-            <strong className="text-[var(--color-fg)]">and</strong> the
-            feedback + comment board so we can optimize before public launch.
+            Enter it to unlock the full workspace at no charge. Beta testers can
+            also send us suggestions from any page.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="flex-1">
               <Label htmlFor="access-code" className="sr-only">
-                Access code
+                Beta code
               </Label>
               <Input
                 id="access-code"
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="Your beta code"
+                onChange={(e) => {
+                  setCode(e.target.value.toUpperCase());
+                  setCodeError(null);
+                }}
+                placeholder="Enter your code"
                 className="h-11 font-mono text-base tracking-wide"
                 autoCapitalize="characters"
                 autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={codeError ? true : undefined}
+                aria-describedby={codeError ? "access-code-error" : undefined}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void onRedeem();
                 }}
@@ -287,16 +308,25 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
               disabled={codeBusy || !code.trim()}
               onClick={() => void onRedeem()}
             >
-              <Gift className="h-4 w-4" />
-              Redeem
+              {codeBusy ? (
+                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              ) : (
+                <Gift aria-hidden="true" className="h-4 w-4" />
+              )}
+              {codeBusy ? "Checking…" : "Redeem code"}
             </Button>
           </div>
+          {codeError && (
+            <p
+              id="access-code-error"
+              role="alert"
+              className="mt-2 text-sm text-[var(--color-danger)]"
+            >
+              {codeError}
+            </p>
+          )}
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[11px] text-[var(--color-fg-subtle)]">
-          <Sparkles className="h-3 w-3" />
-          One-time charge · No subscription · Nothing renews automatically
-        </p>
         {footer}
       </div>
     </div>

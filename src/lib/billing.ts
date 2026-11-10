@@ -15,13 +15,15 @@ export const PLAN = {
   name: "RealEstate AI Pro",
   introLabel: "$9.99",
   introPeriod: "30 days of access",
+  // Shown to a buyer deciding whether to pay: benefits in plain words, no
+  // internal feature or vendor names.
   features: [
-    "CiteLock visibility batches across configured answer engines",
-    "Ranked fixes with drafted pages, FAQs, and profile checklists",
-    "Social Desk: facts-first drafts, fair-housing review, Postiz publishing or handoff",
-    "Command Center, instant-response scripts, CMA notes, calendar and vendors",
-    "Priority support during beta",
-    "Suggest drawer → engineering feedback",
+    "CiteLock: check how AI answer engines describe you in your market",
+    "Ranked fixes, with drafted pages, FAQs and profile checklists",
+    "Social Desk: posts drafted from facts, fair-housing review, then publish or hand off",
+    "Command Center, lead reply drafts, CMA notes, calendar and vendors",
+    "Priority support during the beta",
+    "Send suggestions to the team from any page",
   ],
 } as const;
 

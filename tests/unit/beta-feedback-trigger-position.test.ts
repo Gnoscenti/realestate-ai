@@ -13,6 +13,14 @@ describe("beta feedback trigger position", () => {
     expect(parseFeedbackTriggerPosition("not json")).toEqual(DEFAULT_FEEDBACK_TRIGGER_POSITION);
   });
 
+  it("defaults to the lowest allowed spot on the right edge, clear of page content", () => {
+    // The lowest position a saved placement can be clamped to is also the default.
+    expect(DEFAULT_FEEDBACK_TRIGGER_POSITION).toEqual(
+      parseFeedbackTriggerPosition('{"edge":"right","yRatio":10}'),
+    );
+    expect(DEFAULT_FEEDBACK_TRIGGER_POSITION.yRatio).toBeGreaterThan(0.75);
+  });
+
   it("rejects malformed placements and clamps persisted vertical placement", () => {
     expect(parseFeedbackTriggerPosition('{"edge":"top","yRatio":0.5}')).toEqual(
       DEFAULT_FEEDBACK_TRIGGER_POSITION,

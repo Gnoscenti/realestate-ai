@@ -52,7 +52,7 @@ export const FEEDBACK_SECTIONS: {
   {
     id: "outreach",
     label: "Instant Response",
-    hint: "Speed-to-lead scripts & compliance",
+    hint: "Lead reply drafts and agreements",
   },
   {
     id: "cma",
@@ -61,27 +61,27 @@ export const FEEDBACK_SECTIONS: {
   },
   {
     id: "marketing",
-    label: "Content Agent",
+    label: "Social Desk",
     hint: "Social campaigns, brand voice, posts",
   },
   {
     id: "calendar",
     label: "Calendar & Vendors",
-    hint: "Imports, AI reminders, contractors",
+    hint: "Appointments, reminders, vendors",
   },
   {
     id: "knowledge",
-    label: "RSF Knowledge",
-    hint: "Covenants, HOAs, neighborhood talk tracks",
+    label: "Market Knowledge",
+    hint: "Neighborhoods, HOAs, local talking points",
   },
   {
     id: "onboarding",
-    label: "Onboarding / MLS",
-    hint: "Profile, area, website, MLS pull",
+    label: "Profile & Listings",
+    hint: "Profile setup, website scan, listing import",
   },
   {
     id: "billing",
-    label: "Billing & access",
+    label: "Billing & Access",
     hint: "Checkout, codes, trial clarity",
   },
   {

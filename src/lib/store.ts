@@ -215,13 +215,13 @@ const STAGE_PROGRESS: Record<Deal["stage"], number> = {
 function welcomeFor(name?: string, area?: string): ChatMessage[] {
   const greet = name ? `Hi ${name.split(" ")[0]}` : "Hello";
   const local = isRsfCorridor(area)
-    ? " RSF corridor knowledge is loaded — ask about Covenant, comps, or schools."
-    : " Import your leads and listings — we never invent client or inventory data.";
+    ? " Rancho Santa Fe market knowledge is loaded, so you can ask about the Covenant, comps or schools."
+    : " I only work from your own records and never invent clients or listings.";
   return [
     {
       id: "welcome",
       role: "assistant",
-      content: `${greet} — I'm your AI real estate copilot.${local} Your book starts empty. Import CSV or add records so priorities and CMAs use YOUR data.`,
+      content: `${greet}. I'm your AI assistant.${local} Your workspace starts empty: add or import your leads and listings, and your priorities and comparisons will use them.`,
       createdAt: new Date(0).toISOString(),
     },
   ];
@@ -1191,7 +1191,7 @@ export const useAppStore = create<AppState>()(
             {
               id: "welcome",
               role: "assistant",
-              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about calendars, RSF knowledge, or CMAs${area && isRsfCorridor(area) ? " — corridor KB is still online" : ""}.`,
+              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about your calendar, listings or sold records.${area && isRsfCorridor(area) ? " Rancho Santa Fe market knowledge is still loaded." : ""}`,
               createdAt: new Date().toISOString(),
             },
           ],

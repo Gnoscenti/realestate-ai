@@ -7,13 +7,18 @@ export type FeedbackTriggerPosition = {
 
 export const FEEDBACK_TRIGGER_POSITION_KEY = "realestate-ai-beta-trigger-position-v1";
 
-export const DEFAULT_FEEDBACK_TRIGGER_POSITION: FeedbackTriggerPosition = {
-  edge: "right",
-  yRatio: 0.5,
-};
-
 const MIN_Y_RATIO = 0.12;
 const MAX_Y_RATIO = 0.84;
+
+/**
+ * Bottom corner, clear of the phone tab bar. Halfway up the edge the button sat
+ * on top of page content at first paint, including the "Skip for now" control
+ * on a new workspace. Testers who already placed it keep their saved position.
+ */
+export const DEFAULT_FEEDBACK_TRIGGER_POSITION: FeedbackTriggerPosition = {
+  edge: "right",
+  yRatio: MAX_Y_RATIO,
+};
 
 export function clampFeedbackTriggerRatio(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_FEEDBACK_TRIGGER_POSITION.yRatio;

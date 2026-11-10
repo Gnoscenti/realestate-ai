@@ -13,7 +13,8 @@
   --color-surface-hover: #22283a;
   --color-fg: #eef0f4;
   --color-fg-muted: #9aa3b5;
-  --color-fg-subtle: #6b7385;
+  /* 4.6:1 or better on bg, surface, surface-2 and surface-hover (WCAG AA). */
+  --color-fg-subtle: #8791a5;
   --color-border: #2a3040;
   --color-border-strong: #3a4258;
   --color-primary: #5b8def;
@@ -30,6 +31,19 @@
   --color-hot: #e86a6a;
   --color-warm: #e0a855;
   --color-cold: #6b8cce;
+
+  /* Aliases: several components use the conventional token names
+     (bg-background, text-muted-foreground, text-destructive ...). An unknown
+     colour token compiles to no CSS at all, so each one must resolve here. */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-fg);
+  --color-muted: var(--color-surface-2);
+  --color-muted-foreground: var(--color-fg-muted);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-fg);
+  --color-primary-foreground: var(--color-primary-fg);
+  --color-destructive: var(--color-danger);
+  --color-ring: var(--color-primary);
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -196,9 +210,12 @@
       color-mix(in oklab, var(--color-bg) 55%, transparent);
   }
 
+  /* Full-screen gates: comfortable padding that grows past a notch or home
+     indicator. Declared with max() because a bare env() value is 0 on most
+     devices and would override the element's own p-* utility. */
   .safe-pad-y {
-    padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-top: max(1.5rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
   }
 
   .safe-pad-x {

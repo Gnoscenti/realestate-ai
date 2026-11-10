@@ -50,6 +50,20 @@ const PRIORITIES: FeedbackPriority[] = [
   "nice",
 ];
 
+const PRIORITY_LABEL: Record<FeedbackPriority, string> = {
+  blocker: "Blocker",
+  high: "High",
+  medium: "Medium",
+  nice: "Nice to have",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  planned: "Planned",
+  shipped: "Shipped",
+  wontfix: "Won't fix",
+};
+
 function FeedbackPage() {
   const billing = useAppStore((s) => s.billing);
   const feedback = useAppStore((s) => s.feedback);
@@ -80,11 +94,10 @@ function FeedbackPage() {
       <div className="mx-auto max-w-lg py-16 text-center">
         <Lock className="mx-auto h-8 w-8 text-[var(--color-fg-subtle)]" />
         <h1 className="mt-4 font-display text-xl font-semibold">
-          Feedback board locked
+          The Feedback Board is locked
         </h1>
         <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
-          Redeem one of the 5 free beta codes or start the $9.99 intro to unlock
-          feedback and comments before full launch.
+          It opens with any active access: a beta code or the $9.99 pass.
         </p>
         <Button asChild className="mt-6">
           <Link to="/">Get access</Link>
@@ -95,7 +108,7 @@ function FeedbackPage() {
 
   const submit = () => {
     if (!title.trim() || !body.trim()) {
-      toast.error("Title and details are required");
+      toast.error("Add a title and some details before saving.");
       return;
     }
     const item = addFeedback({
@@ -108,51 +121,56 @@ function FeedbackPage() {
     setTitle("");
     setBody("");
     setOpenId(item.id);
-    toast.success("Thanks — logged for pre-launch optimization");
+    toast.success("Note saved on this device.");
   };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <div className="flex items-center gap-2 text-[var(--color-accent)]">
-          <MessagesSquare className="h-5 w-5" />
+          <MessagesSquare aria-hidden="true" className="h-5 w-5" />
           <span className="text-xs font-semibold uppercase tracking-wider">
             Pre-launch
           </span>
         </div>
         <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight">
-          Feedback & comments
+          Feedback Board
         </h1>
         <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          Help us prioritize sections before public launch. Your notes map to
-          Command, CMA, Content, Calendar, RSF Knowledge, and more.
-          {billing.redeemedCode ? (
-            <span className="ml-1 text-[var(--color-primary)]">
-              Code {billing.redeemedCode} active.
-            </span>
-          ) : null}
+          Your running list of what to fix or improve, tagged by the part of the
+          app it is about.
+        </p>
+        {/* These notes never leave the browser. Saying so stops a tester from
+            assuming the team has read something that was only saved locally. */}
+        <p
+          role="note"
+          className="mt-3 rounded-[var(--radius-md)] border border-[color-mix(in_oklab,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-soft)] px-3 py-2 text-sm text-[var(--color-fg)]"
+        >
+          Notes here are saved on this device only. To send something to our
+          team, use the <span className="font-semibold">Suggest</span> button on
+          any page.
         </p>
       </div>
 
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <MessageSquarePlus className="h-4 w-4 text-[var(--color-primary)]" />
+            <MessageSquarePlus aria-hidden="true" className="h-4 w-4 text-[var(--color-primary)]" />
             New note
           </CardTitle>
           <CardDescription>
-            Be specific — which screen, what broke, what would save you time.
+            Be specific: which screen, what happened, and what would save you time.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label>Section</Label>
+              <Label htmlFor="fb-section">Section</Label>
               <Select
                 value={section}
                 onValueChange={(v) => setSection(v as FeedbackSectionId)}
               >
-                <SelectTrigger className="mt-1.5 h-11">
+                <SelectTrigger id="fb-section" className="mt-1.5 h-11">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,18 +183,18 @@ function FeedbackPage() {
               </Select>
             </div>
             <div>
-              <Label>Priority</Label>
+              <Label htmlFor="fb-priority">Priority</Label>
               <Select
                 value={priority}
                 onValueChange={(v) => setPriority(v as FeedbackPriority)}
               >
-                <SelectTrigger className="mt-1.5 h-11">
+                <SelectTrigger id="fb-priority" className="mt-1.5 h-11">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PRIORITIES.map((p) => (
                     <SelectItem key={p} value={p}>
-                      {p}
+                      {PRIORITY_LABEL[p]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -200,12 +218,12 @@ function FeedbackPage() {
               className="mt-1.5 min-h-[100px]"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="What happened / what you need…"
+              placeholder="What happened, and what you expected instead"
             />
           </div>
           <Button className="min-h-[44px]" onClick={submit}>
-            <Send className="h-4 w-4" />
-            Submit feedback
+            <Send aria-hidden="true" className="h-4 w-4" />
+            Save note
           </Button>
         </CardContent>
       </Card>
@@ -227,13 +245,21 @@ function FeedbackPage() {
       </div>
 
       <div className="space-y-3">
+        {items.length === 0 && (
+          <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border-strong)] px-4 py-8 text-center text-sm text-[var(--color-fg-muted)]">
+            {filter === "all"
+              ? "No notes yet. Save your first one above."
+              : "No notes in this section yet."}
+          </p>
+        )}
         {items.map((item) => {
           const open = openId === item.id;
           return (
             <div key={item.id} className="surface-card overflow-hidden">
               <button
                 type="button"
-                className="flex w-full items-start gap-3 p-4 text-left"
+                className="flex w-full items-start gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary)]"
+                aria-expanded={open}
                 onClick={() => setOpenId(open ? null : item.id)}
               >
                 <div className="min-w-0 flex-1">
@@ -249,10 +275,10 @@ function FeedbackPage() {
                           : "outline"
                       }
                     >
-                      {item.priority}
+                      {PRIORITY_LABEL[item.priority] ?? item.priority}
                     </Badge>
-                    <span className="text-[11px] text-[var(--color-fg-subtle)]">
-                      {item.status}
+                    <span className="text-xs text-[var(--color-fg-subtle)]">
+                      {STATUS_LABEL[item.status] ?? item.status}
                     </span>
                   </div>
                   <div className="mt-1.5 font-medium text-[var(--color-fg)]">
@@ -261,15 +287,16 @@ function FeedbackPage() {
                   <p className="mt-1 line-clamp-2 text-sm text-[var(--color-fg-muted)]">
                     {item.body}
                   </p>
-                  <div className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">
-                    {item.author} · {item.comments.length} comments ·{" "}
-                    {item.votes} votes
+                  <div className="mt-2 text-xs text-[var(--color-fg-subtle)]">
+                    {item.author} · {item.comments.length}{" "}
+                    {item.comments.length === 1 ? "comment" : "comments"} ·{" "}
+                    {item.votes} {item.votes === 1 ? "vote" : "votes"}
                   </div>
                 </div>
                 {open ? (
-                  <ChevronUp className="h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
+                  <ChevronUp aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
+                  <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--color-fg-subtle)]" />
                 )}
               </button>
               {open && (
@@ -297,7 +324,7 @@ function FeedbackPage() {
                     </div>
                     {item.comments.length === 0 && (
                       <p className="text-xs text-[var(--color-fg-subtle)]">
-                        No comments yet — add the first.
+                        No comments yet.
                       </p>
                     )}
                     {item.comments.map((c) => (
@@ -318,6 +345,7 @@ function FeedbackPage() {
                         value={openId === item.id ? comment : ""}
                         onChange={(e) => setComment(e.target.value)}
                         placeholder="Add a comment…"
+                        aria-label={`Comment on ${item.title}`}
                         className="h-11 flex-1"
                       />
                       <Button
@@ -333,7 +361,7 @@ function FeedbackPage() {
                           toast.success("Comment added");
                         }}
                       >
-                        Comment
+                        Add comment
                       </Button>
                     </div>
                   </div>
@@ -359,9 +387,10 @@ function FilterChip({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "min-h-[36px] rounded-full px-3 text-xs font-medium transition-colors",
+        "min-h-[40px] rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]",
         active
           ? "bg-[var(--color-primary)] text-[var(--color-primary-fg)]"
           : "bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
