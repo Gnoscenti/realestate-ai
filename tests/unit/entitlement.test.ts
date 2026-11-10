@@ -138,6 +138,26 @@ describe("lifetime access for the one-time payment", () => {
     const lifetime = await grantVerifiedCheckout(paid.userId, paid.workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
     const afterDemo = await grantVerifiedCheckout(paid.userId, paid.workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
     expect(afterDemo).toEqual(lifetime);
+    // The stored row itself is untouched: the guard lives in the upsert, not in a prior read.
+    const stored = await paid.sql.query<{ stripe_customer_id: string; current_period_end: string | null }>(
+      "select stripe_customer_id, current_period_end from workspace_entitlements where workspace_id=$1 and product='realestate-ai-pro'", [paid.workspace.id]);
+    expect(stored[0]?.stripe_customer_id).toMatch(/^stripe:/);
+    expect(stored[0]?.current_period_end).toBeNull();
+
+    const code = await workspaceFor("life-demo-over-code");
+    await redeemAccessCode(code.userId, code.workspace.id, "RSF-BETA-01");
+    const codeAfterDemo = await grantVerifiedCheckout(code.userId, code.workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    expect(codeAfterDemo).toMatchObject({ active: true, source: "code", lifetime: true, currentPeriodEnd: null });
+  });
+
+  it("lets a demo grant restore test access only where no active lifetime grant exists", async () => {
+    const { userId, workspace, sql } = await workspaceFor("life-demo-after-revoke");
+    await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    await sql.query("update workspace_entitlements set status='canceled' where workspace_id=$1", [workspace.id]);
+    const demo = await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    expect(demo).toMatchObject({ active: true, source: "demo", lifetime: false });
+    const renewed = await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    expect(renewed).toMatchObject({ active: true, source: "demo", lifetime: false });
   });
 
   it("upgrades demo access to lifetime when the customer pays", async () => {
