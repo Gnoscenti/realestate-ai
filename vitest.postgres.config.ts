@@ -19,7 +19,8 @@ export default defineConfig({
       "tests/unit/onboarding-repository.test.ts",
       "tests/unit/voice-*.test.ts",
     ],
-    env: { DATABASE_URL: url.toString(), BETA_ACCESS_CODES: "", XAI_API_KEY: "", GEMINI_API_KEY: "", OPENAI_API_KEY: "", PERPLEXITY_API_KEY: "", RAPIDAPI_KEY: "" },
+    // BETA_LIFETIME_CUTOFF: standard post-beta terms on any date; lifetime tests move it.
+    env: { DATABASE_URL: url.toString(), BETA_ACCESS_CODES: "", BETA_LIFETIME_CUTOFF: "2000-01-01T00:00:00.000Z", XAI_API_KEY: "", GEMINI_API_KEY: "", OPENAI_API_KEY: "", PERPLEXITY_API_KEY: "", RAPIDAPI_KEY: "" },
     testTimeout: 15000,
   },
 });
