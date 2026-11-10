@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Building2,
@@ -26,6 +26,7 @@ import {
   Swords,
   Bell,
   Phone,
+  Loader2,
   LogOut,
   UserPlus,
   X,
@@ -34,7 +35,13 @@ import {
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { ensureHydrationHook, useAppStore } from "@/lib/store";
 import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import { getMlsLabel, myListings } from "@/lib/mls";
@@ -69,24 +76,24 @@ import {
 
 
 const NAV_HINTS: Record<string, string> = {
-  "/": "Start here each day — ranked work for you",
-  "/aieo": "Where AI answers name you, and what to fix",
-  "/marketing": "Draft from facts, approve, publish or hand off",
-  "/outreach": "Reply to new leads in seconds",
-  "/leads": "Your real clients & prospects",
-  "/search": "Find homes by criteria",
-  "/cma": "Comps & listing value stories",
+  "/": "Start here each day: your ranked to-do list",
+  "/aieo": "See where AI answers name you, and what to fix",
+  "/marketing": "Draft posts from facts, approve, then publish",
+  "/outreach": "Reply to new leads in minutes",
+  "/voice": "An AI receptionist for calls you miss",
+  "/leads": "Your clients and prospects",
+  "/calendar": "Appointments and trusted vendors",
+  "/transactions": "Track each deal from offer to close",
+  "/alerts": "Client and escrow emails that need you",
+  "/search": "Search the listings you have saved",
+  "/mls": "Add listings from your website or a CSV",
+  "/cma": "Compare saved listings and sold records",
+  "/market": "Sold data and live market lookups",
   "/knowledge": "Local market talking points",
-  "/calendar": "Appointments + trusted vendors",
-  "/market": "Market trends & valuation views",
-  "/transactions": "Deals from offer to close",
-  "/properties": "Your listing book",
-  "/mls": "Website, CSV, and market observations",
-  "/feedback": "Tell us what to improve",
-  "/billing": "Access, plan & beta codes",
-  "/edge": "Positioning notes",
-  "/alerts": "Gmail alerts (token required)",
-  "/voice": "Dedicated, consent-first missed-call assistant",
+  "/properties": "Rental units, rent and occupancy",
+  "/billing": "Your access and beta code",
+  "/feedback": "Your notes on what to fix or improve",
+  "/edge": "How this workspace compares",
 };
 
 type NavItem = {
@@ -97,25 +104,60 @@ type NavItem = {
   tour?: string;
 };
 
-const NAV: NavItem[] = [
-  { to: "/", label: "Command Center", icon: LayoutDashboard, exact: true },
-  { to: "/aieo", label: "CiteLock", icon: Radar },
-  { to: "/marketing", label: "Social Desk", icon: Megaphone },
-  { to: "/outreach", label: "Instant Response", icon: Zap },
-  { to: "/leads", label: "Lead Intelligence", icon: Users },
-  { to: "/search", label: "Smart Search", icon: Search },
-  { to: "/cma", label: "CMA Studio", icon: BarChart3 },
-  { to: "/knowledge", label: "Market Knowledge", icon: BookOpen },
-  { to: "/calendar", label: "Calendar & Vendors", icon: Calendar },
-  { to: "/market", label: "Market & Valuation", icon: TrendingUp },
-  { to: "/transactions", label: "Transaction Hub", icon: FileText },
-  { to: "/properties", label: "Property Mgmt", icon: Building2 },
-  { to: "/mls", label: "Listings & Data", icon: Link2 },
-  { to: "/voice", label: "Voice Assistant", icon: Phone },
-  { to: "/feedback", label: "Feedback Board", icon: MessageSquare },
-  { to: "/billing", label: "Billing & Access", icon: CreditCard },
-  { to: "/edge", label: "Edge Playbook", icon: Swords },
-  { to: "/alerts", label: "Email Alerts", icon: Bell },
+type NavSection = { id: string; title?: string; items: NavItem[] };
+
+/**
+ * Eighteen destinations read as a wall when listed flat. They are grouped by
+ * the job an agent is doing, with the daily home screen on its own at the top.
+ * Labels are the product's canonical names: tests, docs and the feedback
+ * drawer's page map all refer to them.
+ */
+const NAV_SECTIONS: NavSection[] = [
+  {
+    id: "home",
+    items: [{ to: "/", label: "Command Center", icon: LayoutDashboard, exact: true, tour: "nav-command" }],
+  },
+  {
+    id: "grow",
+    title: "Win business",
+    items: [
+      { to: "/aieo", label: "CiteLock", icon: Radar },
+      { to: "/marketing", label: "Social Desk", icon: Megaphone, tour: "nav-marketing" },
+      { to: "/outreach", label: "Instant Response", icon: Zap, tour: "nav-outreach" },
+      { to: "/voice", label: "Voice Assistant", icon: Phone },
+    ],
+  },
+  {
+    id: "clients",
+    title: "Clients & deals",
+    items: [
+      { to: "/leads", label: "Lead Intelligence", icon: Users, tour: "nav-leads" },
+      { to: "/calendar", label: "Calendar & Vendors", icon: Calendar, tour: "nav-calendar" },
+      { to: "/transactions", label: "Transaction Hub", icon: FileText },
+      { to: "/alerts", label: "Email Alerts", icon: Bell },
+    ],
+  },
+  {
+    id: "listings",
+    title: "Listings & market",
+    items: [
+      { to: "/search", label: "Smart Search", icon: Search },
+      { to: "/mls", label: "Listings & Data", icon: Link2, tour: "nav-mls" },
+      { to: "/cma", label: "CMA Studio", icon: BarChart3 },
+      { to: "/market", label: "Market & Valuation", icon: TrendingUp },
+      { to: "/knowledge", label: "Market Knowledge", icon: BookOpen },
+      { to: "/properties", label: "Property Management", icon: Building2 },
+    ],
+  },
+  {
+    id: "account",
+    title: "Account",
+    items: [
+      { to: "/billing", label: "Billing & Access", icon: CreditCard },
+      { to: "/feedback", label: "Feedback Board", icon: MessageSquare },
+      { to: "/edge", label: "Edge Playbook", icon: Swords },
+    ],
+  },
 ];
 
 function NavItems({
@@ -128,71 +170,119 @@ function NavItems({
   alertUnread?: number;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navRef = useRef<HTMLElement>(null);
+
+  // Keep the current page's link visible. The list is taller than a laptop
+  // screen, so without this a destination low in the list opens with its own
+  // highlight scrolled out of view. Only the list's own scroller moves.
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[data-nav-active="true"]');
+    const scroller = nav?.parentElement;
+    if (!active || !scroller) return;
+    const item = active.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    if (item.top < view.top) scroller.scrollTop -= view.top - item.top + 8;
+    else if (item.bottom > view.bottom) scroller.scrollTop += item.bottom - view.bottom + 8;
+  }, [pathname, collapsed]);
 
   return (
-    <nav className="flex flex-col gap-0.5 px-2" data-tour="nav-sidebar">
-      {NAV.map((item) => {
-        const active = item.exact
-          ? pathname === item.to
-          : pathname === item.to || pathname.startsWith(item.to + "/");
-        const Icon = item.icon;
+    <nav
+      ref={navRef}
+      className="flex flex-col px-2"
+      data-tour="nav-sidebar"
+      aria-label="Workspace"
+    >
+      {NAV_SECTIONS.map((section, index) => {
+        const headingId = `nav-section-${section.id}`;
         return (
-          <HoverHint
-            key={item.to}
-            label={NAV_HINTS[item.to] ?? item.label}
-            side="right"
-            className="w-full"
+          <div
+            key={section.id}
+            role="group"
+            aria-labelledby={section.title && !collapsed ? headingId : undefined}
+            aria-label={section.title && collapsed ? section.title : undefined}
+            className={cn(
+              "flex flex-col gap-0.5",
+              index > 0 && collapsed && "mt-2 border-t border-[var(--color-border)] pt-2",
+            )}
           >
-            <Link
-              to={item.to}
-              onClick={onNavigate}
-              data-tour={
-                item.to === "/"
-                  ? "nav-command"
-                  : item.to === "/outreach"
-                    ? "nav-outreach"
-                    : item.to === "/leads"
-                      ? "nav-leads"
-                      : item.to === "/mls"
-                        ? "nav-mls"
-                        : item.to === "/marketing"
-                          ? "nav-marketing"
-                          : item.to === "/calendar"
-                            ? "nav-calendar"
-                            : undefined
-              }
-              className={cn(
-                "group relative flex min-h-[44px] w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-150",
-                active
-                  ? "bg-[var(--color-primary-soft)] text-[var(--color-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-primary)_25%,transparent)]"
-                  : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
-                collapsed && "justify-center px-2",
-              )}
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110",
-                  active
-                    ? "text-[var(--color-primary)]"
-                    : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg-muted)]",
-                )}
-              />
-              {!collapsed && (
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="truncate">{item.label}</span>
-                  {item.to === "/alerts" && alertUnread > 0 && (
-                    <span className="nav-alert-dot ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-bold text-white">
-                      {alertUnread > 9 ? "9+" : alertUnread}
-                    </span>
-                  )}
-                </span>
-              )}
-              {collapsed && item.to === "/alerts" && alertUnread > 0 && (
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--color-danger)]" />
-              )}
-            </Link>
-          </HoverHint>
+            {section.title && !collapsed && (
+              <p
+                id={headingId}
+                className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+              >
+                {section.title}
+              </p>
+            )}
+            {section.items.map((item) => {
+              const active = item.exact
+                ? pathname === item.to
+                : pathname === item.to || pathname.startsWith(item.to + "/");
+              const Icon = item.icon;
+              const unread = item.to === "/alerts" ? alertUnread : 0;
+              return (
+                <HoverHint
+                  key={item.to}
+                  // Collapsed, the label is hidden, so the hint has to name the page.
+                  label={
+                    collapsed
+                      ? item.label
+                      : (NAV_HINTS[item.to] ?? item.label)
+                  }
+                  side="right"
+                  className="w-full"
+                >
+                  <Link
+                    to={item.to}
+                    onClick={onNavigate}
+                    data-tour={item.tour}
+                    data-nav-active={active ? "true" : undefined}
+                    aria-label={
+                      collapsed
+                        ? unread > 0
+                          ? `${item.label}, ${unread} unread`
+                          : item.label
+                        : undefined
+                    }
+                    className={cn(
+                      "group relative flex min-h-[44px] w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]",
+                      active
+                        ? "bg-[var(--color-primary-soft)] text-[var(--color-primary)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-primary)_25%,transparent)]"
+                        : "text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-fg)]",
+                      collapsed && "justify-center px-2",
+                    )}
+                  >
+                    <Icon
+                      aria-hidden="true"
+                      className={cn(
+                        "h-[18px] w-[18px] shrink-0 transition-transform duration-150 group-hover:scale-110",
+                        active
+                          ? "text-[var(--color-primary)]"
+                          : "text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg-muted)]",
+                      )}
+                    />
+                    {!collapsed && (
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="truncate">{item.label}</span>
+                        {unread > 0 && (
+                          <span className="nav-alert-dot ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[11px] font-bold text-[var(--color-primary-fg)]">
+                            <span aria-hidden="true">{unread > 9 ? "9+" : unread}</span>
+                            <span className="sr-only">, {unread} unread</span>
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {collapsed && unread > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--color-danger)]"
+                      />
+                    )}
+                  </Link>
+                </HoverHint>
+              );
+            })}
+          </div>
         );
       })}
     </nav>
@@ -210,8 +300,8 @@ function Brand({ collapsed }: { collapsed?: boolean }) {
           <div className="font-display text-sm font-semibold tracking-tight text-[var(--color-fg)]">
             RealEstate AI
           </div>
-          <div className="text-[11px] text-[var(--color-fg-subtle)]">
-            Agent workspace · Responsive web
+          <div className="text-xs text-[var(--color-fg-subtle)]">
+            Agent workspace
           </div>
         </div>
       )}
@@ -219,7 +309,7 @@ function Brand({ collapsed }: { collapsed?: boolean }) {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [headerQuery, setHeaderQuery] = useState("");
   const [editProfile, setEditProfile] = useState(false);
@@ -351,12 +441,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           if (!hasAppAccess(billing) || billing.currentPeriodEnd !== entitlement.currentPeriodEnd) {
             activateBilling({
               ...billing,
-              // Paid and code access is for life: the server sends no end date,
-              // which also clears a 30-day date an older mirror still holds.
-              status: entitlement.source === "code" ? "code" : entitlement.source === "demo" ? "trialing" : "active",
-              source: entitlement.source === "code" ? "free_code" : entitlement.source === "demo" ? "demo_checkout" : "stripe_active",
+              status: entitlement.source === "code" ? "code" : "trialing",
+              source: entitlement.source === "code" ? "free_code" : entitlement.source === "demo" ? "demo_checkout" : "stripe_intro",
               currentPeriodEnd: entitlement.currentPeriodEnd,
-              introEndsAt: entitlement.source === "demo" ? entitlement.currentPeriodEnd : null,
+              introEndsAt: entitlement.source === "code" ? null : entitlement.currentPeriodEnd,
               activatedAt: billing.activatedAt || new Date().toISOString(),
               isDemo: entitlement.source === "demo",
             });
@@ -395,36 +483,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // The session is still resolving. Rendering the signed-out path here would
   // flash the login screen at signed-in users on every hard reload.
-  if (authPending) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-transparent text-[var(--color-fg-muted)]">
-        <div className="text-sm">Loading workspace…</div>
-      </div>
-    );
-  }
+  if (authPending) return <ShellStatus>Opening your workspace…</ShellStatus>;
 
   // Gate order is auth -> access -> app. Profile setup is optional and is
   // opened only from an explicit in-app action.
   if (!user) return <RedirectToSignIn />;
 
-  if (!workspaceReady || !hydrated) {
+  if (!workspaceReady || !hydrated) return <ShellStatus>Opening your workspace…</ShellStatus>;
+
+  if (serverAccess === "pending") return <ShellStatus>Checking your access…</ShellStatus>;
+  if (serverAccess === "error") {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-transparent text-[var(--color-fg-muted)]">
-        <div className="text-sm">Loading workspace…</div>
+      <div className="flex min-h-dvh items-center justify-center p-6">
+        <div className="surface-card max-w-md space-y-4 p-6 text-center">
+          <p role="alert" className="text-sm leading-relaxed">
+            We couldn't verify your access. Check your connection and retry.
+          </p>
+          <Button className="min-h-[44px]" onClick={() => setAccessAttempt((attempt) => attempt + 1)}>
+            Retry access check
+          </Button>
+          <SignedInAs label={user.primaryEmail ?? user.displayName ?? "this account"} />
+        </div>
       </div>
     );
-  }
-
-  if(serverAccess==="pending") {
-    return <div role="status" className="flex min-h-dvh items-center justify-center text-sm">Verifying workspace access…</div>;
-  }
-  if(serverAccess==="error") {
-    return <div className="flex min-h-dvh items-center justify-center p-6">
-      <div className="max-w-md space-y-4 text-center">
-        <p role="alert">We couldn't verify your access. Check your connection and retry.</p>
-        <Button onClick={()=>setAccessAttempt(attempt=>attempt+1)}>Retry access check</Button>
-      </div>
-    </div>;
   }
   if (!accessOk && pathname !== "/aieo") {
     return (
@@ -455,12 +536,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div data-testid={accessOk ? "entitled-workspace" : "free-workspace"} className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
-      {profileSyncError && (
-        <div role="status" className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm shadow-lg">
-          Saved profile could not be refreshed. Your current browser workspace is available.
-          <Button variant="ghost" onClick={() => setProfileSyncAttempt((attempt) => attempt + 1)}>Retry profile sync</Button>
-        </div>
-      )}
       <aside
         className={cn(
           "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",
@@ -484,7 +559,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </Button>
         </div>
-        <div className="flex-1 overflow-y-auto py-3">
+        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto py-3">
           <NavItems collapsed={collapsed} alertUnread={alertUnread} />
         </div>
         {!collapsed && (
@@ -545,21 +620,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Set up profile
               </button>
             )}
-            <div className="rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3">
-              <div className="flex items-center gap-2 text-xs font-medium text-[var(--color-fg)]">
-                <Sparkles className="h-3.5 w-3.5 text-[var(--color-accent)]" />
-                AI · {memory.familiarityScore}/100
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-[var(--radius-md)] bg-[var(--color-bg-elevated)] p-3">
+              <div>
+                <dt className="text-xs text-[var(--color-fg-subtle)]">Hot leads</dt>
+                <dd className="tabular font-display text-xl font-semibold text-[var(--color-fg)]">
+                  {hotCount}
+                </dd>
               </div>
-              <div className="mt-1 font-display text-2xl font-semibold">
-                {hotCount}
+              <div>
+                <dt className="text-xs text-[var(--color-fg-subtle)]">Listings</dt>
+                <dd className="tabular font-display text-xl font-semibold text-[var(--color-fg)]">
+                  {myBook}
+                </dd>
               </div>
-              <p className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
-                Hot leads · {myBook} listings
-                {profile
-                  ? ` · ${getMlsLabel(profile.mls).split("(")[0].trim()}`
-                  : ""}
-              </p>
-            </div>
+              <div className="col-span-2 flex items-center gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-fg-muted)]">
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
+                <dt>AI familiarity</dt>
+                <dd className="tabular ml-auto font-medium text-[var(--color-fg)]">
+                  {memory.familiarityScore}/100
+                </dd>
+              </div>
+              {profile && (
+                <p className="col-span-2 truncate text-xs text-[var(--color-fg-subtle)]">
+                  {getMlsLabel(profile.mls).split("(")[0].trim()}
+                </p>
+              )}
+            </dl>
           </div>
         )}
       </aside>
@@ -582,12 +668,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="min-h-[44px] min-w-[44px] md:hidden"
                 aria-label="Open navigation"
               >
-                <Menu className="h-5 w-5" />
+                <Menu aria-hidden="true" className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[min(280px,100vw)] p-0">
+            <SheetContent side="left" className="w-[min(300px,100vw)] p-0">
+              <SheetTitle className="sr-only">Workspace menu</SheetTitle>
+              <SheetDescription className="sr-only">
+                Go to any part of your workspace, edit your profile or sign out.
+              </SheetDescription>
               <div
-                className="flex items-center border-b border-[var(--color-border)] px-2"
+                className="flex shrink-0 items-center border-b border-[var(--color-border)] px-2"
                 style={{
                   paddingTop: "env(safe-area-inset-top)",
                   minHeight: "calc(4rem + env(safe-area-inset-top))",
@@ -595,14 +685,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Brand />
               </div>
-              <div
-                className="overflow-y-auto py-3"
-                style={{ maxHeight: "calc(100dvh - 8rem)" }}
-              >
+              <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3">
                 <NavItems onNavigate={() => setMobileOpen(false)} alertUnread={alertUnread} />
               </div>
               <div
-                className="border-t border-[var(--color-border)] p-3"
+                className="shrink-0 border-t border-[var(--color-border)] p-3"
                 style={{
                   paddingBottom:
                     "max(0.75rem, env(safe-area-inset-bottom))",
@@ -638,18 +725,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Sheet>
 
           <form
+            role="search"
             onSubmit={onSearch}
             className="relative min-w-0 flex-1 max-w-xl"
           >
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-fg-subtle)]" />
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-fg-subtle)]"
+            />
             <Input
               value={headerQuery}
               onChange={(e) => setHeaderQuery(e.target.value)}
-              placeholder={
-                profile
-                  ? `Search ${profile.areaOfOperations} inventory…`
-                  : "Search inventory…"
-              }
+              // Smart Search matches the listings saved in this workspace. It
+              // is not a market-wide or MLS search, so the prompt must not imply one.
+              aria-label="Search your saved listings"
+              placeholder="Search your listings…"
               className="h-11 pl-9 text-base md:text-sm"
               enterKeyHint="search"
               autoCapitalize="off"
@@ -665,11 +755,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className="relative min-h-[44px] min-w-[44px]"
               data-tour="alerts-bell"
               title="Email alerts"
+              aria-label={
+                alertUnread > 0 ? `Email alerts, ${alertUnread} unread` : "Email alerts"
+              }
               onClick={() => navigate({ to: "/alerts" })}
             >
-              <Bell className="h-4 w-4" />
+              <Bell aria-hidden="true" className="h-4 w-4" />
               {alertUnread > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[9px] font-bold text-white ring-2 ring-[var(--color-bg)]">
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[11px] font-bold text-[var(--color-primary-fg)] ring-2 ring-[var(--color-bg)]"
+                >
                   {alertUnread > 9 ? "9+" : alertUnread}
                 </span>
               )}
@@ -686,18 +782,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     else
                       toast.success(
                         r.listings
-                          ? `Website scanned · ${r.listings} listing(s) observed`
-                          : "Website scanned — no listings found",
+                          ? `Website scanned. ${r.listings} ${r.listings === 1 ? "listing" : "listings"} found.`
+                          : "Website scanned. No listings found on it yet.",
                       );
                     return;
                   }
-                  toast.message("Add your website in the profile, or import listings under Listings & Data");
+                  toast.message("Add your website to your profile, or import a CSV here.");
                   navigate({ to: "/mls" });
                 })();
               }}
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              {profile.website ? "Rescan site" : "Listings"}
+              {profile.website ? (
+                <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : (
+                <Link2 aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              {profile.website ? "Rescan website" : "Add listings"}
             </Button>
             </>
           )}
@@ -711,6 +811,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         </header>
         {isDemo && <DemoBanner />}
+        {/* Under the header, in the page's own flow. Floating at the bottom of
+            the screen it shared that corner with the feedback button, which
+            covered "Try again" on a phone. */}
+        {profileSyncError && (
+          <div
+            role="status"
+            data-testid="profile-sync-notice"
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-[color-mix(in_oklab,var(--color-warning)_40%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-warning)_14%,var(--color-bg))] px-3 py-2 text-sm text-[var(--color-fg)] sm:px-5"
+          >
+            <p className="min-w-0 flex-1">
+              We couldn't load your saved profile. You can keep working with what's on this device.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-[40px] shrink-0"
+              onClick={() => setProfileSyncAttempt((attempt) => attempt + 1)}
+            >
+              Try again
+            </Button>
+          </div>
+        )}
         </div>
 
         <main className="main-content flex-1 p-4 sm:p-6 lg:p-8">
@@ -720,6 +842,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BetaCommentDrawer />
       <IosTabBar />
       </div>
+    </div>
+  );
+}
+
+/** Full-screen "working on it" state for the auth, workspace and access gates. */
+function ShellStatus({ children }: { children: ReactNode }) {
+  return (
+    <div
+      role="status"
+      className="flex min-h-dvh items-center justify-center gap-2 bg-transparent text-sm text-[var(--color-fg-muted)]"
+    >
+      <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+      {children}
     </div>
   );
 }
