@@ -90,4 +90,75 @@ describe("GitHub beta issue creation", () => {
       createGitHubIssue("token", record, "# Feedback"),
     ).resolves.toBeNull();
   });
+
+  it("reports a rejected delivery to operators without the token or reporter text", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: "Bad credentials" }), {
+          status: 401,
+          headers: { "x-github-request-id": "REQ-123" },
+        }),
+      ),
+    );
+
+    await expect(
+      createGitHubIssue("github_pat_secret_value", record, "# Feedback"),
+    ).resolves.toBeNull();
+
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    expect(errorLog).toHaveBeenCalledWith("[suggest-intake] issue delivery failed", {
+      reason: "github_rejected",
+      repository: "Gnoscenti/realestate-ai-feedback-intake",
+      status: 401,
+      githubRequestId: "REQ-123",
+      githubMessage: "Bad credentials",
+    });
+    const logged = JSON.stringify(errorLog.mock.calls);
+    expect(logged).not.toContain("github_pat_secret_value");
+    expect(logged).not.toContain(record.body);
+  });
+
+  it("reports a non-JSON rejection and a network failure to operators", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("Not Found", { status: 404 }))
+        .mockRejectedValueOnce(new Error("network unavailable")),
+    );
+
+    await createGitHubIssue("token", record, "# Feedback");
+    await createGitHubIssue("token", record, "# Feedback");
+
+    expect(errorLog.mock.calls[0]?.[1]).toMatchObject({
+      reason: "github_rejected",
+      status: 404,
+      githubMessage: "",
+    });
+    expect(errorLog.mock.calls[1]?.[1]).toEqual({
+      reason: "network",
+      repository: "Gnoscenti/realestate-ai-feedback-intake",
+    });
+  });
+
+  it("stays quiet in the error log when the issue is created", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ number: 7, html_url: "https://github.com/o/r/issues/7", title: "t" }),
+          { status: 201 },
+        ),
+      ),
+    );
+
+    await expect(createGitHubIssue("token", record, "# Feedback")).resolves.toMatchObject({
+      number: 7,
+    });
+    expect(errorLog).not.toHaveBeenCalled();
+  });
 });
