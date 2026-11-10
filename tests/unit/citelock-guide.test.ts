@@ -77,7 +77,10 @@ describe("source-backed instructional guide",()=>{
     await Promise.all([setGuideStep(userId,workspace.id,guide.id,"technical",true),setGuideStep(userId,workspace.id,guide.id,"measurement",true)]);
     expect((await listGuides(userId,workspace.id))[0].completedStepIds).toEqual(expect.arrayContaining(["claims","technical","measurement"]));
     const sql=await getSql();
+    // A code grant is for life, so a passed end date changes nothing; only a revoked grant falls back to basic.
     await sql.query("update workspace_entitlements set current_period_end=now()-interval '1 day' where workspace_id=$1",[workspace.id]);
+    expect((await getGuide(userId,workspace.id,guide.id)).tier).toBe("full");
+    await sql.query("update workspace_entitlements set status='canceled' where workspace_id=$1",[workspace.id]);
     const expired=await getGuide(userId,workspace.id,guide.id);
     expect(expired.tier).toBe("basic");expect(expired.steps).toHaveLength(3);expect(expired.completedStepIds).toEqual(["claims"]);
   });

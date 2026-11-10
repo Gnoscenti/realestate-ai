@@ -1,21 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCESS_PRICE_CENTS,
+  DEMO_ACCESS_DAYS,
   FREE_ACCESS_CODES,
-  INTRO_DAYS,
-  INTRO_PRICE_CENTS,
   normalizeCode,
   findFreeCode,
   hasAppAccess,
   hasFeedbackAccess,
   emptyBilling,
   activateFreeCode,
-  startIntroAccess,
+  startDemoAccess,
+  startLifetimeAccess,
 } from "@/lib/billing";
 
 describe("pricing", () => {
-  it("is a single one-time $9.99 charge for 30 days", () => {
-    expect(INTRO_PRICE_CENTS).toBe(999);
-    expect(INTRO_DAYS).toBe(30);
+  it("is a single one-time $9.99 charge for lifetime access", () => {
+    expect(ACCESS_PRICE_CENTS).toBe(999);
+    const paid = startLifetimeAccess({ sessionId: "cs_paid" });
+    expect(paid).toMatchObject({
+      status: "active",
+      currentPeriodEnd: null,
+      introEndsAt: null,
+      isDemo: false,
+    });
+    expect(hasAppAccess(paid)).toBe(true);
+  });
+
+  it("never lapses a paid or code mirror, however much time passes", () => {
+    const farFuture = Date.now() + 50 * 365 * 86_400_000;
+    const realNow = Date.now;
+    Date.now = () => farFuture;
+    try {
+      expect(hasAppAccess(startLifetimeAccess())).toBe(true);
+      expect(hasAppAccess(activateFreeCode("AGENTOS-X"))).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it("exposes no recurring price", async () => {
@@ -42,9 +62,10 @@ describe("access codes", () => {
     expect(findFreeCode("NOT-A-CODE")).toBeFalsy();
   });
 
-  it("activates free code into app access", () => {
+  it("activates free code into lifetime app access", () => {
     const billing = activateFreeCode("AGENTOS-X");
     expect(billing).not.toBeNull();
+    expect(billing?.currentPeriodEnd).toBeNull();
     expect(hasAppAccess(billing)).toBe(true);
     expect(hasAppAccess(emptyBilling())).toBe(false);
   });
@@ -60,9 +81,11 @@ describe("access codes", () => {
     expect(hasFeedbackAccess(billing)).toBe(true);
   });
 
-  it("intro access unlocks app for 30 days", () => {
-    const billing = startIntroAccess();
+  it("keeps demo checkout as time-limited test access", () => {
+    const billing = startDemoAccess();
     expect(hasAppAccess(billing)).toBe(true);
-    expect(billing.status).toMatch(/trial|active|intro|code/i);
+    expect(billing.isDemo).toBe(true);
+    const days = (Date.parse(billing.currentPeriodEnd!) - Date.now()) / 86_400_000;
+    expect(Math.round(days)).toBe(DEMO_ACCESS_DAYS);
   });
 });

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensurePersonalWorkspace } from "@/lib/workspaces/repository.server";
 import {
   getEntitlement,
+  getHeldLifetimeAccess,
   grantVerifiedCheckout,
   redeemAccessCode,
   requireEntitlement,
@@ -58,10 +59,11 @@ describe("server-side entitlement", () => {
     expect(unpaid.active).toBe(false);
     const sessionId = "cs_" + randomUUID();
     const paid = await grantVerifiedCheckout(userId, workspace.id, { sessionId, paid: true, demo: false });
-    expect(paid).toMatchObject({ active: true, source: "stripe" });
-    const end = paid.currentPeriodEnd!;
+    expect(paid).toMatchObject({ active: true, source: "stripe", lifetime: true, currentPeriodEnd: null });
     const replay = await grantVerifiedCheckout(userId, workspace.id, { sessionId, paid: true, demo: false });
-    expect(replay.currentPeriodEnd).toBe(end);
+    expect(replay).toEqual(paid);
+    const sql = await getSql();
+    expect(await sql.query("select session_id from checkout_grants where workspace_id=$1", [workspace.id])).toHaveLength(1);
   });
 
   it("never grants across tenants", async () => {
@@ -72,6 +74,79 @@ describe("server-side entitlement", () => {
   });
 });
 
+
+describe("lifetime access for the one-time payment", () => {
+  async function workspaceFor(prefix: string) {
+    const userId = `${prefix}-${randomUUID()}`;
+    return { userId, workspace: await ensurePersonalWorkspace(userId), sql: await getSql() };
+  }
+  const LONG_AGO = "2026-01-01T00:00:00.000Z";
+
+  it("stores no end date for a paid checkout or a beta code", async () => {
+    const paid = await workspaceFor("life-paid");
+    await grantVerifiedCheckout(paid.userId, paid.workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    const code = await workspaceFor("life-code");
+    const redeemed = await redeemAccessCode(code.userId, code.workspace.id, "RSF-BETA-01");
+    expect(redeemed.entitlement).toMatchObject({ active: true, source: "code", lifetime: true, currentPeriodEnd: null });
+    for (const id of [paid.workspace.id, code.workspace.id]) {
+      const rows = await paid.sql.query<{ current_period_end: string | null }>(
+        "select current_period_end from workspace_entitlements where workspace_id=$1 and product='realestate-ai-pro'", [id]);
+      expect(rows).toEqual([{ current_period_end: null }]);
+    }
+  });
+
+  it.each([
+    ["a customer who paid under the 30-day terms", (id: string) => `stripe:cs_legacy_${id}`],
+    ["a beta tester whose one-year code window ran out", () => "code"],
+  ])("keeps %s active after the stored end date has passed", async (_label, customerId) => {
+    const { userId, workspace, sql } = await workspaceFor("life-legacy");
+    await sql.query(
+      `insert into workspace_entitlements (workspace_id, product, status, stripe_customer_id, current_period_start, current_period_end)
+       values ($1, 'realestate-ai-pro', 'active', $2, $3::timestamptz, $3::timestamptz + interval '30 days')`,
+      [workspace.id, customerId(workspace.id), LONG_AGO],
+    );
+    const entitlement = await requireEntitlement(userId, workspace.id);
+    expect(entitlement).toMatchObject({ active: true, lifetime: true, currentPeriodEnd: null });
+  });
+
+  it("holds lifetime access so checkout is never started twice", async () => {
+    const { userId, workspace } = await workspaceFor("life-held");
+    expect(await getHeldLifetimeAccess(userId, workspace.id)).toBeNull();
+    await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    expect(await getHeldLifetimeAccess(userId, workspace.id)).toMatchObject({ active: true, lifetime: true });
+  });
+
+  it("still ends access when a lifetime grant is revoked", async () => {
+    const { userId, workspace, sql } = await workspaceFor("life-revoked");
+    await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    await sql.query("update workspace_entitlements set status='canceled' where workspace_id=$1", [workspace.id]);
+    expect(await getEntitlement(userId, workspace.id)).toMatchObject({ active: false, status: "canceled" });
+    expect(await getHeldLifetimeAccess(userId, workspace.id)).toBeNull();
+    await expect(requireEntitlement(userId, workspace.id)).rejects.toThrow(/active plan/);
+  });
+
+  it("keeps demo checkout time-limited and never lets it replace lifetime access", async () => {
+    const demo = await workspaceFor("life-demo");
+    const granted = await grantVerifiedCheckout(demo.userId, demo.workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    expect(granted).toMatchObject({ active: true, source: "demo", lifetime: false });
+    expect(Date.parse(granted.currentPeriodEnd!)).toBeGreaterThan(Date.now());
+    expect(await getHeldLifetimeAccess(demo.userId, demo.workspace.id)).toBeNull();
+    await demo.sql.query("update workspace_entitlements set current_period_end=now()-interval '1 day' where workspace_id=$1", [demo.workspace.id]);
+    expect((await getEntitlement(demo.userId, demo.workspace.id)).active).toBe(false);
+
+    const paid = await workspaceFor("life-demo-over-paid");
+    const lifetime = await grantVerifiedCheckout(paid.userId, paid.workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    const afterDemo = await grantVerifiedCheckout(paid.userId, paid.workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    expect(afterDemo).toEqual(lifetime);
+  });
+
+  it("upgrades demo access to lifetime when the customer pays", async () => {
+    const { userId, workspace } = await workspaceFor("life-upgrade");
+    await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_demo_" + randomUUID(), paid: false, demo: true });
+    const paid = await grantVerifiedCheckout(userId, workspace.id, { sessionId: "cs_" + randomUUID(), paid: true, demo: false });
+    expect(paid).toMatchObject({ active: true, source: "stripe", lifetime: true, currentPeriodEnd: null });
+  });
+});
 
 describe("grant durability and production boundaries",()=>{
   it("rolls back redemption if the entitlement write fails",async()=>{

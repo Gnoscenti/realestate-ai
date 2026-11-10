@@ -28,18 +28,27 @@ async function fixture() {
   };
   return { sql, userId, workspace, approved, request: { id: approved.id, revision: approved.revision, channelId: "channel" }, provider };
 }
-async function grant(sql: Sql, workspaceId: string, status: string, end = new Date(Date.now() + 86_400_000)) {
-  await sql.query("insert into workspace_entitlements(workspace_id,product,status,stripe_customer_id,current_period_end) values($1,'realestate-ai-pro',$2,'code',$3)", [workspaceId, status, end.toISOString()]);
+async function grant(sql: Sql, workspaceId: string, status: string, end = new Date(Date.now() + 86_400_000), source = "code") {
+  await sql.query("insert into workspace_entitlements(workspace_id,product,status,stripe_customer_id,current_period_end) values($1,'realestate-ai-pro',$2,$4,$3)", [workspaceId, status, end.toISOString(), source]);
 }
 
 describe("server entitlement for direct Social Desk publishing", () => {
   it.each(["missing", "expired", "canceled", "past_due"])("rejects %s access before provider work or reservation", async state => {
     const f = await fixture();
-    if (state !== "missing") await grant(f.sql, f.workspace.id, state === "expired" ? "active" : state, new Date(Date.now() + (state === "expired" ? -86_400_000 : 86_400_000)));
+    // Only time-limited demo access can expire; paid and code grants are for life.
+    if (state !== "missing") await grant(f.sql, f.workspace.id, state === "expired" ? "active" : state, new Date(Date.now() + (state === "expired" ? -86_400_000 : 86_400_000)), state === "expired" ? "demo" : "code");
     await expect(publishSocialDraft(f.userId, f.workspace.id, f.request, { sql: f.sql, ...f.provider })).rejects.toBeInstanceOf(EntitlementRequiredError);
     for (const call of Object.values(f.provider)) expect(call).not.toHaveBeenCalled();
     expect(await listPublications(f.userId, f.workspace.id, f.sql)).toEqual([]);
     expect(await getSocialDraft(f.userId, f.workspace.id, f.approved.id, f.sql)).toEqual(f.approved);
+  });
+
+  it.each(["code", "stripe:cs_legacy_30_day"])("accepts a %s grant whose earlier end date has passed", async source => {
+    const f = await fixture();
+    await grant(f.sql, f.workspace.id, "active", new Date(Date.now() - 30 * 86_400_000), source);
+    const result = await publishSocialDraft(f.userId, f.workspace.id, f.request, { sql: f.sql, ...f.provider });
+    expect(result.draft.state).toBe("scheduled");
+    expect(f.provider.create).toHaveBeenCalledOnce();
   });
 
   it.each(["active", "trialing"])("accepts a current %s server grant", async status => {
