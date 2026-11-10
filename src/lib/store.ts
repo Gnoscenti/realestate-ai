@@ -15,6 +15,7 @@ import {
 } from "@/data/seed";
 import type { EmailAlert, EmailConnection } from "@/lib/email-alerts";
 import {
+  isLegacyGeneratedAlert,
   messagesToAlerts,
   unreadCount as emailUnreadCount,
 } from "@/lib/email-alerts";
@@ -39,6 +40,16 @@ import {
 } from "@/lib/agent-memory";
 import { isRsfCorridor } from "@/data/rsf-knowledge";
 import { uid } from "@/lib/utils";
+import {
+  DEAL_STAGES,
+  DEAL_STAGE_PROGRESS,
+  dealFields,
+  rentalFields,
+  rentalLabel,
+  type NewDealInput,
+  type NewRentalInput,
+} from "@/lib/book-entry";
+import { leadLocation } from "@/lib/lead-facts";
 import {
   DEFAULT_CONNECTIONS,
   type CalendarAppointment,
@@ -89,8 +100,6 @@ interface AppState {
 
   setSidebarCollapsed: (v: boolean) => void;
   setHydrated: (v: boolean) => void;
-  connectEmail: (provider: EmailConnection["provider"], email: string) => void;
-  disconnectEmail: () => void;
   scanEmailInbox: (opts?: { accessToken?: string }) => Promise<{
     added: number;
     total: number;
@@ -169,11 +178,15 @@ interface AppState {
 
   toggleFavorite: (propertyId: string) => void;
 
+  addDeal: (input: NewDealInput) => Deal;
   updateDeal: (id: string, patch: Partial<Deal>) => void;
   advanceDeal: (id: string) => void;
+  deleteDeal: (id: string) => void;
 
+  addRental: (input: NewRentalInput) => RentalUnit;
   updateRental: (id: string, patch: Partial<RentalUnit>) => void;
   applyMarketRent: (id: string) => void;
+  deleteRental: (id: string) => void;
 
   saveCampaign: (plan: CampaignPlan) => void;
   updateCampaignPost: (
@@ -195,23 +208,6 @@ interface AppState {
   resetDemo: () => void;
 }
 
-const STAGES: Deal["stage"][] = [
-  "offer",
-  "under_contract",
-  "inspection",
-  "appraisal",
-  "clear_to_close",
-  "closed",
-];
-
-const STAGE_PROGRESS: Record<Deal["stage"], number> = {
-  offer: 15,
-  under_contract: 40,
-  inspection: 55,
-  appraisal: 70,
-  clear_to_close: 88,
-  closed: 100,
-};
 
 function welcomeFor(name?: string, area?: string): ChatMessage[] {
   const greet = name ? `Hi ${name.split(" ")[0]}` : "Hello";
@@ -306,25 +302,12 @@ export const useAppStore = create<AppState>()(
       setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
       setHydrated: (v) => set({ hydrated: v }),
 
-      connectEmail: (provider, email) => {
-        set({
-          emailConnection: {
-            provider,
-            email: email.trim(),
-            connectedAt: new Date().toISOString(),
-            status: "connected",
-          },
-        });
-      },
-
-      disconnectEmail: () => {
-        set({ emailConnection: null });
-      },
-
       scanEmailInbox: async (opts) => {
         const leads = get().leads;
         const conn = get().emailConnection;
-        const provider = conn?.provider || "gmail";
+        // Gmail is the only provider with a scan. An older build let the agent
+        // pick another label, which never changed what was scanned.
+        const provider = "gmail" as const;
         let messages: import("@/lib/email-alerts").RawEmailMessage[] = [];
         let mode = "live";
         let error: string | undefined;
@@ -332,7 +315,12 @@ export const useAppStore = create<AppState>()(
         // No token, no scan. A missing or failed scan never produces invented
         // messages (ledger A-021).
         if (!opts?.accessToken) {
-          return { added: 0, total: emailUnreadCount(get().emailAlerts), error: "No access token provided", mode: "none" };
+          return {
+            added: 0,
+            total: emailUnreadCount(get().emailAlerts),
+            error: "No Gmail access token was provided, so nothing was scanned.",
+            mode: "none",
+          };
         }
         try {
           const { scanConnectedEmail } = await import("@/lib/email-scan");
@@ -345,8 +333,11 @@ export const useAppStore = create<AppState>()(
           } else if (res.error) {
             error = res.error;
           }
-        } catch (e) {
-          error = e instanceof Error ? e.message : "Scan failed";
+        } catch {
+          // The request to our own server failed (signed out, offline, server
+          // error). The raw exception text is not fit to show.
+          error =
+            "The Gmail scan could not start. Check that you are signed in and online, then try again.";
         }
         if (error) {
           set({ emailConnection: conn ? { ...conn, status: "error", lastError: error } : conn });
@@ -372,16 +363,19 @@ export const useAppStore = create<AppState>()(
           }),
         ].slice(0, 80);
 
+        // Not a live connection: a record of the last scan that finished.
+        // Every scan needs a freshly pasted token.
+        const scannedAt = new Date().toISOString();
         set({
           emailAlerts: merged,
-          emailConnection: conn
-            ? {
-                ...conn,
-                lastScanAt: new Date().toISOString(),
-                status: "connected",
-                lastError: undefined,
-              }
-            : conn,
+          emailConnection: {
+            provider: "gmail",
+            email: conn?.email ?? "",
+            connectedAt: conn?.connectedAt ?? scannedAt,
+            lastScanAt: scannedAt,
+            status: "connected",
+            lastError: undefined,
+          },
         });
 
         if (fresh.length) {
@@ -942,19 +936,10 @@ export const useAppStore = create<AppState>()(
         const seedPropIds = new Set(
           s.properties.filter(looksLikeSeedProperty).map((pr) => pr.id),
         );
-        const fakeClients = new Set([
-          "Sarah Johnson",
-          "Mike Chen",
-          "Emily Rodriguez",
-          "David Park",
-          "Jessica Williams",
-          "Robert Kim",
-        ]);
+        // By id only. A real deal can be for a client who shares a name with
+        // a sample client, and every sample deal already has a deal_<n> id.
         const deals = s.deals.filter(
-          (d) =>
-            !seedPropIds.has(d.propertyId) &&
-            !/^deal_\d+$/.test(d.id) &&
-            !fakeClients.has(d.clientName),
+          (d) => !seedPropIds.has(d.propertyId) && !/^deal_\d+$/.test(d.id),
         );
         const rentals = s.rentals.filter(
           (r) => !/^rent_\d+$/.test(r.id),
@@ -1013,7 +998,9 @@ export const useAppStore = create<AppState>()(
         get().pushActivity({
           type: "lead",
           title: "New lead added",
-          description: `${lead.name} scored ${lead.score} · ${lead.location}`,
+          description: [`${lead.name} scored ${lead.score}`, leadLocation(lead)]
+            .filter(Boolean)
+            .join(" · "),
           badge: "New Lead",
         });
         return lead;
@@ -1055,29 +1042,64 @@ export const useAppStore = create<AppState>()(
         }));
       },
 
+      addDeal: (input) => {
+        const deal: Deal = {
+          id: uid("deal"),
+          // Not linked to a saved listing: the form does not ask for one.
+          propertyId: "",
+          ...dealFields(input),
+          // Nothing in the product can record an issue or a document yet.
+          issues: [],
+          documents: [],
+          updatedAt: new Date().toISOString(),
+        };
+        set((s) => ({ deals: [deal, ...s.deals] }));
+        get().pushActivity({
+          type: "deal",
+          title: "Deal added",
+          description: `${deal.propertyTitle} · ${deal.clientName}`,
+          badge: "Pipeline",
+        });
+        return deal;
+      },
+
       updateDeal: (id, patch) => {
         set((s) => ({
-          deals: s.deals.map((d) =>
-            d.id === id
-              ? { ...d, ...patch, updatedAt: new Date().toISOString() }
-              : d,
-          ),
+          deals: s.deals.map((d) => {
+            if (d.id !== id) return d;
+            const next = { ...d, ...patch, updatedAt: new Date().toISOString() };
+            // The progress bar follows the stage unless the caller sets both.
+            if (patch.stage && patch.progress === undefined) {
+              next.progress = DEAL_STAGE_PROGRESS[patch.stage];
+            }
+            return next;
+          }),
         }));
       },
 
       advanceDeal: (id) => {
         const deal = get().deals.find((d) => d.id === id);
         if (!deal) return;
-        const idx = STAGES.indexOf(deal.stage);
-        if (idx < 0 || idx >= STAGES.length - 1) return;
-        const stage = STAGES[idx + 1];
-        get().updateDeal(id, { stage, progress: STAGE_PROGRESS[stage] });
+        const idx = DEAL_STAGES.indexOf(deal.stage);
+        if (idx < 0 || idx >= DEAL_STAGES.length - 1) return;
+        const stage = DEAL_STAGES[idx + 1];
+        get().updateDeal(id, { stage, progress: DEAL_STAGE_PROGRESS[stage] });
         get().pushActivity({
           type: "deal",
           title: "Deal advanced",
           description: `${deal.propertyTitle} → ${stage.replaceAll("_", " ")}`,
           badge: "Pipeline",
         });
+      },
+
+      deleteDeal: (id) => {
+        set((s) => ({
+          deals: s.deals.filter((d) => d.id !== id),
+          // Drop its "done" marks too, so the list does not keep ids for nothing.
+          completedPriorities: s.completedPriorities.filter(
+            (done) => done !== `risk_${id}` && done !== `ms_${id}`,
+          ),
+        }));
       },
 
       updateRental: (id, patch) => {
@@ -1088,14 +1110,41 @@ export const useAppStore = create<AppState>()(
 
       applyMarketRent: (id) => {
         const unit = get().rentals.find((r) => r.id === id);
-        if (!unit) return;
+        // Without a market rent on record there is nothing to apply.
+        if (!unit || !(unit.marketRent > 0)) return;
         get().updateRental(id, { rent: unit.marketRent });
         get().pushActivity({
           type: "valuation",
-          title: "Rent optimized",
-          description: `${unit.address} ${unit.unit} marked to market rent`,
-          badge: "Pricing",
+          title: "Rent updated",
+          description: `${rentalLabel(unit)} set to the market rent on record`,
+          badge: "Rentals",
         });
+      },
+
+      addRental: (input) => {
+        const unit: RentalUnit = {
+          id: uid("rent"),
+          ...rentalFields(input),
+          // No maintenance score: nothing measures one and the form does not ask.
+          issues: [],
+        };
+        set((s) => ({ rentals: [unit, ...s.rentals] }));
+        get().pushActivity({
+          type: "valuation",
+          title: "Rental unit added",
+          description: rentalLabel(unit),
+          badge: "Rentals",
+        });
+        return unit;
+      },
+
+      deleteRental: (id) => {
+        set((s) => ({
+          rentals: s.rentals.filter((r) => r.id !== id),
+          completedPriorities: s.completedPriorities.filter(
+            (done) => done !== `vac_${id}` && done !== `rent_${id}`,
+          ),
+        }));
       },
 
       saveCampaign: (plan) => {
@@ -1267,7 +1316,13 @@ export function ensureHydrationHook() {
     if (!st.calendarConnections)
       patch.calendarConnections = DEFAULT_CONNECTIONS.map((c) => ({ ...c }));
     if (!st.contractors) patch.contractors = [];
-    if (!st.emailAlerts) patch.emailAlerts = [];
+    if (!st.emailAlerts) {
+      patch.emailAlerts = [];
+    } else if (st.emailAlerts.some(isLegacyGeneratedAlert)) {
+      // Builds before the demo inbox was removed (ledger A-021) saved made-up
+      // emails. They are matched by their synthetic id only, never by content.
+      patch.emailAlerts = st.emailAlerts.filter((a) => !isLegacyGeneratedAlert(a));
+    }
     if (st.emailConnection === undefined) patch.emailConnection = null;
     if (!st.billing) patch.billing = emptyBilling();
     if (!st.feedback) patch.feedback = [];

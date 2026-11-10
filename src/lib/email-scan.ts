@@ -1,5 +1,7 @@
 /**
- * Optional live Gmail scan using the signed-in caller's in-app token.
+ * One-off Gmail scan with an access token the signed-in user pastes into
+ * Email Alerts. The token is used for this request only: this module does not
+ * store or log it. There is no OAuth flow and no other provider here.
  * No process-wide mailbox credential is ever shared across beta users.
  */
 import { createServerFn } from "@tanstack/react-start";
@@ -12,6 +14,36 @@ const inputSchema = z.object({
   maxResults: z.number().min(1).max(25).optional(),
 });
 
+/** How long one request to Gmail may take before the scan gives up. */
+const GMAIL_TIMEOUT_MS = 10_000;
+
+/** A refused Gmail request, worded for the person reading the message. */
+class GmailRequestError extends Error {}
+
+/**
+ * Google's own error body is never passed on: it is raw JSON, and the text
+ * returned here is shown to the agent and saved in their browser.
+ */
+function gmailErrorMessage(status: number): string {
+  if (status === 401) {
+    return "Gmail did not accept that access token. It may have expired. Paste a new one and scan again.";
+  }
+  if (status === 403) {
+    return "Gmail refused the request. The access token may not include permission to read mail.";
+  }
+  if (status === 429) {
+    return "Gmail is limiting requests right now. Wait a few minutes and scan again.";
+  }
+  return `Gmail returned an error (code ${status}). No alerts were added.`;
+}
+
+function gmailGet(url: string, token: string): Promise<Response> {
+  return fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(GMAIL_TIMEOUT_MS),
+  });
+}
+
 async function gmailList(
   token: string,
   query: string,
@@ -19,12 +51,9 @@ async function gmailList(
 ): Promise<RawEmailMessage[]> {
   const q = encodeURIComponent(query);
   const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${maxResults}`;
-  const listRes = await fetch(listUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const listRes = await gmailGet(listUrl, token);
   if (!listRes.ok) {
-    const err = await listRes.text();
-    throw new Error(`Gmail list failed (${listRes.status}): ${err.slice(0, 160)}`);
+    throw new GmailRequestError(gmailErrorMessage(listRes.status));
   }
   const listJson = (await listRes.json()) as {
     messages?: { id: string }[];
@@ -33,9 +62,9 @@ async function gmailList(
   const out: RawEmailMessage[] = [];
 
   for (const { id } of ids) {
-    const mRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-      { headers: { Authorization: `Bearer ${token}` } },
+    const mRes = await gmailGet(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      token,
     );
     if (!mRes.ok) continue;
     const m = (await mRes.json()) as {
@@ -75,7 +104,7 @@ export async function scanGmailInbox(opts: {
     return {
       ok: false,
       messages: [],
-      error: "No Gmail token — connect your inbox in the app",
+      error: "No Gmail access token was sent, so nothing was scanned.",
       mode: "none",
     };
   }
@@ -86,7 +115,10 @@ export async function scanGmailInbox(opts: {
     return {
       ok: false,
       messages: [],
-      error: e instanceof Error ? e.message : "Gmail scan failed",
+      error:
+        e instanceof GmailRequestError
+          ? e.message
+          : "Our server could not complete the request to Gmail. No alerts were added. Try again in a few minutes.",
       mode: "gmail_api",
     };
   }

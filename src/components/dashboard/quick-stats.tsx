@@ -48,9 +48,9 @@ export function QuickStats() {
       bg: "bg-[var(--color-success-soft)]",
     },
     {
-      title: "AI lead score",
-      value: `${avgScore}%`,
-      hint: "Portfolio average",
+      title: "Average lead score",
+      value: leads.length === 0 ? "—" : `${avgScore}/100`,
+      hint: leads.length === 0 ? "No leads yet" : "From budget, stage and source",
       icon: TrendingUp,
       tint: "text-[var(--color-warning)]",
       bg: "bg-[var(--color-warning-soft)]",

@@ -33,7 +33,7 @@ export function RecentActivity() {
     <Card>
       <CardHeader className="flex-row items-center gap-2 space-y-0">
         <Clock className="h-4 w-4 text-[var(--color-fg-subtle)]" />
-        <CardTitle>Recent AI activity</CardTitle>
+        <CardTitle>Recent activity</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1">
         {activity.map((item) => {

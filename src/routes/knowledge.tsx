@@ -98,7 +98,7 @@ function KnowledgePage() {
               </Badge>
             </div>
             <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-              Rancho Santa Fe & corridor intelligence
+              Rancho Santa Fe & corridor market notes
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
               {RSF_MARKET_META.region}. {RSF_MARKET_META.covenantNote}
@@ -107,7 +107,7 @@ function KnowledgePage() {
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-4 py-3 text-sm">
             <div className="flex items-center gap-2 font-medium text-[var(--color-fg)]">
               <Brain className="h-4 w-4 text-[var(--color-primary)]" />
-              AI familiarity
+              Activity score
             </div>
             <div className="mt-1 font-display text-2xl font-semibold tabular">
               {memory?.familiarityScore ?? 8}
@@ -116,7 +116,7 @@ function KnowledgePage() {
               </span>
             </div>
             <p className="text-[11px] text-[var(--color-fg-subtle)]">
-              {memory?.totalInteractions ?? 0} learning signals
+              {memory?.totalInteractions ?? 0} actions counted
             </p>
           </div>
         </div>
@@ -125,7 +125,7 @@ function KnowledgePage() {
       <Tabs defaultValue="kb">
         <TabsList>
           <TabsTrigger value="kb">Knowledge base</TabsTrigger>
-          <TabsTrigger value="memory">AI memory</TabsTrigger>
+          <TabsTrigger value="memory">Practice notes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="kb" className="space-y-4">
@@ -255,11 +255,11 @@ function KnowledgePage() {
                           kind: "chat",
                           text: selected.title + " " + selected.summary,
                         });
-                        toast.success("Pinned into AI context");
+                        toast.success("Counted toward your focus areas");
                       }}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      Use in AI context
+                      Count as a focus area
                     </Button>
                   </CardContent>
                 </Card>
@@ -274,11 +274,11 @@ function KnowledgePage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Brain className="h-4 w-4 text-[var(--color-primary)]" />
-                  What the AI has learned about you
+                  What this workspace has noted
                 </CardTitle>
                 <CardDescription>
-                  Grows from chats, CMAs, campaigns, lead touches, and explicit
-                  “remember that …” notes
+                  Counted from your assistant questions, lead activity, completed priorities
+                  and saved notes. The AI assistant does not read this yet.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -295,9 +295,9 @@ function KnowledgePage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Teach the AI</CardTitle>
+                <CardTitle className="text-base">Add a practice note</CardTitle>
                 <CardDescription>
-                  Permanent practice notes (voice, niches, boundaries)
+                  Saved in this browser only. The AI assistant does not read these yet.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -313,7 +313,7 @@ function KnowledgePage() {
                       if (!t) return;
                       recordSignal({ kind: "remember", text: t });
                       setRememberText("");
-                      toast.success("Saved to AI memory");
+                      toast.success("Note saved");
                     }}
                   >
                     Remember this
@@ -322,11 +322,11 @@ function KnowledgePage() {
                     variant="outline"
                     onClick={() => {
                       resetMemory();
-                      toast.message("Memory reset to onboarding baseline");
+                      toast.message("Notes and counts reset to your profile");
                     }}
                   >
                     <Trash2 className="h-4 w-4" />
-                    Reset memory
+                    Reset notes
                   </Button>
                 </div>
                 <div className="space-y-2 pt-2">
@@ -347,7 +347,13 @@ function KnowledgePage() {
                           {f.text}
                         </span>
                         <div className="mt-1 text-[10px] text-[var(--color-fg-subtle)]">
-                          {f.source} · confidence {Math.round(f.confidence * 100)}%
+                          {f.source === "remember"
+                            ? "Saved note"
+                            : f.source === "feedback_down"
+                              ? "From a reply you marked not helpful"
+                              : f.source === "onboarding"
+                                ? "From your profile"
+                                : "Counted from your activity"}
                         </div>
                       </div>
                     ))

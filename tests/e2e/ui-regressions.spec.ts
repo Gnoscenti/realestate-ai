@@ -118,6 +118,23 @@ test("form fields are 16px on a phone, so focusing one does not zoom the page", 
     },
     { path: "/feedback", atLeast: 3 },
     { path: "/aieo", atLeast: 4 },
+    {
+      path: "/transactions",
+      atLeast: 5,
+      open: async () => {
+        await page.getByRole("main").getByRole("button", { name: "Add deal", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Add deal" })).toBeVisible();
+      },
+    },
+    {
+      path: "/properties",
+      atLeast: 7,
+      open: async () => {
+        await page.getByRole("main").getByRole("button", { name: "Add unit", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Add rental unit" })).toBeVisible();
+      },
+    },
+    { path: "/alerts", atLeast: 1 },
   ];
   for (const target of pages) {
     await page.goto(target.path, { waitUntil: "networkidle" });

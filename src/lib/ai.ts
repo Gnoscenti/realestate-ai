@@ -21,6 +21,8 @@ import {
   type ContractorCategory,
 } from "@/lib/contractors";
 import { formatCurrency } from "@/lib/utils";
+import { DEAL_STAGE_LABEL } from "@/lib/book-entry";
+import { leadBudgetText, leadInterest, leadLocation, leadNotes } from "@/lib/lead-facts";
 
 function topLeads(leads: Lead[], n = 5) {
   return [...leads].sort((a, b) => b.score - a.score).slice(0, n);
@@ -112,14 +114,6 @@ export function searchProperties(
   };
 }
 
-export function propertyMatchScore(property: Property, query: string): number {
-  if (!query.trim()) return Math.min(99, 70 + Math.round(property.price / 200000));
-  const ranked = matchProperties(query, [property]);
-  if (!ranked.length) return 42;
-  const base = 55 + Math.min(40, property.features.length * 4);
-  return Math.min(99, base + (property.status === "active" ? 5 : 0));
-}
-
 export function generateListingCopy(opts: {
   address: string;
   type: string;
@@ -179,34 +173,53 @@ export function generateInstantResponse(
   profile?: AgentProfile | null,
 ): { subject?: string; body: string; tip: string } {
   const first = lead.name.split(" ")[0] ?? lead.name;
-  const budget = `${formatCurrency(lead.budgetMin, true)}–${formatCurrency(lead.budgetMax, true)}`;
-  const pref = lead.preferences || lead.propertyType;
+  // A lead can be saved with only a name and a phone number. Each draft is
+  // built from what is on record and says nothing about what is not.
+  const location = leadLocation(lead);
+  const budget = leadBudgetText(lead, true);
+  const budgetPhrase = budget ? (/^(up to|from) /.test(budget) ? budget : `around ${budget}`) : "";
+  const pref = leadInterest(lead);
   const agentFirst = profile?.name?.split(" ")[0];
   const sign = agentFirst ? `— ${agentFirst}` : "";
   const local =
-    isRsfCorridor(lead.location) || isRsfCorridor(profile?.areaOfOperations)
+    isRsfCorridor(location) || isRsfCorridor(profile?.areaOfOperations)
       ? " I cover Rancho Santa Fe & the coastal corridor daily."
       : "";
 
   if (channel === "sms") {
+    const search = [location && `in ${location}`, budgetPhrase, pref && `for ${pref.toLowerCase()}`]
+      .filter(Boolean)
+      .join(" ");
+    const looking = search ? ` Looking ${search}.` : "";
     return {
-      body: `Hi ${first} — thanks for reaching out!${local} Free for a quick call today. Looking in ${lead.location} around ${budget} for ${pref.toLowerCase()}. Want 2–3 options that fit by this evening? Reply YES or a better time. ${sign}`.trim(),
+      body: `Hi ${first} — thanks for reaching out!${local} Free for a quick call today.${looking} Want 2–3 options that fit by this evening? Reply YES or a better time. ${sign}`.trim(),
       tip: "Keep under 320 chars. Ask one clear next step. Send within 5 minutes of inquiry.",
     };
   }
   if (channel === "voicemail") {
+    const interest = location ? `your interest in ${location} homes` : "your home search";
+    const shortlist = pref
+      ? `I can pull a short list matching ${pref.toLowerCase()}.`
+      : "I can pull a short list once I know what matters most to you.";
     return {
-      body: `Hi ${first}, this is ${agentFirst ?? "your agent"} following up on your interest in ${lead.location} homes around ${budget}. I pulled a short list matching ${pref.toLowerCase()}. Call or text me back and I'll send links — looking forward to helping you move fast.`,
+      body: `Hi ${first}, this is ${agentFirst ?? "your agent"} following up on ${interest}${budgetPhrase ? ` ${budgetPhrase}` : ""}. ${shortlist} Call or text me back and I'll send links — looking forward to helping you move fast.`,
       tip: "Under 25 seconds. Name + value + clear callback.",
     };
   }
+  const shared = [pref, location, budget && `budget ${budget}`].filter(Boolean).join(", ");
   return {
-    subject: `${first}, options in ${lead.location} within your range`,
+    subject: location
+      ? `${first}, options in ${location}${budget ? " within your range" : ""}`
+      : `${first}, a short list of homes for you`,
     body: `Hi ${first},
 
 Thanks for connecting — I wanted to get back to you quickly while inventory is moving.${local}
 
-Based on what you shared (${pref}, ${lead.location}, budget ${budget}), I'll curate a short list of fits and any below-market opportunities.
+${
+  shared
+    ? `Based on what you shared (${shared}), I'll curate a short list of fits and any below-market opportunities.`
+    : "Tell me a little about what you're looking for and I'll curate a short list of fits."
+}
 
 Next step: reply with your preferred tour windows (weekday evening / weekend morning), and whether commute, outdoor space, accessibility, or privacy matter most.
 
@@ -218,34 +231,48 @@ Best regards${profile?.name ? `,\n${profile.name}` : ""}`,
 }
 
 export function generateClientBrief(lead: Lead, properties: Property[], deals: Deal[]): string {
+  const location = leadLocation(lead);
   const matches = properties
     .filter((p) => {
-      if (p.price < lead.budgetMin * 0.85 || p.price > lead.budgetMax * 1.1) return false;
-      if (lead.location && p.neighborhood.toLowerCase().includes(lead.location.toLowerCase()))
-        return true;
+      // A budget limit that was never entered rules nothing out. (Stored as 0,
+      // it used to rule out every listing.)
+      if (lead.budgetMin > 0 && p.price < lead.budgetMin * 0.85) return false;
+      if (lead.budgetMax > 0 && p.price > lead.budgetMax * 1.1) return false;
+      if (location && p.neighborhood.toLowerCase().includes(location.toLowerCase())) return true;
       return p.status === "active";
     })
     .slice(0, 3);
+  const focus =
+    [lead.propertyType.trim(), location && `in ${location}`].filter(Boolean).join(" ") ||
+    "not entered";
 
-  const relatedDeal = deals.find((d) =>
-    d.clientName.toLowerCase().includes(lead.name.split(" ")[0].toLowerCase()),
+  // Same person, and still open. Matching on a first-name fragment showed one
+  // client another client's deal ("Al" matched "Alice"), closed ones included.
+  const leadName = lead.name.trim().toLowerCase();
+  const relatedDeal = deals.find(
+    (d) => d.stage !== "closed" && d.clientName.trim().toLowerCase() === leadName,
   );
 
-  const kb = searchKnowledge(`${lead.location} ${lead.preferences}`, 2)
-    .map((h) => `• ${h.entry.title}: ${h.entry.summary}`)
-    .join("\n");
+  // A blank search returns the first articles in the library, whatever they
+  // are about. With nothing on record to search for, the brief cites none.
+  const knowledgeQuery = `${location} ${lead.preferences}`.trim();
+  const kb = knowledgeQuery
+    ? searchKnowledge(knowledgeQuery, 2)
+        .map((h) => `• ${h.entry.title}: ${h.entry.summary}`)
+        .join("\n")
+    : "";
 
   return `CLIENT BRIEF — ${lead.name}
 Score ${lead.score} · ${lead.heat.toUpperCase()} · ${lead.status.replace("_", " ")}
 
-Intent signals
-• Budget ${formatCurrency(lead.budgetMin)} – ${formatCurrency(lead.budgetMax)}
-• Focus: ${lead.propertyType} in ${lead.location}
-• Prefs: ${lead.preferences}
+Saved details
+• Budget: ${leadBudgetText(lead) ?? "not entered"}
+• Focus: ${focus}
+• Prefs: ${lead.preferences.trim() || "none entered"}
 • Source: ${lead.source.replaceAll("_", " ")} · Tags: ${lead.tags.join(", ") || "—"}
 
 Notes
-${lead.notes}
+${leadNotes(lead) || "None on record"}
 
 Local knowledge
 ${kb || "• Pull public amenity and association facts from approved sources before tour"}
@@ -256,7 +283,7 @@ Talk tracks
 3. Book a specific tour window before ending the call.
 ${
   relatedDeal
-    ? `\nOpen transaction\n• ${relatedDeal.propertyTitle} — ${relatedDeal.stage.replaceAll("_", " ")} (${relatedDeal.progress}%)`
+    ? `\nOpen transaction\n• ${relatedDeal.propertyTitle} — ${(DEAL_STAGE_LABEL[relatedDeal.stage] ?? relatedDeal.stage).toLowerCase()} stage`
     : ""
 }
 
@@ -272,7 +299,7 @@ ${
     : "• Pull fresh matches from Smart Search before the call"
 }
 
-Compliance reminder (post-NAR)
+Buyer agreement reminder
 Have a signed buyer agreement before touring. Be ready to state your fee and value clearly.`;
 }
 
@@ -283,18 +310,27 @@ export function generateNurtureSequence(lead: Lead): {
   body: string;
 }[] {
   const first = lead.name.split(" ")[0] ?? lead.name;
+  const location = leadLocation(lead);
+  const hasBudget = leadBudgetText(lead) !== null;
+  const pref = leadInterest(lead);
   return [
     {
       day: 0,
       channel: "SMS",
       subject: "Same-day touch",
-      body: `Hi ${first} — still thinking about ${lead.location}? I can send 2 fresh matches tonight.`,
+      body: location
+        ? `Hi ${first} — still thinking about ${location}? I can send 2 fresh matches tonight.`
+        : `Hi ${first} — still looking? I can send 2 fresh matches tonight.`,
     },
     {
       day: 3,
       channel: "Email",
-      subject: `${lead.location} homes in your range`,
-      body: `${first}, three options aligned to ${lead.preferences || lead.propertyType}. Want a Saturday tour block?`,
+      subject: location
+        ? `${location} homes ${hasBudget ? "in your range" : "to consider"}`
+        : "Homes to consider",
+      body: pref
+        ? `${first}, three options aligned to ${pref}. Want a Saturday tour block?`
+        : `${first}, three options to look at. Want a Saturday tour block?`,
     },
     {
       day: 10,
@@ -311,15 +347,18 @@ export function generateReactivation(lead: Lead): {
   body: string;
 } {
   const first = lead.name.split(" ")[0] ?? lead.name;
-  const local = isRsfCorridor(lead.location)
-    ? "the Rancho Santa Fe / coastal corridor"
-    : lead.location;
+  const location = leadLocation(lead);
+  const local = isRsfCorridor(location) ? "the Rancho Santa Fe / coastal corridor" : location;
+  const topic = [lead.propertyType.trim().toLowerCase(), location && `in ${location}`]
+    .filter(Boolean)
+    .join(" ");
   return {
     channel: "Email",
-    subject: `${first}, still dreaming about ${local}?`,
+    subject: local ? `${first}, still dreaming about ${local}?` : `${first}, still looking for a home?`,
+    // The draft promises a fresh look, not a market change: nothing here has checked the market.
     body: `Hi ${first},
 
-It's been a minute since we last connected about ${lead.propertyType.toLowerCase()} in ${lead.location}. The inventory mix has shifted — a few homes in your prior range finally look right.
+It's been a minute since we last connected${topic ? ` about ${topic}` : ""}. If you're still looking, I can check what's on the market now and send you a short list.
 
 If timing is better now (or even if it's not), reply with a one-liner and I'll send a tight private list — no portal spam.
 
@@ -513,7 +552,7 @@ export function answerAssistant(
     const rems = flattenReminders(appointments).slice(0, 8);
     if (!upcoming.length) {
       return withPersonalization(
-        `No upcoming appointments in the hub yet.\n\nConnect Google, Apple/iOS, Outlook, or CalDAV under Calendar Hub → Connect, then Sync. I’ll import real estate events and extract prep reminders automatically.`,
+        `No upcoming appointments saved yet.\n\nAdd one under Calendar & Vendors. Calendar sync with Google, Apple or Outlook is not connected, so appointments are the ones you add yourself.`,
         { profile: ctx.profile, memory: ctx.memory },
       );
     }
@@ -526,7 +565,7 @@ export function answerAssistant(
       .join("\n");
     const remLines = rems.map((r) => `• [${formatApptWhen(r.when)}] ${r.reminder}`).join("\n");
     return withPersonalization(
-      `Calendar brief${first ? ` for ${first}` : ""}\n\nUpcoming appointments\n${lines}\n\nAI reminders picked up\n${remLines || "• No open prep items"}\n\nOpen Calendar Hub to mark done or re-sync providers.`,
+      `Calendar brief${first ? ` for ${first}` : ""}\n\nUpcoming appointments\n${lines}\n\nPreparation reminders\n${remLines || "• No open prep items"}\n\nOpen Calendar & Vendors to mark them done.`,
       { profile: ctx.profile, memory: ctx.memory },
     );
   }
@@ -551,7 +590,7 @@ export function answerAssistant(
         .join("\n");
       return withPersonalization(
         `${contractorCategoryLabel(cat)} — your saved vendors\n\n${
-          lines || "• None saved yet — add under Calendar Hub → Contractors"
+          lines || "• None saved yet — add under Calendar & Vendors → Contractors"
         }\n\nCommonly used list retains favorites across sessions. Log use after each job to keep rankings honest.`,
         { profile: ctx.profile, memory: ctx.memory },
       );
@@ -564,7 +603,7 @@ export function answerAssistant(
       )
       .join("\n");
     return withPersonalization(
-      `Commonly used contractors\n\n${lines || "• Empty — pin vendors in Calendar Hub"}\n\nCategories available: Termite, Inspection, Electrician, Plumber, HVAC, Roofer, Title/Escrow, Photographer, Stager, GC, and more. Archived vendors stay under their heading.`,
+      `Commonly used contractors\n\n${lines || "• Empty — pin vendors in Calendar & Vendors"}\n\nCategories available: Termite, Inspection, Electrician, Plumber, HVAC, Roofer, Title/Escrow, Photographer, Stager, GC, and more. Archived vendors stay under their heading.`,
       { profile: ctx.profile, memory: ctx.memory },
     );
   }
@@ -591,8 +630,9 @@ export function answerAssistant(
     const newest = [...activeLeads].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )[0];
+    const newestLocation = newest ? leadLocation(newest) : "";
     const body = `A prompt, useful reply gives a new inquiry a clear next step.\n\nOpen Instant Response to draft SMS/email for ${newest?.name ?? "your newest lead"} in one click${
-      newest ? ` (${newest.location})` : ""
+      newestLocation ? ` (${newestLocation})` : ""
     }.`;
     return withPersonalization(body, {
       profile: ctx.profile,
@@ -644,7 +684,9 @@ export function answerAssistant(
     const lines = tops
       .map(
         (l) =>
-          `• ${l.name} — score ${l.score} (${l.heat}), ${formatCurrency(l.budgetMin)}–${formatCurrency(l.budgetMax)}, ${l.location}`,
+          [`• ${l.name} — score ${l.score} (${l.heat})`, leadBudgetText(l), leadLocation(l)]
+            .filter(Boolean)
+            .join(", "),
       )
       .join("\n");
     return withPersonalization(
@@ -735,7 +777,7 @@ export function answerAssistant(
     return withPersonalization(
       `I'm your RealEstate AI copilot${first ? `, ${first}` : ""}${
         area ? ` for ${area}` : ""
-      }.\n\nI can: Command Center packs · Instant response · Calendar + AI reminders · Contractors · RSF knowledge · CMA · Content Agent.\n\nTry: “What’s on my calendar?” or “Who’s my termite guy?”`,
+      }.\n\nI can: Command Center packs · Instant response · Calendar reminders · Contractors · RSF knowledge · CMA · Content Agent.\n\nTry: “What’s on my calendar?” or “Who’s my termite guy?”`,
       { profile: ctx.profile, memory: ctx.memory, knowledgeBlock },
     );
   }

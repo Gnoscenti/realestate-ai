@@ -85,6 +85,7 @@ export interface Deal {
     | "clear_to_close"
     | "closed";
   progress: number;
+  /** ISO timestamp at local midnight. "" when no closing date is set. */
   closingDate: string;
   issues: { severity: "low" | "medium" | "high"; text: string }[];
   documents: {
@@ -109,7 +110,8 @@ export interface RentalUnit {
   tenant?: string;
   leaseEnd?: string;
   occupancy: "occupied" | "vacant" | "notice";
-  maintenanceScore: number;
+  /** Sample data only. Nothing measures this, so a unit an agent adds has none. */
+  maintenanceScore?: number;
   issues: string[];
 }
 

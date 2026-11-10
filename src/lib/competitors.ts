@@ -66,7 +66,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "AI CRM + websites",
     theirEdge: "AI chat on agent sites and aggressive lead capture funnels.",
     ourCounter:
-      "Website identity + inventory pull into the same OS as outreach scripts. Instant Response packs answer site leads with brand-consistent language; adaptive memory gets smarter about *you*.",
+      "Website identity + inventory pull into the same OS as outreach scripts. Instant Response packs answer site leads with brand-consistent language; you review and send every reply yourself.",
     useModules: [
       { label: "Instant Response", href: "/outreach" },
       { label: "MLS Hub / Website", href: "/mls" },
@@ -122,7 +122,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "Conversational AI",
     theirEdge: "AI text/voice that qualifies leads while you sleep.",
     ourCounter:
-      "Human-in-the-loop scripts that sound like *you*, plus nurture sequences and reactivation—plus the Action Desk so AI copy always maps to a real next task.",
+      "Fixed scripts you review and send yourself, plus nurture sequences and reactivation—plus the Command Center so every draft maps to a real next task.",
     useModules: [
       { label: "Instant Response", href: "/outreach?mode=nurture" },
       { label: "Command Center", href: "/" },
@@ -164,7 +164,7 @@ export const COMPETITORS: CompetitorProfile[] = [
     category: "AI dialer / capture",
     theirEdge: "Aggressive dialer + website AI for high-volume teams.",
     ourCounter:
-      "Quality over spray: ranked priorities, adaptive memory, market-specific knowledge, and vendor/calendar ops for luxury/service-heavy markets where pure dial volume loses.",
+      "Quality over spray: ranked priorities, your saved practice notes, market-specific knowledge, and vendor/calendar ops for luxury/service-heavy markets where pure dial volume loses.",
     useModules: [
       { label: "Command Center", href: "/" },
       { label: "Calendar & Vendors", href: "/calendar" },
@@ -211,9 +211,9 @@ export const EDGE_PILLARS: EdgePillar[] = [
   },
   {
     id: "local",
-    title: "Hyperlocal intelligence",
+    title: "Local market notes",
     beats: "Generic national AI",
-    body: "Local market knowledge with adaptive memory that learns the individual agent.",
+    body: "Written local market talking points, plus practice notes you save yourself.",
     href: "/knowledge",
     hrefLabel: "Market Knowledge",
   },

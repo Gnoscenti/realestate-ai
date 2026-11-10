@@ -1,6 +1,6 @@
 /**
- * Connected inbox scan rules → agent alerts.
- * Classifies DocuSign, client replies, escrow, inspection, MLS, etc.
+ * Rules that sort scanned Gmail messages into alerts.
+ * Keyword rules only: e-signature, a lead's address, escrow, inspection, MLS, etc.
  */
 import type { Lead } from "@/data/seed";
 import { uid } from "@/lib/utils";
@@ -60,7 +60,7 @@ export type RawEmailMessage = {
 };
 
 export const ALERT_KIND_LABEL: Record<EmailAlertKind, string> = {
-  docusign: "DocuSign",
+  docusign: "E-signature",
   client: "Client",
   escrow: "Escrow",
   title: "Title",
@@ -142,7 +142,7 @@ export function classifyEmail(
       kind: "docusign",
       from: extractName(from),
       fromEmail,
-      subject: subject || "Signature requested",
+      subject: subject || "(no subject)",
       snippet,
       receivedAt,
       priority: "critical",
@@ -169,14 +169,14 @@ export function classifyEmail(
       kind: "client",
       from: extractName(from),
       fromEmail,
-      subject: subject || `Message from ${lead.name}`,
+      subject: subject || "(no subject)",
       snippet,
       receivedAt,
       priority: lead.heat === "hot" ? "critical" : "high",
       messageId: msg.id,
       leadId: lead.id,
       leadName: lead.name,
-      actionLabel: "Reply to client",
+      actionLabel: "Open Instant Response for this lead",
       href: `/outreach?lead=${lead.id}&mode=instant`,
     };
   }
@@ -206,7 +206,7 @@ export function classifyEmail(
       receivedAt,
       priority: "high",
       messageId: msg.id,
-      actionLabel: "Calendar & Vendors",
+      actionLabel: "Open Calendar & Vendors",
       href: "/calendar",
     };
   }
@@ -221,7 +221,7 @@ export function classifyEmail(
       receivedAt,
       priority: "high",
       messageId: msg.id,
-      actionLabel: "Transaction Hub",
+      actionLabel: "Open Transaction Hub",
       href: "/transactions",
     };
   }
@@ -236,7 +236,7 @@ export function classifyEmail(
       receivedAt,
       priority: "high",
       messageId: msg.id,
-      actionLabel: "Transaction Hub",
+      actionLabel: "Open Transaction Hub",
       href: "/transactions",
     };
   }
@@ -255,8 +255,8 @@ export function classifyEmail(
       receivedAt,
       priority: "high",
       messageId: msg.id,
-      actionLabel: "Properties",
-      href: "/properties",
+      actionLabel: "Open Listings & Data",
+      href: "/mls",
     };
   }
 
@@ -274,7 +274,7 @@ export function classifyEmail(
       receivedAt,
       priority: "medium",
       messageId: msg.id,
-      actionLabel: "Calendar",
+      actionLabel: "Open Calendar & Vendors",
       href: "/calendar",
     };
   }
@@ -289,7 +289,7 @@ export function classifyEmail(
       receivedAt,
       priority: "medium",
       messageId: msg.id,
-      actionLabel: "Vendors",
+      actionLabel: "Open Calendar & Vendors",
       href: "/calendar",
     };
   }
@@ -349,7 +349,29 @@ export function messagesToAlerts(
   );
 }
 
-/** Demo / sandbox scan grounded in the agent’s real lead book */
+/**
+ * True for an alert made up by the demo inbox that was removed (ledger A-021).
+ * That generator gave every message an id starting with "demo_"; a real scan
+ * stores the Gmail message id here instead.
+ */
+export function isLegacyGeneratedAlert(alert: Pick<EmailAlert, "messageId">): boolean {
+  return (alert.messageId ?? "").startsWith("demo_");
+}
+
+/** Builds before ledger A-020 kept a pasted Gmail token under this key. */
+const LEGACY_EMAIL_TOKEN_KEY = "realestate-ai-email-token";
+
+/** Remove a token an older build left in browser storage. Safe to call anywhere. */
+export function clearLegacyEmailToken(): void {
+  const stores = [() => globalThis.localStorage, () => globalThis.sessionStorage];
+  for (const getStore of stores) {
+    try {
+      getStore()?.removeItem(LEGACY_EMAIL_TOKEN_KEY);
+    } catch {
+      /* storage blocked or absent: nothing to clear */
+    }
+  }
+}
 
 export function unreadCount(alerts: EmailAlert[]): number {
   return alerts.filter((a) => !a.read).length;

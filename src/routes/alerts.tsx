@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bell,
   CheckCheck,
@@ -8,7 +8,6 @@ import {
   Mail,
   RefreshCw,
   Trash2,
-  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,22 +18,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  ALERT_KIND_LABEL,
-  type EmailProviderId,
-  unreadCount,
-} from "@/lib/email-alerts";
+import { RelativeTime } from "@/components/relative-time";
+import { ALERT_KIND_LABEL, unreadCount } from "@/lib/email-alerts";
+import { DEMO_LOCKED_MESSAGE, isDemoSession } from "@/lib/demo-mode";
 import { useAppStore } from "@/lib/store";
 import { cn, relativeTime } from "@/lib/utils";
 
@@ -44,56 +33,48 @@ export const Route = createFileRoute("/alerts")({
 
 function AlertsPage() {
   const alerts = useAppStore((s) => s.emailAlerts);
-  const conn = useAppStore((s) => s.emailConnection);
-  const connectEmail = useAppStore((s) => s.connectEmail);
-  const disconnectEmail = useAppStore((s) => s.disconnectEmail);
+  const lastScanAt = useAppStore((s) => s.emailConnection?.lastScanAt);
   const scanEmailInbox = useAppStore((s) => s.scanEmailInbox);
   const markAlertRead = useAppStore((s) => s.markAlertRead);
   const markAllAlertsRead = useAppStore((s) => s.markAllAlertsRead);
   const dismissAlert = useAppStore((s) => s.dismissAlert);
-  const profile = useAppStore((s) => s.agentProfile);
   const navigate = useNavigate();
 
-  const [provider, setProvider] = useState<EmailProviderId>("gmail");
-  const [email, setEmail] = useState(conn?.email || profile?.email || "");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   const unread = useMemo(() => unreadCount(alerts), [alerts]);
 
-  useEffect(() => {
-    if (conn?.email) setEmail(conn.email);
-  }, [conn?.email]);
-
-  const connectAndScan = async () => {
-    if (!email.trim() || !email.includes("@")) {
-      toast.error("Enter the inbox email address");
+  // There is no connected inbox. Each scan is one request, made with a token
+  // the agent pastes for that request.
+  const scan = async () => {
+    // The guest demo has no account, so the server would refuse this request.
+    if (isDemoSession()) {
+      toast.message(DEMO_LOCKED_MESSAGE);
       return;
     }
-    if (!token.trim()) {
-      toast.error("A Gmail access token is required to scan. Nothing is invented when no token is present.");
+    const accessToken = token.trim();
+    if (!accessToken) {
+      setTokenError("Paste a Gmail access token first. Nothing is scanned without one.");
       return;
     }
-    connectEmail(provider, email.trim());
-    // The token lives only in this component's memory for this scan. It is
-    // never written to browser storage (see ledger A-020).
+    setTokenError(null);
     setBusy(true);
-    const r = await scanEmailInbox({ accessToken: token.trim() });
+    // The token is held in this component, sent to our server for this one
+    // scan, then cleared. It is never written to browser storage (ledger A-020).
+    const r = await scanEmailInbox({ accessToken });
+    setToken("");
     setBusy(false);
-    if (r.error) toast.error(`Inbox scan failed: ${r.error}`);
-    else toast.success(`Scanned live inbox · ${r.added} new alert(s), ${r.total} unread`);
-  };
-
-  const rescan = async () => {
-    if (!token.trim()) {
-      toast.error("Paste a current Gmail access token to rescan; tokens are not stored.");
+    if (r.error) {
+      toast.error(r.error);
       return;
     }
-    setBusy(true);
-    const r = await scanEmailInbox({ accessToken: token.trim() });
-    setBusy(false);
-    if (r.error) toast.error(`Inbox scan failed: ${r.error}`);
-    else toast.success(r.added ? `${r.added} new alert(s)` : `Scan complete · ${r.total} unread`);
+    toast.success(
+      r.added > 0
+        ? `Gmail scan finished. ${r.added} new ${r.added === 1 ? "alert" : "alerts"}.`
+        : "Gmail scan finished. No new alerts.",
+    );
   };
 
   return (
@@ -104,9 +85,11 @@ function AlertsPage() {
             Email Alerts
           </h1>
           <p className="mt-1 max-w-xl text-sm text-[var(--color-fg-muted)]">
-            Scans your connected inbox for DocuSign, client replies, escrow,
-            inspections, showings, and more. Unread count shows as a red dot on
-            the app icon and menu.
+            Run a one-time scan of Gmail for deal emails such as signature
+            requests, escrow, inspections and showings. No inbox stays
+            connected and nothing is scanned automatically. Alerts you have not
+            marked read are counted on the bell, in the menu and on the browser
+            tab.
           </p>
         </div>
         <div className="flex gap-2">
@@ -119,126 +102,104 @@ function AlertsPage() {
                 toast.message("All marked read");
               }}
             >
-              <CheckCheck className="h-4 w-4" />
+              <CheckCheck aria-hidden="true" className="h-4 w-4" />
               Mark all read
             </Button>
           )}
-          <Button
-            className="min-h-[44px]"
-            disabled={busy || !conn}
-            onClick={() => void rescan()}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Scan now
-          </Button>
         </div>
       </div>
 
       <Card className="glass-card border-0">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Mail className="h-4 w-4 text-[var(--color-primary)]" />
-            Connect inbox
+            <Mail aria-hidden="true" className="h-4 w-4 text-[var(--color-primary)]" />
+            One-time Gmail scan
           </CardTitle>
           <CardDescription>
-            Gmail, Outlook, or iCloud. Optional access token enables live API
-            scan; otherwise we run the same alert rules on a smart demo pass
-            (and match your real lead emails).
+            Sign-in with Google is not connected, so this page cannot open your
+            inbox by itself. To run one scan, paste a Gmail access token (a key
+            from Google that gives a program access to your Gmail). If you do
+            not have one, you cannot run a scan. Outlook, iCloud and other email
+            providers are not connected.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {conn ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-3">
-              <div>
-                <div className="font-medium text-[var(--color-fg)]">
-                  {conn.email}
-                </div>
-                <div className="text-xs text-[var(--color-fg-subtle)]">
-                  {conn.provider.toUpperCase()} ·{" "}
-                  {conn.lastScanAt
-                    ? `Last scan ${relativeTime(conn.lastScanAt)}`
-                    : "Not scanned yet"}
-                  {unread > 0 ? ` · ${unread} unread` : ""}
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  disconnectEmail();
-                  toast.message("Inbox disconnected");
+          <form
+            className="space-y-3"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void scan();
+            }}
+          >
+            <div>
+              <Label htmlFor="token">Gmail access token</Label>
+              <PasswordInput
+                id="token"
+                secretLabel="access token"
+                containerClassName="mt-1.5"
+                className="h-11"
+                value={token}
+                onChange={(e) => {
+                  setToken(e.target.value);
+                  setTokenError(null);
                 }}
-              >
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <Label>Provider</Label>
-                  <Select
-                    value={provider}
-                    onValueChange={(v) => setProvider(v as EmailProviderId)}
-                  >
-                    <SelectTrigger className="mt-1.5 h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gmail">Gmail</SelectItem>
-                      <SelectItem value="outlook">Outlook</SelectItem>
-                      <SelectItem value="icloud">iCloud / Apple</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="inbox-email">Inbox email</Label>
-                  <Input
-                    id="inbox-email"
-                    className="mt-1.5 h-11"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@brokerage.com"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="token">Access token (optional — live Gmail)</Label>
-                <PasswordInput
-                  id="token"
-                  secretLabel="access token"
-                  containerClassName="mt-1.5"
-                  className="h-11"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="Paste OAuth token if you have one"
-                  autoComplete="off"
-                />
-                <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
-                  Without a token we still flag DocuSign, escrow, inspection,
-                  showings, and any email from leads already in your book.
+                placeholder="Paste a Gmail access token"
+                autoComplete="off"
+                aria-invalid={tokenError ? true : undefined}
+                aria-describedby={tokenError ? "token-error token-help" : "token-help"}
+              />
+              {tokenError && (
+                <p id="token-error" role="alert" className="mt-1 text-sm text-[var(--color-danger)]">
+                  {tokenError}
                 </p>
-              </div>
-              <Button
-                className="min-h-[44px] w-full sm:w-auto"
-                disabled={busy}
-                onClick={() => void connectAndScan()}
-              >
+              )}
+              <p id="token-help" className="mt-1 text-xs text-[var(--color-fg-subtle)]">
+                The token is sent to our server, used for this one scan, and not
+                saved by this app. Paste a new one each time you scan.
+              </p>
+            </div>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-[var(--color-fg-muted)]">
+              <li>
+                Looks at up to 15 messages from the last 14 days: mail from
+                DocuSign, mail whose subject mentions DocuSign, escrow,
+                inspection, showing, appraisal, underwriting or invitation, and
+                mail Gmail marks as important.
+              </li>
+              <li>
+                Reads the sender, subject, date and the short preview Gmail
+                provides. It does not open attachments, and it does not send,
+                change or delete anything.
+              </li>
+              <li>
+                Sorts matches into alerts with keyword rules. Messages that match
+                no rule are left out.
+              </li>
+              <li>
+                Alerts are saved in this browser only and stay as they were at the
+                last scan. Nothing is scanned in the background.
+              </li>
+            </ul>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit" className="min-h-[44px] w-full sm:w-auto" disabled={busy}>
                 {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Link2 className="h-4 w-4" />
+                  <RefreshCw aria-hidden="true" className="h-4 w-4" />
                 )}
-                Connect & scan
+                {busy ? "Scanning Gmail…" : "Scan Gmail"}
               </Button>
-            </>
-          )}
+              <span className="text-xs text-[var(--color-fg-subtle)]">
+                {lastScanAt ? (
+                  <>
+                    Last scan <RelativeTime iso={lastScanAt} />
+                  </>
+                ) : (
+                  "No scan has finished in this browser."
+                )}
+              </span>
+            </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -246,8 +207,8 @@ function AlertsPage() {
         {alerts.length === 0 && (
           <div className="rounded-[var(--radius-xl)] border border-dashed border-[var(--color-border)] p-10 text-center text-sm text-[var(--color-fg-muted)]">
             <Inbox className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            No alerts yet. Connect an inbox and scan to surface DocuSign and
-            client messages.
+            No alerts. Alerts appear here after a Gmail scan finds matching
+            emails.
           </div>
         )}
         {alerts.map((a) => (
@@ -287,26 +248,29 @@ function AlertsPage() {
                 </div>
                 <div className="text-xs text-[var(--color-fg-muted)]">
                   {a.from}
-                  {a.leadName ? ` · matched client ${a.leadName}` : ""}
+                  {a.leadName ? ` · possible match with your lead ${a.leadName}` : ""}
                 </div>
                 <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                   {a.snippet}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    className="min-h-[40px]"
-                    onClick={() => {
-                      markAlertRead(a.id);
-                      if (a.href.startsWith("/outreach")) {
-                        void navigate({ to: "/outreach", search: Object.fromEntries(new URLSearchParams(a.href.split("?")[1] || "")) as { lead?: string; mode?: "instant" } });
-                      } else {
-                        void navigate({ to: a.href.split("?")[0] as "/alerts" });
-                      }
-                    }}
-                  >
-                    {a.actionLabel}
-                  </Button>
+                  {/* An alert that points back at this page has nowhere to go. */}
+                  {a.href.split("?")[0] !== "/alerts" && (
+                    <Button
+                      size="sm"
+                      className="min-h-[40px]"
+                      onClick={() => {
+                        markAlertRead(a.id);
+                        if (a.href.startsWith("/outreach")) {
+                          void navigate({ to: "/outreach", search: Object.fromEntries(new URLSearchParams(a.href.split("?")[1] || "")) as { lead?: string; mode?: "instant" } });
+                        } else {
+                          void navigate({ to: a.href.split("?")[0] as "/alerts" });
+                        }
+                      }}
+                    >
+                      {a.actionLabel}
+                    </Button>
+                  )}
                   {!a.read && (
                     <Button
                       size="sm"
@@ -323,7 +287,7 @@ function AlertsPage() {
                     className="min-h-[40px]"
                     onClick={() => dismissAlert(a.id)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
                     Dismiss
                   </Button>
                 </div>

@@ -39,7 +39,8 @@ import {
   generateNurtureSequence,
   generateReactivation,
 } from "@/lib/ai";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { leadBudgetText, leadLocation } from "@/lib/lead-facts";
 import { buildFiveMinuteProtocol } from "@/lib/edge-pack";
 import { BuyerSellerFaqPanel, ShowingFollowUpPanel } from "@/components/outreach/faq-showing-panels";
 import { InboxDraftDemo } from "@/components/outreach/inbox-draft-demo";
@@ -173,15 +174,15 @@ function OutreachPage() {
               <Timer className="h-3 w-3" />
               Speed-to-lead
             </Badge>
-            <Badge variant="secondary">Research-backed</Badge>
           </div>
           <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-[var(--color-fg)] sm:text-3xl">
             Instant response
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm text-[var(--color-fg-muted)] leading-relaxed">
-            Inman data: average agent reply takes ~15 hours. Sub-5-minute
-            responses and AI first-touch lift capture ~40%. Draft SMS, email,
-            nurture, and client briefs here — then send and log in one step.
+            Draft a text, an email or a voicemail script for the client you
+            pick, plus follow-up messages and a call brief. Copy what you need,
+            send it from your own phone or email, then mark it sent here. This
+            page does not send anything for you.
           </p>
         </div>
         <div className="w-full max-w-xs">
@@ -209,8 +210,8 @@ function OutreachPage() {
         />
         <InsightCard
           label="Budget"
-          value={`${formatCurrency(lead.budgetMin, true)}–${formatCurrency(lead.budgetMax, true)}`}
-          hint={lead.location}
+          value={leadBudgetText(lead, true) ?? "Not entered"}
+          hint={leadLocation(lead) || "No location entered"}
         />
         <InsightCard
           label="Channel tip"
@@ -243,12 +244,12 @@ function OutreachPage() {
                 Open {Math.round(protocol.minutesOpen)}m · target {'<'}{SPEED_TO_LEAD_SLA_MINUTES}m
                 {" · "}
                 <Link to="/edge" className="text-[var(--color-primary)] underline-offset-2 hover:underline">
-                  vs competitors
+                  Edge Playbook
                 </Link>
               </span>
             </div>
             <CardDescription>
-              Counters Follow Up Boss speed culture: SMS → email → call/VM → log — all in one card.
+              Text first, then email, then a call or voicemail, then log it. Every step is on this card.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -304,7 +305,7 @@ function OutreachPage() {
             </div>
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]">
-                3-touch plan (beats Structurely spray with your voice)
+                3-touch plan
               </div>
               {protocol.touches.map((touch) => (
                 <div
@@ -409,7 +410,7 @@ function OutreachPage() {
               <div>
                 <CardTitle>Pre-call client brief</CardTitle>
                 <CardDescription>
-                  CRM snapshot agents asked for before every conversation
+                  A summary of this client's saved details, matching listings and talking points for the call
                 </CardDescription>
               </div>
               <Button size="sm" variant="outline" onClick={() => void copyText(brief)}>
@@ -503,8 +504,7 @@ function OutreachPage() {
               <CardHeader>
                 <CardTitle>Sphere reactivation</CardTitle>
                 <CardDescription>
-                  Mine cold CRM contacts — cheaper than new portal leads (2026
-                  brokerage playbook)
+                  A check-in email for a contact you have not been in touch with for a while
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -549,8 +549,9 @@ function OutreachPage() {
                 {agreement.title}
               </CardTitle>
               <CardDescription>
-                Post-NAR settlement: written buyer agreements and clear fees are
-                table stakes. Use this outline with your brokerage counsel.
+                Talking points for a written buyer agreement. This is an outline,
+                not a contract or legal advice. Review it with your broker before
+                you use it.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

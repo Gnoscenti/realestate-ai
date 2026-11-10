@@ -61,9 +61,9 @@ const modules = [
     to: "/knowledge",
     title: "Market Knowledge",
     description:
-      "Local market knowledge plus AI memory that learns your practice over time.",
+      "Local market talking points, plus practice notes you save yourself.",
     icon: BookOpen,
-    features: ["Neighborhoods", "Talking points", "Memory"],
+    features: ["Neighborhoods", "Talking points", "Your notes"],
   },
   {
     to: "/cma",
@@ -85,9 +85,9 @@ const modules = [
     to: "/leads",
     title: "Lead Intelligence",
     description:
-      "Your clients and prospects, scored and ranked so you know who to call first.",
+      "Your clients and prospects, ranked by a points score so you know who to call first.",
     icon: Users,
-    features: ["Scoring", "Follow-up", "Pipeline"],
+    features: ["Points score", "Follow-up", "Pipeline"],
   },
   {
     to: "/search",
@@ -109,7 +109,7 @@ const modules = [
     to: "/transactions",
     title: "Transaction Hub",
     description:
-      "Deal milestones you track by hand. Document review and e-sign are not connected.",
+      "Add your deals and track each one from offer to close. Document review and e-sign are not connected.",
     icon: FileText,
     features: ["Milestones", "Risks"],
   },
@@ -117,9 +117,9 @@ const modules = [
     to: "/properties",
     title: "Property Management",
     description:
-      "Rent, occupancy and maintenance for the rental units you manage.",
+      "Rent, occupancy and lease dates for the rental units you manage.",
     icon: Building2,
-    features: ["Rent", "Vacancy", "Maintenance"],
+    features: ["Rent", "Vacancy", "Leases"],
   },
 ];
 
