@@ -24,6 +24,13 @@ export const startCheckout = createServerFn({ method: "POST" })
     );
     const { createCheckoutSession } = await import("@/lib/stripe-checkout");
     const urls = assertCheckoutReturnUrls(data);
+    // A beta-round customer holds lifetime access and is never sent to Stripe
+    // again, even from a stale paywall left open in another tab.
+    const { ensurePersonalWorkspace } = await import("@/lib/workspaces/repository.server");
+    const { getHeldLifetimeAccess } = await import("@/lib/billing/entitlement.server");
+    const workspace = await ensurePersonalWorkspace(context.userId);
+    const entitlement = await getHeldLifetimeAccess(context.userId, workspace.id);
+    if (entitlement) return { mode: "already_entitled" as const, entitlement };
     return createCheckoutSession({
       ...urls,
       agentName: data.agentName,

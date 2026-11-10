@@ -50,6 +50,7 @@ import {
   emptyBilling,
   activateFreeCode,
   startIntroAccess,
+  startLifetimeAccess,
   type BillingState,
 } from "@/lib/billing";
 import {
@@ -140,7 +141,7 @@ interface AppState {
   clearBilling: () => void;
   completeDemoCheckout: (sessionId?: string) => void;
   /** A server-verified Stripe payment. Never recorded as a demo. */
-  completePaidCheckout: (sessionId: string) => void;
+  completePaidCheckout: (sessionId: string, lifetime?: boolean) => void;
   importLeadsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   importListingsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   addProperty: (
@@ -824,12 +825,15 @@ export const useAppStore = create<AppState>()(
       // separate from completeDemoCheckout so a genuine purchase is never
       // stamped isDemo: true (which also showed "demo checkout" on /billing
       // and offered paying customers a "Reset access (demo)" button).
-      completePaidCheckout: (sessionId) => {
-        const billing = startIntroAccess({
-          source: "stripe_intro",
-          sessionId,
-          isDemo: false,
-        });
+      completePaidCheckout: (sessionId, lifetime) => {
+        // A beta-round purchase is for life; a later one buys the 30-day window.
+        const billing = lifetime
+          ? startLifetimeAccess({ sessionId })
+          : startIntroAccess({
+              source: "stripe_intro",
+              sessionId,
+              isDemo: false,
+            });
         set({ billing });
       },
 

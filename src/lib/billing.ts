@@ -4,11 +4,26 @@
  * Pricing: a single one-time $9.99 charge that unlocks 30 days of access.
  * There is no subscription and nothing renews automatically.
  * Five free beta codes unlock full access + feedback board.
+ *
+ * Beta round: everyone who paid or redeemed a code before
+ * BETA_LIFETIME_CUTOFF_ISO keeps access for life and is never charged for it
+ * again. The terms above apply to everyone who arrives after that.
  */
 
 export const INTRO_PRICE_CENTS = 999;
 export const INTRO_DAYS = 30;
 export const CURRENCY = "usd";
+
+/**
+ * End of the beta round: the end of November 10, 2026, Pacific time. A payment
+ * or code redemption before this instant is a lifetime grant.
+ */
+export const BETA_LIFETIME_CUTOFF_ISO = "2026-11-11T08:00:00.000Z";
+
+/** Whether a purchase made at `atMs` still earns the beta round's lifetime access. */
+export function betaLifetimeOfferOpen(atMs: number = Date.now()): boolean {
+  return atMs < Date.parse(BETA_LIFETIME_CUTOFF_ISO);
+}
 
 export const PLAN = {
   id: "pro",
@@ -78,7 +93,10 @@ export type BillingState = {
   source: AccessSource;
   /** ISO — end of the paid access window */
   introEndsAt: string | null;
-  /** ISO — access paid-through. Nothing renews automatically. */
+  /**
+   * ISO — access paid-through. Nothing renews automatically. Null on active
+   * access means a beta-round lifetime grant: there is no end date.
+   */
   currentPeriodEnd: string | null;
   /** Stripe session / sub ids when available */
   stripeCustomerId: string | null;
@@ -162,6 +180,27 @@ export function startIntroAccess(opts?: {
     activatedAt: now.toISOString(),
     isDemo: opts?.isDemo ?? true,
   };
+}
+
+/** Browser mirror of a beta-round lifetime purchase: access has no end date. */
+export function startLifetimeAccess(opts?: { sessionId?: string }): BillingState {
+  return {
+    status: "active",
+    source: "stripe_active",
+    introEndsAt: null,
+    currentPeriodEnd: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    lastCheckoutSessionId: opts?.sessionId ?? null,
+    redeemedCode: null,
+    activatedAt: new Date().toISOString(),
+    isDemo: false,
+  };
+}
+
+/** True when this browser's access has no end date (a beta-round lifetime grant). */
+export function hasLifetimeAccess(b: BillingState | null | undefined): boolean {
+  return Boolean(b) && hasAppAccess(b) && !b!.currentPeriodEnd && !b!.isDemo;
 }
 
 export function activateFreeCode(code: string): BillingState | null {

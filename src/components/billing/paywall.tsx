@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import {
   PLAN,
   INTRO_DAYS,
+  betaLifetimeOfferOpen,
+  emptyBilling,
   formatMoney,
   INTRO_PRICE_CENTS,
 } from "@/lib/billing";
@@ -39,6 +41,9 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
   const [busy, setBusy] = useState(false);
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+  // Beta round: a payment made before the cutoff buys lifetime access. The
+  // server decides the grant; this only keeps the offer wording in step.
+  const lifetimeOffer = betaLifetimeOfferOpen();
 
   // Return from Stripe.
   //
@@ -78,10 +83,13 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
         if (cancelled) return;
         if (verified.paid) {
           // A verified purchase, recorded server-side and mirrored here.
-          completePaidCheckout(verified.sessionId);
+          const lifetime = verified.entitlement.lifetime;
+          completePaidCheckout(verified.sessionId, lifetime);
           onAccessGranted?.();
           toast.success(
-            `Payment confirmed. You have full access for ${INTRO_DAYS} days.`,
+            lifetime
+              ? "Payment confirmed. You have lifetime access and won't be charged for it again."
+              : `Payment confirmed. You have full access for ${INTRO_DAYS} days.`,
           );
         } else if (verified.demo) {
           completeDemoCheckout(verified.sessionId);
@@ -123,6 +131,18 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
           agentName: agentName,
         },
       });
+      if (result.mode === "already_entitled") {
+        // The server found lifetime access on this workspace: nothing to pay.
+        activateBilling({
+          ...emptyBilling(),
+          status: result.entitlement.source === "code" ? "code" : "active",
+          source: result.entitlement.source === "code" ? "free_code" : "stripe_active",
+          activatedAt: new Date().toISOString(),
+        });
+        onAccessGranted?.();
+        toast.success("You already have lifetime access. There is nothing to pay.");
+        return;
+      }
       if (result.mode === "demo") {
         // Demo sessions are only issued when ALLOW_DEMO_CHECKOUT=1 is set on
         // the server. The server records the grant on confirmation; the
@@ -202,8 +222,9 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
             <span className="font-semibold text-[var(--color-fg)]">
               {formatMoney(INTRO_PRICE_CENTS)}
             </span>{" "}
-            once for {INTRO_DAYS} days of full access. No subscription, and
-            nothing renews on its own.
+            {lifetimeOffer
+              ? "once for lifetime access. This is the beta tester offer: no subscription, and you are never charged for it again."
+              : `once for ${INTRO_DAYS} days of full access. No subscription, and nothing renews on its own.`}
           </p>
         </div>
 
@@ -224,12 +245,12 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
                 <div className="mt-1 font-display text-3xl font-semibold tabular text-[var(--color-fg)]">
                   {formatMoney(INTRO_PRICE_CENTS)}
                   <span className="ml-1.5 text-base font-medium text-[var(--color-fg-muted)]">
-                    for {INTRO_DAYS} days
+                    {lifetimeOffer ? "for lifetime access" : `for ${INTRO_DAYS} days`}
                   </span>
                 </div>
               </div>
               <div className="rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)]">
-                No renewal
+                {lifetimeOffer ? "Beta tester offer" : "No renewal"}
               </div>
             </div>
           </div>
@@ -259,7 +280,9 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
               )}
               {busy
                 ? "Opening checkout…"
-                : `Pay ${formatMoney(INTRO_PRICE_CENTS)} for ${INTRO_DAYS} days`}
+                : lifetimeOffer
+                  ? `Pay ${formatMoney(INTRO_PRICE_CENTS)} once for lifetime access`
+                  : `Pay ${formatMoney(INTRO_PRICE_CENTS)} for ${INTRO_DAYS} days`}
             </Button>
             <p className="text-center text-xs text-[var(--color-fg-subtle)]">
               Secure checkout by Stripe. Your workspace opens as soon as the
