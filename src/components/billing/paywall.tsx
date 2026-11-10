@@ -14,10 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  ACCESS_PRICE_CENTS,
+  DEMO_ACCESS_DAYS,
   PLAN,
-  INTRO_DAYS,
+  emptyBilling,
   formatMoney,
-  INTRO_PRICE_CENTS,
 } from "@/lib/billing";
 import { useAppStore } from "@/lib/store";
 import { confirmCheckout, startCheckout } from "@/lib/checkout";
@@ -80,13 +81,13 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
           completePaidCheckout(verified.sessionId);
           onAccessGranted?.();
           toast.success(
-            `Payment confirmed — ${INTRO_DAYS}-day intro access is active`,
+            "Payment confirmed — lifetime access is active. You will not be charged again.",
           );
         } else if (verified.demo) {
           completeDemoCheckout(verified.sessionId);
           onAccessGranted?.();
           toast.warning(
-            `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
+            `Demo mode — no payment was taken. ${DEMO_ACCESS_DAYS} days of test access granted.`,
           );
         } else {
           toast.error(
@@ -122,6 +123,18 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
           agentName: agentName,
         },
       });
+      if (result.mode === "already_entitled") {
+        // The server found lifetime access on this workspace: nothing to pay.
+        activateBilling({
+          ...emptyBilling(),
+          status: result.entitlement.source === "code" ? "code" : "active",
+          source: result.entitlement.source === "code" ? "free_code" : "stripe_active",
+          activatedAt: new Date().toISOString(),
+        });
+        onAccessGranted?.();
+        toast.success("You already have lifetime access — nothing to pay.");
+        return;
+      }
       if (result.mode === "demo") {
         // Demo sessions are only issued when ALLOW_DEMO_CHECKOUT=1 is set on
         // the server. The server records the grant on confirmation; the
@@ -131,7 +144,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
         completeDemoCheckout(result.sessionId);
         onAccessGranted?.();
         toast.warning(
-          `Demo mode — no payment was taken. ${INTRO_DAYS} days of test access granted.`,
+          `Demo mode — no payment was taken. ${DEMO_ACCESS_DAYS} days of test access granted.`,
         );
         return;
       }
@@ -191,10 +204,10 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
             {agentName ? `Hi ${agentName.split(" ")[0]} — ` : ""}
             Pay once —{" "}
             <span className="font-semibold text-[var(--color-fg)]">
-              {formatMoney(INTRO_PRICE_CENTS)}
+              {formatMoney(ACCESS_PRICE_CENTS)}
             </span>
-            {" "}for {INTRO_DAYS} days of full access. No subscription and nothing
-          renews automatically.
+            {" "}for lifetime access. No subscription, and you are never charged
+            again.
           </p>
         </div>
 
@@ -209,9 +222,9 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
                   One-time price
                 </div>
                 <div className="mt-1 font-display text-3xl font-semibold tabular text-[var(--color-fg)]">
-                  {formatMoney(INTRO_PRICE_CENTS)}
+                  {formatMoney(ACCESS_PRICE_CENTS)}
                   <span className="ml-1 text-base font-medium text-[var(--color-fg-muted)]">
-                    / {INTRO_DAYS} days
+                    · lifetime access
                   </span>
                 </div>
               </div>
@@ -244,7 +257,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
               ) : (
                 <CreditCard className="h-4 w-4" />
               )}
-              Pay {formatMoney(INTRO_PRICE_CENTS)} · unlock {INTRO_DAYS} days
+              Pay {formatMoney(ACCESS_PRICE_CENTS)} once · lifetime access
             </Button>
             <p className="text-center text-[11px] text-[var(--color-fg-subtle)]">
               Payment is processed by Stripe and verified before access is
@@ -295,7 +308,7 @@ export function Paywall({ agentName, onAccessGranted, footer }: Props) {
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-[11px] text-[var(--color-fg-subtle)]">
           <Sparkles className="h-3 w-3" />
-          One-time charge · No subscription · Nothing renews automatically
+          One-time charge · Lifetime access · Never billed again
         </p>
         {footer}
       </div>
