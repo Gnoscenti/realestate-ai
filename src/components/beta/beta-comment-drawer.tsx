@@ -29,9 +29,12 @@ import { useAppStore } from "@/lib/store";
 import { resolvePageMeta, type BetaCommentPayload } from "@/lib/beta-comments";
 import { hasFeedbackAccess } from "@/lib/billing";
 import {
+  betaCommentDeliveryStatus,
   loadLocalBetaInbox,
   reconcileLocalBetaComment,
   saveLocalBetaComment,
+  type BetaCommentDelivery,
+  type LocalBetaCommentRecord,
 } from "@/lib/beta-comment-client";
 import {
   DEFAULT_FEEDBACK_TRIGGER_POSITION,
@@ -79,6 +82,14 @@ function getSessionNumber(): number {
   return number;
 }
 
+/** Rows shown before the tester asks for the rest of the device history. */
+const HISTORY_PREVIEW_COUNT = 10;
+
+/** Only link to an issue URL this app could have produced; history is device data. */
+function safeIssueUrl(url: string): string | null {
+  return url.startsWith("https://github.com/") ? url : null;
+}
+
 function persistPosition(position: FeedbackTriggerPosition): void {
   try {
     localStorage.setItem(FEEDBACK_TRIGGER_POSITION_KEY, JSON.stringify(position));
@@ -94,6 +105,10 @@ export function BetaCommentDrawer() {
   const [body, setBody] = useState("");
   const [category, setCategory] = useState<Category>("other");
   const [submitting, setSubmitting] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  // History is read from device storage on render; bump to re-read after a change.
+  const [, setHistoryVersion] = useState(0);
   const [triggerPosition, setTriggerPosition] = useState<FeedbackTriggerPosition>(
     DEFAULT_FEEDBACK_TRIGGER_POSITION,
   );
@@ -104,6 +119,9 @@ export function BetaCommentDrawer() {
 
   const unlocked = hasFeedbackAccess(billing);
   const history = unlocked ? loadLocalBetaInbox() : [];
+  // Every retained suggestion must stay reachable, or an older undelivered one
+  // could never be sent again.
+  const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_COUNT);
 
   useEffect(() => {
     const applyViewport = () => setViewportHeight(window.innerHeight);
@@ -202,6 +220,63 @@ export function BetaCommentDrawer() {
     }
   }
 
+  /**
+   * Send one device record to the server intake and record the outcome on the
+   * device, so an undelivered suggestion is visible and can be sent again.
+   */
+  async function deliver(
+    payload: BetaCommentPayload,
+    localRecord: LocalBetaCommentRecord,
+  ): Promise<void> {
+    try {
+      const response = await submitBetaComment({ data: payload });
+      if (!response.ok) {
+        toast.warning(
+          response.reason === "rate_limited"
+            ? "Too many suggestions just now — saved on this device. Try again in a few minutes."
+            : "Your workspace access could not be verified — saved on this device only.",
+        );
+        return;
+      }
+      const delivery: BetaCommentDelivery = response.issue
+        ? { state: "sent", issueNumber: response.issue.number, issueUrl: response.issue.url }
+        : { state: "unsent" };
+      reconcileLocalBetaComment(
+        localRecord.id,
+        {
+          ...response.record,
+          globalNumber: localRecord.globalNumber,
+          fileName: localRecord.fileName,
+        },
+        delivery,
+      );
+      if (response.issue) {
+        toast.success(
+          `Suggestion logged for engineering review in GitHub #${response.issue.number}`,
+        );
+        toast("A maintainer can approve it for a draft PR.", {
+          action: {
+            label: "View",
+            onClick: () => window.open(response.issue!.url, "_blank", "noopener,noreferrer"),
+          },
+        });
+      } else {
+        toast.warning(
+          "Saved on this device. Engineering intake is unavailable right now — open Suggest and use Send again later.",
+        );
+      }
+    } catch (error) {
+      const unauthorized = error instanceof Error && error.message === "Unauthorized";
+      toast.warning(
+        unauthorized
+          ? "Saved on this device. Sign in, then use Send again in Suggest."
+          : "Saved on this device only — open Suggest and use Send again later.",
+      );
+    } finally {
+      setHistoryVersion((version) => version + 1);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!body.trim()) return;
@@ -219,44 +294,31 @@ export function BetaCommentDrawer() {
     setBody("");
     setOpen(false);
     try {
-      const response = await submitBetaComment({ data: payload });
-      if (!response.ok) {
-        toast.warning(
-          response.reason === "rate_limited"
-            ? "Too many suggestions just now — saved on this device. Try again in a few minutes."
-            : "Your workspace access could not be verified — saved on this device only.",
-        );
-        return;
-      }
-      reconcileLocalBetaComment(localRecord.id, {
-        ...response.record,
-        globalNumber: localRecord.globalNumber,
-        fileName: localRecord.fileName,
-      });
-      if (response.issue) {
-        toast.success(
-          `Suggestion logged for engineering review in GitHub #${response.issue.number}`,
-        );
-        toast("A maintainer can approve it for a draft PR.", {
-          action: {
-            label: "View",
-            onClick: () => window.open(response.issue!.url, "_blank", "noopener,noreferrer"),
-          },
-        });
-      } else {
-        toast.warning(
-          "Saved on this device. Engineering intake delivery is unavailable right now.",
-        );
-      }
-    } catch (error) {
-      const unauthorized = error instanceof Error && error.message === "Unauthorized";
-      toast.warning(
-        unauthorized
-          ? "Saved on this device. Sign in to send it for engineering review."
-          : "Saved on this device only — try sending again later.",
-      );
+      await deliver(payload, localRecord);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /** Re-send a suggestion whose engineering issue was never confirmed. */
+  async function handleResend(record: LocalBetaCommentRecord) {
+    if (resendingId) return;
+    setResendingId(record.id);
+    try {
+      await deliver(
+        {
+          pagePath: record.pagePath,
+          pageTitle: record.pageTitle,
+          module: record.module,
+          body: record.body,
+          category: record.category,
+          sessionId: record.sessionId || getOrCreateSessionId(),
+          sessionNumber: record.sessionNumber >= 1 ? record.sessionNumber : 1,
+        },
+        record,
+      );
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -418,16 +480,74 @@ export function BetaCommentDrawer() {
               Your recent comments ({history.length})
             </p>
             <ul className="flex flex-col gap-2">
-              {history.slice(0, 10).map((record) => (
-                <li key={record.id} className="rounded border p-2 text-xs text-muted-foreground">
-                  <span className="font-medium">
-                    #{record.globalNumber} [{record.category}]
-                  </span>{" "}
-                  {record.body.slice(0, 80)}
-                  {record.body.length > 80 ? "…" : ""}
-                </li>
-              ))}
+              {visibleHistory.map((record) => {
+                const status = betaCommentDeliveryStatus(record);
+                const issueUrl =
+                  record.delivery?.state === "sent" ? safeIssueUrl(record.delivery.issueUrl) : null;
+                return (
+                  <li key={record.id} className="rounded border p-2 text-xs text-muted-foreground">
+                    <span className="font-medium">
+                      #{record.globalNumber} [{record.category}]
+                    </span>{" "}
+                    {record.body.slice(0, 80)}
+                    {record.body.length > 80 ? "…" : ""}
+                    <div
+                      className="mt-1 flex items-center justify-between gap-2"
+                      data-testid="beta-feedback-delivery"
+                      data-delivery={status}
+                    >
+                      {record.delivery?.state === "sent" ? (
+                        issueUrl ? (
+                          <a
+                            href={issueUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-foreground underline underline-offset-2"
+                          >
+                            Sent · GitHub #{record.delivery.issueNumber}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-foreground">
+                            Sent · GitHub #{record.delivery.issueNumber}
+                          </span>
+                        )
+                      ) : (
+                        <>
+                          <span>
+                            {status === "unsent"
+                              ? "Not sent to engineering"
+                              : "Delivery not recorded"}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            disabled={submitting || resendingId !== null}
+                            aria-label={`Send suggestion #${record.globalNumber} again`}
+                            onClick={() => void handleResend(record)}
+                          >
+                            {resendingId === record.id ? "Sending…" : "Send again"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
+            {history.length > HISTORY_PREVIEW_COUNT ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="mt-2 w-full text-xs"
+                aria-expanded={showAllHistory}
+                onClick={() => setShowAllHistory((value) => !value)}
+              >
+                {showAllHistory ? "Show fewer" : `Show all ${history.length}`}
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </SheetContent>

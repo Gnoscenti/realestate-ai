@@ -94,6 +94,28 @@ interface GHIssue {
   title: string;
 }
 
+const LOG_TAG = "[suggest-intake]";
+
+/**
+ * Testers only see a generic "saved on this device" fallback, so an intake
+ * outage (expired token, wrong repository scope, missing label permission) must
+ * be visible to operators in the server log. Never log the token, the reporter
+ * text, or the issue body.
+ */
+function logDeliveryFailure(detail: Record<string, string | number>): void {
+  console.error(`${LOG_TAG} issue delivery failed`, detail);
+}
+
+/** GitHub's own error summary (e.g. "Bad credentials"); never reporter content. */
+async function gitHubErrorMessage(response: Response): Promise<string> {
+  try {
+    const parsed = JSON.parse(await response.text()) as { message?: unknown };
+    return typeof parsed.message === "string" ? parsed.message.slice(0, 200) : "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Creates an intake issue only. The `ai-ready` label is intentionally absent:
  * a maintainer must add it after reviewing the untrusted reporter content.
@@ -104,7 +126,11 @@ export async function createGitHubIssue(
   markdown: string,
 ): Promise<GHIssue | null> {
   const target = getFeedbackRepository();
-  if (!target) return null;
+  if (!target) {
+    logDeliveryFailure({ reason: "invalid_repository_config" });
+    return null;
+  }
+  const repository = `${target.owner}/${target.repo}`;
   const title = `[Feedback] ${rec.pageTitle}: ${issueTitleExcerpt(rec.body) || "New suggestion"}`;
   const requestedLabels = [
     "feedback-intake",
@@ -128,10 +154,20 @@ export async function createGitHubIssue(
     let response = await create(requestedLabels);
     if (response.status === 422) response = await create(["feedback-intake"]);
     if (response.status === 422) response = await create([]);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logDeliveryFailure({
+        reason: "github_rejected",
+        repository,
+        status: response.status,
+        githubRequestId: response.headers.get("x-github-request-id") ?? "",
+        githubMessage: await gitHubErrorMessage(response),
+      });
+      return null;
+    }
     const issue = (await response.json()) as GHIssue;
     return { number: issue.number, html_url: issue.html_url, title: issue.title };
   } catch {
+    logDeliveryFailure({ reason: "network", repository });
     return null;
   }
 }
@@ -188,7 +224,15 @@ export const submitBetaComment = createServerFn({ method: "POST" })
           title: created.title,
         };
         destinations.push("github-intake-issue");
+        // Metadata only: lets an operator count or alert on arrivals from logs.
+        console.info(`${LOG_TAG} issue delivered`, {
+          issue: created.number,
+          module: record.module,
+          category: record.category,
+        });
       }
+    } else {
+      logDeliveryFailure({ reason: "token_not_configured" });
     }
 
     return {
