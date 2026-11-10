@@ -1,3 +1,5 @@
+import { pinVerifyFullSslMode } from "./pg-ssl-mode";
+
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
 
@@ -108,7 +110,8 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    if (!databaseUrl) throw new Error("DATABASE_URL is required for the Postgres backend.");
+    const pool = new Pool({ connectionString: pinVerifyFullSslMode(databaseUrl) });
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];
