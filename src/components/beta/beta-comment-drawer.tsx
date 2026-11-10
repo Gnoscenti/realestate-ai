@@ -82,6 +82,9 @@ function getSessionNumber(): number {
   return number;
 }
 
+/** Rows shown before the tester asks for the rest of the device history. */
+const HISTORY_PREVIEW_COUNT = 10;
+
 /** Only link to an issue URL this app could have produced; history is device data. */
 function safeIssueUrl(url: string): string | null {
   return url.startsWith("https://github.com/") ? url : null;
@@ -103,6 +106,7 @@ export function BetaCommentDrawer() {
   const [category, setCategory] = useState<Category>("other");
   const [submitting, setSubmitting] = useState(false);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   // History is read from device storage on render; bump to re-read after a change.
   const [, setHistoryVersion] = useState(0);
   const [triggerPosition, setTriggerPosition] = useState<FeedbackTriggerPosition>(
@@ -115,6 +119,9 @@ export function BetaCommentDrawer() {
 
   const unlocked = hasFeedbackAccess(billing);
   const history = unlocked ? loadLocalBetaInbox() : [];
+  // Every retained suggestion must stay reachable, or an older undelivered one
+  // could never be sent again.
+  const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_COUNT);
 
   useEffect(() => {
     const applyViewport = () => setViewportHeight(window.innerHeight);
@@ -473,7 +480,7 @@ export function BetaCommentDrawer() {
               Your recent comments ({history.length})
             </p>
             <ul className="flex flex-col gap-2">
-              {history.slice(0, 10).map((record) => {
+              {visibleHistory.map((record) => {
                 const status = betaCommentDeliveryStatus(record);
                 const issueUrl =
                   record.delivery?.state === "sent" ? safeIssueUrl(record.delivery.issueUrl) : null;
@@ -529,6 +536,18 @@ export function BetaCommentDrawer() {
                 );
               })}
             </ul>
+            {history.length > HISTORY_PREVIEW_COUNT ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="mt-2 w-full text-xs"
+                aria-expanded={showAllHistory}
+                onClick={() => setShowAllHistory((value) => !value)}
+              >
+                {showAllHistory ? "Show fewer" : `Show all ${history.length}`}
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </SheetContent>
