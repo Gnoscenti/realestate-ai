@@ -49,7 +49,8 @@ import type { Contractor } from "@/lib/contractors";
 import {
   emptyBilling,
   activateFreeCode,
-  startIntroAccess,
+  startDemoAccess,
+  startLifetimeAccess,
   type BillingState,
 } from "@/lib/billing";
 import {
@@ -810,10 +811,8 @@ export const useAppStore = create<AppState>()(
       clearBilling: () => set({ billing: emptyBilling() }),
 
       completeDemoCheckout: (sessionId) => {
-        const billing = startIntroAccess({
-          source: "demo_checkout",
+        const billing = startDemoAccess({
           sessionId: sessionId ?? `cs_demo_${Date.now().toString(36)}`,
-          isDemo: true,
         });
         set({ billing });
       },
@@ -823,11 +822,7 @@ export const useAppStore = create<AppState>()(
       // stamped isDemo: true (which also showed "demo checkout" on /billing
       // and offered paying customers a "Reset access (demo)" button).
       completePaidCheckout: (sessionId) => {
-        const billing = startIntroAccess({
-          source: "stripe_intro",
-          sessionId,
-          isDemo: false,
-        });
+        const billing = startLifetimeAccess({ sessionId });
         set({ billing });
       },
 

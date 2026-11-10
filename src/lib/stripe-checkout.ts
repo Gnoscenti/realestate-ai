@@ -1,14 +1,13 @@
 /**
  * Server-only Stripe helpers.
  *
- * Pricing: a single one-time $9.99 charge that unlocks INTRO_DAYS of access.
+ * Pricing: a single one-time $9.99 charge that unlocks lifetime access.
  * Checkout sessions are bound to the verified app user who created them.
  */
 
 import {
+  ACCESS_PRICE_CENTS,
   CURRENCY,
-  INTRO_DAYS,
-  INTRO_PRICE_CENTS,
   PLAN,
 } from "@/lib/billing";
 
@@ -118,21 +117,21 @@ export async function createCheckoutSession(opts: {
         quantity: 1,
         price_data: {
           currency: CURRENCY,
-          unit_amount: INTRO_PRICE_CENTS,
+          unit_amount: ACCESS_PRICE_CENTS,
           product_data: {
-            name: `${PLAN.name} — ${INTRO_DAYS}-day access`,
-            description: `Full agent workspace for ${INTRO_DAYS} days at $${(
-              INTRO_PRICE_CENTS / 100
-            ).toFixed(2)}. One-time charge; no recurring subscription.`,
+            name: `${PLAN.name} — lifetime access`,
+            description: `Lifetime access to the full agent workspace for a one-time $${(
+              ACCESS_PRICE_CENTS / 100
+            ).toFixed(2)}. No subscription; you are never charged again.`,
           },
         },
       },
     ],
     metadata: {
       product: "realestate-ai-pro",
-      plan: "intro_one_time",
-      intro_days: String(INTRO_DAYS),
-      intro_cents: String(INTRO_PRICE_CENTS),
+      plan: "lifetime_one_time",
+      access: "lifetime",
+      price_cents: String(ACCESS_PRICE_CENTS),
       recurring: "none",
       user_id: opts.userId.slice(0, 500),
       ...(opts.agentName
@@ -142,7 +141,7 @@ export async function createCheckoutSession(opts: {
     payment_intent_data: {
       metadata: {
         product: "realestate-ai-pro",
-        intro_days: String(INTRO_DAYS),
+        access: "lifetime",
         user_id: opts.userId.slice(0, 500),
       },
     },
@@ -193,7 +192,7 @@ export async function verifyCheckoutSession(
     const rightPurchase =
       session.mode === "payment" &&
       session.currency === CURRENCY &&
-      session.amount_total === INTRO_PRICE_CENTS;
+      session.amount_total === ACCESS_PRICE_CENTS;
     const paid = complete && rightProduct && rightOwner && rightPurchase;
     return {
       paid,
