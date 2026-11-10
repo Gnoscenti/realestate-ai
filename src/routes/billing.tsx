@@ -23,6 +23,7 @@ import {
   INTRO_DAYS,
   hasAppAccess,
   hasFeedbackAccess,
+  hasLifetimeAccess,
   type BillingState,
 } from "@/lib/billing";
 import { useAppStore } from "@/lib/store";
@@ -76,6 +77,8 @@ function BillingPage() {
   const left = daysLeft(billing.currentPeriodEnd);
   const endsOn = billing.introEndsAt ?? billing.currentPeriodEnd;
   const betaCode = usesBetaCode(billing);
+  // Beta-round customers have no end date and are never charged for access again.
+  const lifetime = hasLifetimeAccess(billing);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -84,8 +87,9 @@ function BillingPage() {
           Billing & Access
         </h1>
         <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          {PLAN.name} is a one-time {formatMoney(INTRO_PRICE_CENTS)} for{" "}
-          {INTRO_DAYS} days. Nothing renews on its own.
+          {lifetime
+            ? `Your ${PLAN.name} access is for life. You will not be charged for it again.`
+            : `${PLAN.name} is a one-time ${formatMoney(INTRO_PRICE_CENTS)} for ${INTRO_DAYS} days. Nothing renews on its own.`}
         </p>
       </div>
 
@@ -105,14 +109,22 @@ function BillingPage() {
               </CardDescription>
             </div>
             <Badge variant="secondary" className="shrink-0">
-              {left != null
-                ? `${left} ${left === 1 ? "day" : "days"} left`
-                : "Active"}
+              {lifetime
+                ? "Lifetime access"
+                : left != null
+                  ? `${left} ${left === 1 ? "day" : "days"} left`
+                  : "Active"}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-[var(--color-fg-muted)]">
-          {endsOn && (
+          {lifetime && (
+            <p data-testid="lifetime-access-note">
+              You joined during the beta, so your access has no end date. There
+              is nothing to renew.
+            </p>
+          )}
+          {!lifetime && endsOn && (
             <p>
               Access ends on{" "}
               <span className="text-[var(--color-fg)]">{formatDate(endsOn)}</span>

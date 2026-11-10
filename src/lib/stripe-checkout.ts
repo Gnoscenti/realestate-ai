@@ -2,6 +2,7 @@
  * Server-only Stripe helpers.
  *
  * Pricing: a single one-time $9.99 charge that unlocks INTRO_DAYS of access.
+ * A payment made during the beta round unlocks lifetime access instead.
  * Checkout sessions are bound to the verified app user who created them.
  */
 
@@ -11,6 +12,7 @@ import {
   INTRO_PRICE_CENTS,
   PLAN,
 } from "@/lib/billing";
+import { betaLifetimeCutoffMs, betaLifetimeOpen } from "@/lib/billing/beta-lifetime.server";
 
 export function stripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
@@ -42,6 +44,8 @@ export type VerifiedCheckout = {
   paid: boolean;
   demo: boolean;
   sessionId: string;
+  /** The payment was made during the beta round, so it earns lifetime access. */
+  lifetime: boolean;
   reason?: string;
 };
 
@@ -104,6 +108,11 @@ export async function createCheckoutSession(opts: {
   }
 
   const stripe = await stripeClient();
+  // What the customer is told they are buying must match what they are granted:
+  // both follow the same cutoff, here by creation time and on confirmation by
+  // Stripe's own record of that time.
+  const lifetime = betaLifetimeOpen();
+  const price = `$${(INTRO_PRICE_CENTS / 100).toFixed(2)}`;
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     success_url: `${opts.successUrl}${
@@ -119,18 +128,22 @@ export async function createCheckoutSession(opts: {
         price_data: {
           currency: CURRENCY,
           unit_amount: INTRO_PRICE_CENTS,
-          product_data: {
-            name: `${PLAN.name} — ${INTRO_DAYS}-day access`,
-            description: `Full agent workspace for ${INTRO_DAYS} days at $${(
-              INTRO_PRICE_CENTS / 100
-            ).toFixed(2)}. One-time charge; no recurring subscription.`,
-          },
+          product_data: lifetime
+            ? {
+                name: `${PLAN.name} — lifetime access (beta)`,
+                description: `Beta tester offer: lifetime access to the full agent workspace for a one-time ${price}. No subscription; you are never charged for it again.`,
+              }
+            : {
+                name: `${PLAN.name} — ${INTRO_DAYS}-day access`,
+                description: `Full agent workspace for ${INTRO_DAYS} days at ${price}. One-time charge; no recurring subscription.`,
+              },
         },
       },
     ],
     metadata: {
       product: "realestate-ai-pro",
-      plan: "intro_one_time",
+      plan: lifetime ? "beta_lifetime_one_time" : "intro_one_time",
+      access: lifetime ? "lifetime" : `${INTRO_DAYS}_days`,
       intro_days: String(INTRO_DAYS),
       intro_cents: String(INTRO_PRICE_CENTS),
       recurring: "none",
@@ -168,6 +181,7 @@ export async function verifyCheckoutSession(
       paid: false,
       demo: valid,
       sessionId,
+      lifetime: false,
       reason: valid ? "demo_session" : "demo_session_invalid",
     };
   }
@@ -177,6 +191,7 @@ export async function verifyCheckoutSession(
       paid: false,
       demo: false,
       sessionId,
+      lifetime: false,
       reason: "stripe_not_configured",
     };
   }
@@ -199,6 +214,9 @@ export async function verifyCheckoutSession(
       paid,
       demo: false,
       sessionId: session.id,
+      // Stripe's creation time decides, not the time the customer came back:
+      // a tester who paid during the beta round keeps the lifetime terms.
+      lifetime: paid && session.created * 1000 < betaLifetimeCutoffMs(),
       reason: paid
         ? undefined
         : `status:${session.status}/payment:${
@@ -212,6 +230,7 @@ export async function verifyCheckoutSession(
       paid: false,
       demo: false,
       sessionId,
+      lifetime: false,
       reason: "session_lookup_failed",
     };
   }

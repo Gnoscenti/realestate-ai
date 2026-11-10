@@ -10,6 +10,10 @@ import {
   emptyBilling,
   activateFreeCode,
   startIntroAccess,
+  startLifetimeAccess,
+  hasLifetimeAccess,
+  betaLifetimeOfferOpen,
+  BETA_LIFETIME_CUTOFF_ISO,
 } from "@/lib/billing";
 
 describe("pricing", () => {
@@ -32,6 +36,49 @@ describe("pricing", () => {
       "LISTINGPRO",
       "AGENTOS-X",
     ]);
+  });
+});
+
+describe("beta-round lifetime offer", () => {
+  const cutoff = Date.parse(BETA_LIFETIME_CUTOFF_ISO);
+
+  it("ends with November 10, 2026 in Pacific time", () => {
+    const pacific = (ms: number) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "short",
+        timeStyle: "medium",
+        hourCycle: "h23",
+      }).format(new Date(ms));
+    expect(pacific(cutoff - 1000)).toBe("2026-11-10, 23:59:59");
+    expect(pacific(cutoff)).toBe("2026-11-11, 00:00:00");
+  });
+
+  it("is open up to the cutoff and closed from it on", () => {
+    expect(betaLifetimeOfferOpen(cutoff - 1)).toBe(true);
+    expect(betaLifetimeOfferOpen(cutoff)).toBe(false);
+    expect(betaLifetimeOfferOpen(cutoff + 86_400_000)).toBe(false);
+  });
+
+  it("mirrors a lifetime purchase with no end date that never lapses", () => {
+    const paid = startLifetimeAccess({ sessionId: "cs_paid" });
+    expect(paid).toMatchObject({ currentPeriodEnd: null, introEndsAt: null, isDemo: false });
+    expect(hasLifetimeAccess(paid)).toBe(true);
+    const realNow = Date.now;
+    Date.now = () => realNow() + 50 * 365 * 86_400_000;
+    try {
+      expect(hasAppAccess(paid)).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("does not call time-limited, demo or missing access lifetime", () => {
+    expect(hasLifetimeAccess(startIntroAccess({ source: "stripe_intro", isDemo: false }))).toBe(false);
+    expect(hasLifetimeAccess(startIntroAccess())).toBe(false);
+    expect(hasLifetimeAccess(activateFreeCode("AGENTOS-X"))).toBe(false);
+    expect(hasLifetimeAccess(emptyBilling())).toBe(false);
+    expect(hasLifetimeAccess(null)).toBe(false);
   });
 });
 

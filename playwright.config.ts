@@ -37,6 +37,10 @@ export default defineConfig({
           VITE_AUTH_ENABLED: process.env.VITE_AUTH_ENABLED ?? "false",
           ALLOW_PRIVATE_SCRAPE_FOR_TESTS:
             process.env.ALLOW_PRIVATE_SCRAPE_FOR_TESTS ?? "1",
+          // Keep the beta round open on the test server so the lifetime-access
+          // flow can be exercised on any date. Ignored in production.
+          BETA_LIFETIME_CUTOFF:
+            process.env.BETA_LIFETIME_CUTOFF ?? "2999-01-01T00:00:00.000Z",
         },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
