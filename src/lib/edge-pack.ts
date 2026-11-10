@@ -6,6 +6,7 @@ import {
   generateInstantResponse,
   generateNurtureSequence,
 } from "@/lib/ai";
+import { leadLocation } from "@/lib/lead-facts";
 import {
   SPEED_TO_LEAD_SLA_MINUTES,
   minutesSince,
@@ -27,8 +28,9 @@ export function buildMultiChannelPack(lead: Lead, agentName?: string): ChannelPa
   const vm = generateInstantResponse(lead, "voicemail");
   const agent = agentName || "your local agent";
 
+  const location = leadLocation(lead);
   const callOpener = `Hi ${lead.name.split(" ")[0]}, this is ${agent}. I saw your interest${
-    lead.location ? ` around ${lead.location}` : ""
+    location ? ` around ${location}` : ""
   } and wanted to help personally—do you have two minutes?`;
 
   const allInOne = [
@@ -86,7 +88,7 @@ export function buildFiveMinuteProtocol(lead: Lead): {
     {
       n: 1,
       label: "Copy SMS (30 sec)",
-      detail: "Send the SMS pack first — highest open rate for new leads.",
+      detail: "Start with the text message draft.",
     },
     {
       n: 2,
@@ -115,7 +117,7 @@ export function buildFiveMinuteProtocol(lead: Lead): {
       step: 1,
       when: "Now (0–5 min)",
       channel: "SMS + Email",
-      purpose: "Win the first conversation (beat average 15h response)",
+      purpose: "Reply while the inquiry is new",
       body: pack.sms,
     },
     {
@@ -125,7 +127,7 @@ export function buildFiveMinuteProtocol(lead: Lead): {
       purpose: "Value bump — market note or listing match",
       body:
         nurture[1]?.body ||
-        `Quick follow-up, ${lead.name.split(" ")[0]} — happy to shortlist 2–3 homes that fit ${lead.location || "your area"} this week.`,
+        `Quick follow-up, ${lead.name.split(" ")[0]} — happy to shortlist 2–3 homes that fit ${leadLocation(lead) || "your area"} this week.`,
     },
     {
       step: 3,

@@ -104,10 +104,10 @@ export function BuyerSellerFaqPanel(props: { profile?: AgentProfile | null }) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <HelpCircle className="h-4 w-4 text-[var(--color-primary)]" />
-          Buyer &amp; seller FAQ assistant
+          Buyer &amp; seller FAQ answers
         </CardTitle>
         <CardDescription>
-          Instant process answers. Fair Housing–safe — not legal or lending advice.
+          Prepared answers matched by keyword. Fair Housing–safe — not legal or lending advice.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

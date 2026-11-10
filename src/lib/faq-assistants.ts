@@ -31,7 +31,7 @@ const BUYER_FAQS: FaqItem[] = [
     side: "buyer",
     question: "Do I need a pre-approval before touring?",
     answer:
-      "Yes for most competitive markets. A current pre-approval (or proof of funds for cash) shows sellers you can close and lets us target the right price band. Bring the letter to showings when possible.",
+      "I recommend it. A current pre-approval (or proof of funds for cash) shows sellers you can close and lets us target the right price band. Bring the letter to showings when possible.",
     tags: ["preapproval", "tour", "finance", "lender"],
   },
   {
@@ -39,7 +39,7 @@ const BUYER_FAQS: FaqItem[] = [
     side: "buyer",
     question: "Why do I need a buyer representation agreement?",
     answer:
-      "Post-settlement practice expects a written agreement before touring in many markets. It clarifies scope, compensation, and duties so there are no surprises. We will walk fee options in plain language before you sign.",
+      "A written agreement sets out scope, compensation, and duties before we tour, so there are no surprises. I will tell you what my brokerage requires, and we will walk fee options in plain language before you sign.",
     tags: ["agreement", "nar", "commission", "representation"],
   },
   {
@@ -63,7 +63,7 @@ const BUYER_FAQS: FaqItem[] = [
     side: "buyer",
     question: "How long from accepted offer to keys?",
     answer:
-      "Typical financed deals run about 21–45 days (loan, appraisal, title, final walkthrough). Cash can be faster. Your contract dates control; I will keep a shared timeline so nothing slips.",
+      "It depends on your contract and your lender. A financed purchase has to clear the loan, the appraisal, title work and a final walkthrough; a cash purchase skips the loan steps. Your contract dates control; I will keep a shared timeline so nothing slips.",
     tags: ["timeline", "escrow", "closing"],
   },
   {
@@ -90,7 +90,7 @@ const SELLER_FAQS: FaqItem[] = [
     side: "seller",
     question: "What should I fix before photos and showings?",
     answer:
-      "Prioritize safety, cleanliness, and curb appeal. Small repairs and declutter usually return more than major remodels. I will give a punch list tailored to your property and buyer pool.",
+      "Prioritize safety, cleanliness, and curb appeal. Start with small repairs and decluttering, and talk to me before you commit to a major remodel. I will give a punch list tailored to your property and buyer pool.",
     tags: ["staging", "repairs", "photos", "prep"],
   },
   {

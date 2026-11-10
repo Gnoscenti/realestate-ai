@@ -1,5 +1,6 @@
 import type { Lead, Property } from "@/data/seed";
 import { formatCurrency, uid } from "@/lib/utils";
+import { leadLocation } from "@/lib/lead-facts";
 
 export type SocialPlatform =
   | "instagram"
@@ -328,7 +329,8 @@ export function runSocialContentAgent(input: {
 }): CampaignPlan {
   const agent = input.agentName || "your local agent";
   const p = input.property;
-  const neighborhood = p?.neighborhood ?? input.lead?.location ?? "your market";
+  const neighborhood =
+    p?.neighborhood ?? ((input.lead ? leadLocation(input.lead) : "") || "your market");
   const voice = input.voice || "Professional & warm";
   const platforms =
     input.platforms.length > 0
@@ -870,7 +872,7 @@ export function runSocialContentAgent(input: {
     audience: p
       ? `Buyers/sellers watching ${p.neighborhood} · ${p.type} segment`
       : input.lead
-        ? `${input.lead.name}'s segment · ${input.lead.location}`
+        ? [`${input.lead.name}'s segment`, leadLocation(input.lead)].filter(Boolean).join(" · ")
         : `Sphere + local ${neighborhood} audience`,
     brandVoice: voice,
     propertyId: p?.id,

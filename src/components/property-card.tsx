@@ -4,7 +4,6 @@ import {
   Heart,
   MapPin,
   Maximize,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +55,6 @@ function PropertyArt({ property }: { property: Property }) {
 
 export function PropertyCard({
   property,
-  matchScore,
   favorited,
   onToggleFavorite,
   onView,
@@ -64,7 +62,6 @@ export function PropertyCard({
   tourLabel = "Tour",
 }: {
   property: Property;
-  matchScore?: number;
   favorited?: boolean;
   onToggleFavorite?: () => void;
   onView?: () => void;
@@ -75,14 +72,6 @@ export function PropertyCard({
     <Card className="overflow-hidden transition-[border-color] duration-150 hover:border-[var(--color-border-strong)]">
       <div className="relative">
         <PropertyArt property={property} />
-        {matchScore != null && (
-          <div className="absolute left-3 top-3">
-            <Badge variant="success" className="shadow-[var(--shadow-sm)]">
-              <Sparkles className="h-3 w-3" />
-              {matchScore}% match
-            </Badge>
-          </div>
-        )}
         <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
           <Badge
             variant={

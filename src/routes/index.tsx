@@ -157,6 +157,7 @@ function DashboardPage() {
     leads.length === 0 &&
     properties.length === 0 &&
     deals.length === 0 &&
+    rentals.length === 0 &&
     appointments.length === 0;
   const first = profile?.name?.split(" ")[0];
 
@@ -194,7 +195,7 @@ function DashboardPage() {
               {first ? `Here's your day, ${first}` : "Here's your day"}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-              Your work, ranked: leads to answer, follow-ups, deal deadlines and
+              Your work, ranked: leads to answer, follow-ups, deals to move forward and
               appointment prep. Each one comes with wording you can copy and send.
             </p>
             {hasActiveLeads && (
@@ -322,7 +323,7 @@ function DashboardPage() {
                 <Card>
                   <CardContent className="py-10 text-center text-sm text-[var(--color-fg-muted)]">
                     {isFreshWorkspace
-                      ? "Nothing to do yet. Your priorities appear here once you add a lead, a listing or an appointment."
+                      ? "Nothing to do yet. Your priorities appear here once you add a lead, a listing, a deal or an appointment."
                       : "You're all caught up. Restore completed items, or add an appointment to get prep tasks."}
                   </CardContent>
                 </Card>

@@ -4,6 +4,7 @@
  */
 import type { AgentProfile, Lead, Property } from "@/data/seed";
 import type { CalendarAppointment } from "@/lib/calendar";
+import { leadLocation } from "@/lib/lead-facts";
 
 export type ShowingTouch = {
   id: string;
@@ -56,7 +57,7 @@ export function generateShowingSequence(opts: {
     opts.property?.title ||
     opts.appointment?.propertyLabel ||
     opts.appointment?.location ||
-    opts.lead?.location ||
+    (opts.lead ? leadLocation(opts.lead) : "") ||
     "the property";
   const agent = opts.profile?.name?.split(" ")[0] || "your agent";
   const sign = opts.profile?.name ? `— ${opts.profile.name}` : `— ${agent}`;
@@ -114,7 +115,7 @@ ${sign}`,
       offsetHours: 168,
       label: "Day-7 check-in",
       channel: "Email",
-      subject: `Still house-hunting near ${opts.lead?.location || "your area"}?`,
+      subject: `Still house-hunting near ${(opts.lead ? leadLocation(opts.lead) : "") || "your area"}?`,
       purpose: "Soft nurture without spam",
       body: `Hi ${client},
 

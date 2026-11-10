@@ -10,6 +10,7 @@ import {
 import type { PriorityItem } from "@/lib/priorities";
 import { GOAL_OPTIONS, listingFacts, type ContentGoal } from "@/lib/social-desk/suggest";
 import { formatCurrency } from "@/lib/utils";
+import { DEAL_STAGE_LABEL } from "@/lib/book-entry";
 
 export type CommandArtifact = {
   id: string;
@@ -43,10 +44,14 @@ export function buildCommandPack(
   const lead = item.leadId ? ctx.leads.find((l) => l.id === item.leadId) : undefined;
   const deal = item.dealId ? ctx.deals.find((d) => d.id === item.dealId) : undefined;
 
-  const subjectProperty =
-    (deal && ctx.properties.find((p) => p.id === deal.propertyId)) ||
-    ctx.properties.find((p) => p.status === "active") ||
-    ctx.properties[0];
+  // A deal's pack may only show the listing that deal is linked to. Falling
+  // back to "any active listing" attached comparison notes for an unrelated
+  // property, and a deal an agent types in is not linked to a listing at all.
+  const subjectProperty = item.dealId
+    ? deal && deal.propertyId
+      ? ctx.properties.find((p) => p.id === deal.propertyId)
+      : undefined
+    : ctx.properties.find((p) => p.status === "active") || ctx.properties[0];
 
   const artifacts: CommandArtifact[] = [];
 
@@ -56,10 +61,10 @@ export function buildCommandPack(
       id: "words",
       kind: "words",
       title: "Calendar prep checklist",
-      summary: "AI reminders from connected calendars",
-      body: `${item.title}\n\n${item.reason}\n\nPrep focus\n• Confirm access / parties 30 min prior\n• Bring agreements if first tour\n• Log contractors used after the appointment\n\nOpen Calendar Hub for full AI reminder list and vendor directory.`,
+      summary: "A standard checklist for this appointment",
+      body: `${item.title}\n\n${item.reason}\n\nPrep focus\n• Confirm access / parties 30 min prior\n• Bring agreements if first tour\n• Log contractors used after the appointment\n\nOpen Calendar & Vendors for this appointment's preparation notes and your vendor list.`,
       href: "/calendar",
-      hrefLabel: "Open Calendar Hub",
+      hrefLabel: "Open Calendar & Vendors",
     });
   } else if (lead) {
     if (item.kind === "speed_to_lead" || item.kind === "hot_lead") {
@@ -113,7 +118,7 @@ export function buildCommandPack(
       id: "brief",
       kind: "brief",
       title: "Pre-call client brief",
-      summary: "Intent, inventory, talk tracks",
+      summary: "Saved details, listings, talk tracks",
       body: generateClientBrief(lead, ctx.properties, ctx.deals),
       href: `/outreach?lead=${lead.id}&mode=brief`,
       hrefLabel: "Full brief",
@@ -145,9 +150,10 @@ export function buildCommandPack(
       title: "Client status message",
       summary: deal ? deal.propertyTitle : "Deal update",
       body: deal
-        ? `Hi ${deal.clientName.split(" ")[0]}, quick update on ${deal.propertyTitle}: we're in ${deal.stage.replaceAll("_", " ")} (${deal.progress}%). ${
-            deal.issues[0] ? `I'm actively clearing: ${deal.issues[0].text}. ` : ""
-          }I'll confirm next milestone by end of day — call me with questions.`
+        ? // The stage only: the progress figure is a fixed number per stage, not a measurement to quote to a client.
+          `Hi ${deal.clientName.trim().split(/\s+/)[0]}, quick update on ${deal.propertyTitle}: we're at the ${(DEAL_STAGE_LABEL[deal.stage] ?? deal.stage).toLowerCase()} stage. ${
+            deal.issues[0] ? `I'm working on: ${deal.issues[0].text}. ` : ""
+          }I'll confirm the next milestone with you. Call me with any questions.`
         : "I'll send a written status with next milestone today.",
       href: "/transactions",
       hrefLabel: "Open Transaction Hub",
@@ -156,11 +162,11 @@ export function buildCommandPack(
     artifacts.push({
       id: "words",
       kind: "words",
-      title: "Owner / listing note",
-      summary: "Rent & marketing language",
-      body: "Unit needs attention this week. I recommend publishing refreshed photos + multi-platform rental posts, and aligning rent to current mark-to-market so we don't extend vacancy loss.",
+      title: "Note to the owner",
+      summary: "A starting draft about rent and marketing",
+      body: "This unit needs attention this week. I recommend refreshing the photos and the rental listing, and reviewing the rent against comparable units nearby so it is not vacant longer than it has to be.",
       href: "/properties",
-      hrefLabel: "Property management",
+      hrefLabel: "Open Property Management",
     });
   }
 
@@ -207,7 +213,7 @@ export function buildCommandPack(
   artifacts.push({
     id: "compliance",
     kind: "compliance",
-    title: "Post-NAR compliance outline",
+    title: "Buyer agreement outline",
     summary: outline.title,
     body: outline.clauses.map((c) => `${c.heading}\n${c.text}`).join("\n\n"),
     href: lead ? `/outreach?lead=${lead.id}&mode=agreement` : "/outreach?mode=agreement",

@@ -53,7 +53,7 @@ import { hasAppAccess } from "@/lib/billing";
 import { HoverHint } from "@/components/ui/hover-hint";
 import { BetaCommentDrawer } from "@/components/beta/beta-comment-drawer";
 import { syncNotificationBadges } from "@/lib/app-badge";
-import { unreadCount as emailUnreadCount } from "@/lib/email-alerts";
+import { clearLegacyEmailToken, unreadCount as emailUnreadCount } from "@/lib/email-alerts";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { RedirectToSignIn, SIGN_IN_PATH } from "@/lib/auth/gates";
 import { AccountMenu, SignedInAs } from "@/components/layout/account-menu";
@@ -84,7 +84,7 @@ const NAV_HINTS: Record<string, string> = {
   "/leads": "Your clients and prospects",
   "/calendar": "Appointments and trusted vendors",
   "/transactions": "Track each deal from offer to close",
-  "/alerts": "Client and escrow emails that need you",
+  "/alerts": "Deal emails found by a one-time Gmail scan",
   "/search": "Search the listings you have saved",
   "/mls": "Add listings from your website or a CSV",
   "/cma": "Compare saved listings and sold records",
@@ -353,6 +353,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     // Register normalization only. The auth-bound effect below performs the
     // sole initial rehydrate after the final user-scoped key is known.
     ensureHydrationHook();
+    // An older build kept a pasted Gmail token in browser storage (ledger A-020).
+    clearLegacyEmailToken();
     void initNativeShell();
   }, []);
 
@@ -635,7 +637,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
               <div className="col-span-2 flex items-center gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-fg-muted)]">
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[var(--color-accent)]" />
-                <dt>AI familiarity</dt>
+                <dt>Activity score</dt>
                 <dd className="tabular ml-auto font-medium text-[var(--color-fg)]">
                   {memory.familiarityScore}/100
                 </dd>

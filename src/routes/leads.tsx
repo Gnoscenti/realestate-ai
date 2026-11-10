@@ -45,13 +45,10 @@ import {
 } from "@/components/ui/select";
 import { RelativeTime } from "@/components/relative-time";
 import { useAppStore } from "@/lib/store";
-import {
-  formatCurrency,
-  initials,
-  cn,
-} from "@/lib/utils";
+import { initials, cn } from "@/lib/utils";
 import type { Lead, LeadHeat, LeadSource, LeadStatus } from "@/data/seed";
 import { pickFollowUpLeads } from "@/lib/lead-follow-up";
+import { leadBudgetText, leadLocation, leadNotes, parseLeadBudget } from "@/lib/lead-facts";
 
 export const Route = createFileRoute("/leads")({
   component: LeadsPage,
@@ -62,6 +59,21 @@ function heatBadge(heat: LeadHeat) {
   if (heat === "warm") return <Badge variant="warm">Warm</Badge>;
   return <Badge variant="cold">Cold</Badge>;
 }
+
+/** The add-lead form before anything is typed. Budget and property type start blank. */
+const EMPTY_LEAD_FORM = {
+  name: "",
+  email: "",
+  phone: "",
+  location: "",
+  budgetMin: "",
+  budgetMax: "",
+  propertyType: "",
+  preferences: "",
+  notes: "",
+  source: "website" as LeadSource,
+  status: "new" as LeadStatus,
+};
 
 function scoreTone(score: number) {
   if (score >= 90) return "text-[var(--color-success)] bg-[var(--color-success-soft)]";
@@ -83,19 +95,7 @@ function LeadsPage() {
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    location: "",
-    budgetMin: "500000",
-    budgetMax: "900000",
-    propertyType: "House",
-    preferences: "",
-    notes: "",
-    source: "website" as LeadSource,
-    status: "new" as LeadStatus,
-  });
+  const [form, setForm] = useState(EMPTY_LEAD_FORM);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -130,37 +130,31 @@ function LeadsPage() {
       setFormError("Add at least an email address or phone number.");
       return;
     }
+    const budget = parseLeadBudget(form.budgetMin, form.budgetMax);
+    if (!budget.ok) {
+      setFormError(budget.error);
+      return;
+    }
     setFormError(null);
+    // Only what was typed is saved. A blank stays blank; nothing stands in for it.
     const lead = addLead({
       name: form.name.trim(),
       email: form.email.trim() || "—",
       phone: form.phone.trim() || "—",
-      location: form.location.trim() || "Metro",
-      budgetMin: Number(form.budgetMin) || 0,
-      budgetMax: Number(form.budgetMax) || 0,
+      location: form.location.trim(),
+      budgetMin: budget.value.budgetMin,
+      budgetMax: budget.value.budgetMax,
       status: form.status,
       source: form.source,
-      propertyType: form.propertyType,
-      preferences: form.preferences,
-      notes: form.notes || "New lead — AI scoring applied.",
+      propertyType: form.propertyType.trim(),
+      preferences: form.preferences.trim(),
+      notes: form.notes.trim(),
       lastContact: new Date().toISOString(),
       tags: ["new"],
     });
     setSelectedId(lead.id);
     setOpen(false);
-    setForm({
-      name: "",
-      email: "",
-      phone: "",
-      location: "",
-      budgetMin: "500000",
-      budgetMax: "900000",
-      propertyType: "House",
-      preferences: "",
-      notes: "",
-      source: "website",
-      status: "new",
-    });
+    setForm(EMPTY_LEAD_FORM);
     toast.success(`${lead.name} added · score ${lead.score}`);
   };
 
@@ -194,7 +188,7 @@ function LeadsPage() {
             Lead Intelligence
           </h1>
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-            Your clients and prospects, scored and ranked so you know who to call first.
+            Your clients and prospects, ranked by a points score so you know who to call first.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -285,6 +279,7 @@ function LeadsPage() {
                     onChange={(e) =>
                       setForm({ ...form, propertyType: e.target.value })
                     }
+                    placeholder="House, condo, land…"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -295,9 +290,11 @@ function LeadsPage() {
                     inputMode="numeric"
                     min={0}
                     value={form.budgetMin}
-                    onChange={(e) =>
-                      setForm({ ...form, budgetMin: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setForm({ ...form, budgetMin: e.target.value });
+                      setFormError(null);
+                    }}
+                    aria-describedby="lead-budget-hint"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -308,11 +305,19 @@ function LeadsPage() {
                     inputMode="numeric"
                     min={0}
                     value={form.budgetMax}
-                    onChange={(e) =>
-                      setForm({ ...form, budgetMax: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setForm({ ...form, budgetMax: e.target.value });
+                      setFormError(null);
+                    }}
+                    aria-describedby="lead-budget-hint"
                   />
                 </div>
+                <p
+                  id="lead-budget-hint"
+                  className="text-xs text-[var(--color-fg-subtle)] sm:col-span-2"
+                >
+                  Leave the budget blank if you don't know it yet.
+                </p>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="lead-preferences">Preferences</Label>
                   <Textarea
@@ -456,7 +461,7 @@ function LeadsPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Insights</CardTitle>
+              <CardTitle>Flags from your records</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {selected && selected.score >= 88 && (
@@ -476,7 +481,7 @@ function LeadsPage() {
               {!(selected && selected.score >= 88) && staleCount === 0 && (
                 <p className="text-sm text-[var(--color-fg-muted)]">
                   {leads.length === 0
-                    ? "Insights appear here once you have leads. They come only from your own records."
+                    ? "Flags appear here once you have leads. They come only from your own records."
                     : // Only what the check proves. "Last contact" starts at the moment a
                       // lead is added, so this cannot claim anyone was contacted.
                       "No overdue follow-ups. A lead is flagged here after 5 days with no contact logged."}
@@ -531,13 +536,16 @@ function LeadsPage() {
                     {selected.status.replace("_", " ")}
                   </Badge>
                 </div>
-                <p className="text-[var(--color-fg-muted)]">{selected.notes}</p>
+                {leadNotes(selected) && (
+                  <p className="text-[var(--color-fg-muted)]">{leadNotes(selected)}</p>
+                )}
                 <div className="space-y-1 text-[var(--color-fg-subtle)]">
                   <p>{selected.email}</p>
                   <p>{selected.phone}</p>
                   <p>
-                    Budget {formatCurrency(selected.budgetMin)} –{" "}
-                    {formatCurrency(selected.budgetMax)}
+                    {leadBudgetText(selected)
+                      ? `Budget ${leadBudgetText(selected)}`
+                      : "No budget entered"}
                   </p>
                 </div>
                 <Select
@@ -604,6 +612,10 @@ function LeadRow({
   onMail: () => void;
   onMsg: () => void;
 }) {
+  // Each of these is blank for a lead saved with only a name and a phone number.
+  const location = leadLocation(lead);
+  const budget = leadBudgetText(lead, true);
+  const notes = leadNotes(lead);
   return (
     <div
       role="button"
@@ -628,19 +640,20 @@ function LeadRow({
             <h3 className="font-medium text-[var(--color-fg)]">{lead.name}</h3>
             {heatBadge(lead.heat)}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--color-fg-muted)]">
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
-              {lead.location}
-            </span>
-            <span>
-              {formatCurrency(lead.budgetMin, true)} –{" "}
-              {formatCurrency(lead.budgetMax, true)}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-[var(--color-fg-muted)] line-clamp-2">
-            {lead.notes}
-          </p>
+          {(location || budget) && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--color-fg-muted)]">
+              {location && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin aria-hidden="true" className="h-3 w-3" />
+                  {location}
+                </span>
+              )}
+              {budget && <span>{budget}</span>}
+            </div>
+          )}
+          {notes && (
+            <p className="mt-2 text-sm text-[var(--color-fg-muted)] line-clamp-2">{notes}</p>
+          )}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-[11px] text-[var(--color-fg-subtle)]">
               Last contact <RelativeTime iso={lead.lastContact} />

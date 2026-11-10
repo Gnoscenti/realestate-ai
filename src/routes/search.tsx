@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { PropertyCard } from "@/components/property-card";
 import { useAppStore } from "@/lib/store";
-import { propertyMatchScore, searchProperties } from "@/lib/ai";
+import { searchProperties } from "@/lib/ai";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { Property } from "@/data/seed";
 import { z } from "zod";
@@ -64,7 +64,7 @@ function SearchPage() {
       pushActivity({
         type: "chat",
         title: "Listing search",
-        description: `Natural language query: “${q.slice(0, 80)}${q.length > 80 ? "…" : ""}”`,
+        description: `Searched saved listings for “${q.slice(0, 80)}${q.length > 80 ? "…" : ""}”`,
         badge: "Search",
       });
     }
@@ -100,7 +100,7 @@ function SearchPage() {
           <div className="flex items-center gap-2">
             <Search className="h-5 w-5 text-[var(--color-primary)]" />
             <h3 className="font-display text-base font-semibold text-[var(--color-fg)]">
-              Natural language search
+              Search in plain words
             </h3>
           </div>
           <p className="text-sm text-[var(--color-fg-muted)]">
@@ -173,7 +173,6 @@ function SearchPage() {
               <PropertyCard
                 key={property.id}
                 property={property}
-                matchScore={committed ? propertyMatchScore(property, committed) : undefined}
                 favorited={favorites.includes(property.id)}
                 onToggleFavorite={() => {
                   toggleFavorite(property.id);

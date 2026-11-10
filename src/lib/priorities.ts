@@ -5,6 +5,8 @@ import {
   formatApptWhen,
 } from "@/lib/calendar";
 import { suggestContentGap } from "@/lib/social-desk/suggest";
+import { DEAL_STAGE_LABEL, rentalLabel } from "@/lib/book-entry";
+import { leadInterest, leadLocation } from "@/lib/lead-facts";
 import { formatCurrency } from "@/lib/utils";
 
 export type PriorityKind =
@@ -28,6 +30,7 @@ export type PriorityItem = {
   urgency: "critical" | "high" | "medium";
   title: string;
   reason: string;
+  /** Why this item is in the queue, stated only in terms of what the rule checked. Shown under the action pack title on Command Center. Never an outside statistic. */
   researchNote: string;
   leadId?: string;
   dealId?: string;
@@ -39,13 +42,14 @@ export type PriorityItem = {
 };
 
 /**
- * Daily action queue ranked by industry pain points:
- * - Respond to recent inquiries using the recorded last-contact timestamp
- * - AI first-touch +40% lead capture
- * - 66% adopt tech to save time; follow-up is #1 leakage
- * - Post-NAR: prove value via prep, CMA, agreements
- * - NAR: ~78% of agent AI use is writing / social content
- * - Calendar prep from connected Google/Apple/Outlook
+ * Daily action queue. Every item comes from a rule over saved records:
+ * - New leads, ordered by the last-contact time saved on the lead
+ * - Leads with no contact logged for 5+ days (urgent at 10+), hot leads, cold leads at 14+ days
+ * - Open deals with a high or medium issue, or under 50% progress
+ * - Vacant units, and units whose market rent is more than 5% above current rent
+ * - Appointments saved on this device that start within 36 hours
+ * - One content suggestion and one listing comparison from saved listings
+ * No outside statistics are used. Do not add any to user-facing text.
  */
 export function buildPriorityQueue(ctx: {
   leads: Lead[];
@@ -71,7 +75,7 @@ export function buildPriorityQueue(ctx: {
         kind: "speed_to_lead",
         urgency: hoursSince > 1 ? "critical" : "high",
         title: `Respond to ${lead.name} now`,
-        reason: `New lead · last touch ${Math.max(0, Math.round(hoursSince))}h ago · score ${lead.score}`,
+        reason: `New lead · ${Math.max(0, Math.round(hoursSince))}h since it was added or last contacted · score ${lead.score}`,
         researchNote:
           "A prompt, useful reply gives this inquiry a clear next step. Priority uses the recorded contact time, not a predicted conversion rate.",
         leadId: lead.id,
@@ -87,9 +91,11 @@ export function buildPriorityQueue(ctx: {
         kind: "overdue_followup",
         urgency: daysSince >= 10 ? "critical" : "high",
         title: `Follow up ${lead.name}`,
-        reason: `${Math.floor(daysSince)}d since contact · ${lead.heat} · ${lead.location}`,
+        reason: [`${Math.floor(daysSince)}d since contact`, lead.heat, leadLocation(lead)]
+          .filter(Boolean)
+          .join(" · "),
         researchNote:
-          "Follow-up discipline is the #1 pipeline leak once speed-to-lead is fixed.",
+          "On your list because the last contact date saved for this lead is 5 or more days ago. It turns urgent at 10 days.",
         leadId: lead.id,
         actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=nurture`,
@@ -103,9 +109,9 @@ export function buildPriorityQueue(ctx: {
         kind: "hot_lead",
         urgency: "high",
         title: `Keep momentum with ${lead.name}`,
-        reason: `Hot score ${lead.score} · ${lead.preferences || lead.propertyType}`,
+        reason: [`Hot score ${lead.score}`, leadInterest(lead)].filter(Boolean).join(" · "),
         researchNote:
-          "Predictive scoring only helps if high-intent leads get same-day human attention.",
+          "On your list because this lead is marked hot and its last contact date is within the past 5 days. The score is worked out from the budget, status, source and tags saved on the lead.",
         leadId: lead.id,
         actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=brief`,
@@ -119,9 +125,9 @@ export function buildPriorityQueue(ctx: {
         kind: "sphere_reactivate",
         urgency: "medium",
         title: `Reactivate ${lead.name}`,
-        reason: `Cold sphere · ${Math.floor(daysSince)}d dormant · ${lead.source.replace("_", " ")}`,
+        reason: `Cold lead · ${Math.floor(daysSince)}d since contact · ${lead.source.replace("_", " ")}`,
         researchNote:
-          "Top CRMs mine existing databases for seller/buyer signals — cheaper than new portal leads.",
+          "On your list because this lead is marked cold and its last contact date is 14 or more days ago.",
         leadId: lead.id,
         actionLabel: "Open in Instant Response",
         href: `/outreach?lead=${lead.id}&mode=reactivate`,
@@ -141,7 +147,7 @@ export function buildPriorityQueue(ctx: {
         title: `Clear risk: ${deal.propertyTitle}`,
         reason: top.text,
         researchNote:
-          "Transaction delays and disclosure gaps are top agent stress points; AI flags them before they kill closings.",
+          "On your list because this open deal has an issue marked high or medium. The issue shown is the first one saved on the deal.",
         dealId: deal.id,
         actionLabel: "Open Transaction Hub",
         href: "/transactions",
@@ -153,9 +159,9 @@ export function buildPriorityQueue(ctx: {
         kind: "deal_milestone",
         urgency: "medium",
         title: `Advance ${deal.clientName}'s deal`,
-        reason: `${deal.stage.replaceAll("_", " ")} · ${deal.progress}% · ${formatCurrency(deal.value)}`,
+        reason: `${DEAL_STAGE_LABEL[deal.stage] ?? deal.stage} · ${formatCurrency(deal.value)}`,
         researchNote:
-          "Milestone tracking keeps deals from stalling between contract and clear-to-close.",
+          "On your list because this open deal is less than halfway through its stages and has no issue marked high or medium.",
         dealId: deal.id,
         actionLabel: "Open Transaction Hub",
         href: "/transactions",
@@ -170,10 +176,13 @@ export function buildPriorityQueue(ctx: {
         id: `vac_${unit.id}`,
         kind: "vacancy",
         urgency: "high",
-        title: `Fill vacancy · ${unit.address} ${unit.unit}`,
-        reason: `Market rent ${formatCurrency(unit.marketRent)}/mo`,
+        title: `Fill vacancy · ${rentalLabel(unit)}`,
+        reason:
+          unit.marketRent > 0
+            ? `Market rent estimate ${formatCurrency(unit.marketRent)}/mo`
+            : "No market rent estimate saved",
         researchNote:
-          "Vacancy is pure revenue leakage — dynamic pricing + ready-to-list copy close the gap faster.",
+          "On your list because this unit is marked vacant. Any rent shown is the market rent estimate saved for the unit.",
         rentalId: unit.id,
         actionLabel: "Open Property Management",
         href: "/properties",
@@ -184,10 +193,10 @@ export function buildPriorityQueue(ctx: {
         id: `rent_${unit.id}`,
         kind: "rent_gap",
         urgency: "medium",
-        title: `Mark-to-market · Unit ${unit.unit}`,
+        title: `Review rent · ${rentalLabel(unit)}`,
         reason: `${formatCurrency(unit.marketRent - unit.rent)}/mo below market`,
         researchNote:
-          "Agents managing rentals leave money on the table without automated rent optimization.",
+          "On your list because the market rent estimate saved for this unit is more than 5% above its current rent.",
         rentalId: unit.id,
         actionLabel: "Open Property Management",
         href: "/properties",
@@ -228,7 +237,7 @@ export function buildPriorityQueue(ctx: {
         : "Ship market content this week",
       reason: gap.reason,
       researchNote:
-        "NAR tech surveys: ~78% of agent AI usage is writing — listings, social, email. Agentic packs beat one-off posts.",
+        "Suggested from the status of your saved listings: an active listing first, then coming soon, then sold, otherwise a buyer education post. It does not check what you have already posted.",
       actionLabel: "Open Social Desk",
       href: `/marketing?goal=${gap.goal}${gap.property ? `&property=${gap.property.id}` : ""}`,
       score: 620,
@@ -247,7 +256,7 @@ export function buildPriorityQueue(ctx: {
         title: `CMA package ready · ${activeListing.neighborhood}`,
         reason: `${activeListing.title} — comps + list strategy + value script for listing or buyer consults`,
         researchNote:
-          "Post-NAR: written value proof (CMA + agreement) justifies fees better than portal printouts.",
+          "On your list because you have an active listing. The notes compare saved listings in the same city and of the same type. They are not verified sold comparables and give no price.",
         actionLabel: "Open CMA Studio",
         href: "/cma",
         score: 480,
@@ -261,9 +270,9 @@ export function buildPriorityQueue(ctx: {
     kind: "compliance_package",
     urgency: "medium",
     title: "Buyer agreement outline on standby",
-    reason: "Post-NAR written representation — scope, fee, term, fair housing",
+    reason: "Talking points for a written buyer agreement: scope, fee, term and conflicts",
     researchNote:
-      "Portals own search; agents win on counsel, risk, and clear agreements before tours.",
+      "A standing reminder, not triggered by anything in your records. This is a talking outline, not a contract or legal advice. Review it with your broker before you use it.",
     actionLabel: "Open in Instant Response",
     href: "/outreach?mode=agreement",
     score: 350,
@@ -279,21 +288,16 @@ export function buildPriorityQueue(ctx: {
     .slice(0, 14);
 }
 
-export function responseTimeInsight(leads: Lead[]): {
-  avgHours: number;
-  underFiveMinPotential: string;
-} {
+/** Average hours since the last-contact time saved on each active lead. */
+export function responseTimeInsight(leads: Lead[]): { avgHours: number } {
   const active = leads.filter(
     (l) => !["closed_won", "closed_lost"].includes(l.status),
   );
-  if (!active.length) return { avgHours: 0, underFiveMinPotential: "—" };
+  if (!active.length) return { avgHours: 0 };
   const avgHours =
     active.reduce(
       (s, l) => s + (Date.now() - new Date(l.lastContact).getTime()) / 3600000,
       0,
     ) / active.length;
-  return {
-    avgHours: Math.round(avgHours * 10) / 10,
-    underFiveMinPotential: "+40% capture vs manual-only (Inman/Real Trends)",
-  };
+  return { avgHours: Math.round(avgHours * 10) / 10 };
 }

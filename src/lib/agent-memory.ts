@@ -4,6 +4,7 @@ import {
   searchKnowledge,
   type KnowledgeEntry,
 } from "@/data/rsf-knowledge";
+import { leadLocation, leadNotes } from "@/lib/lead-facts";
 
 export type MemorySignalKind =
   | "chat"
@@ -275,16 +276,13 @@ export function memoryInsights(
   const firstName = profile?.name?.split(" ")[0];
   insights.push(
     firstName
-      ? `${firstName}'s AI familiarity is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} interactions.`
-      : `Your AI familiarity is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} interactions.`,
+      ? `${firstName}'s activity score is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} counted actions.`
+      : `Your activity score is ${safeMemory.familiarityScore}/100 after ${safeMemory.totalInteractions} counted actions.`,
   );
   const n = topKeys(safeMemory.neighborhoods, 3);
   if (n.length) insights.push(`Strongest market focus: ${n.join(" · ")}.`);
   const t = topKeys(safeMemory.topics, 3);
   if (t.length) insights.push(`Recurring workstreams: ${t.join(" · ")}.`);
-  if (safeMemory.preferredVoice)
-    insights.push(`Preferred brand voice: ${safeMemory.preferredVoice}.`);
-  insights.push(`Reply style locked to: ${safeMemory.responseStyle}.`);
   const goals = topKeys(safeMemory.contentGoals, 2);
   if (goals.length)
     insights.push(`Content goals you run most: ${goals.join(", ")}.`);
@@ -292,7 +290,7 @@ export function memoryInsights(
   if (tags.length)
     insights.push(`Client tags you touch most: ${tags.join(", ")}.`);
   for (const f of safeMemory.learnedFacts.slice(0, 4)) {
-    insights.push(`Memory: ${f.text}`);
+    insights.push(`Note: ${f.text}`);
   }
   return insights;
 }
@@ -349,11 +347,14 @@ export function formatRetrievedKnowledge(entries: KnowledgeEntry[]): string {
 }
 
 export function learnFromLead(lead: Lead): MemorySignal {
+  // A blank location teaches nothing. Stored as "—" or a stand-in word, it
+  // used to be learned as a neighborhood the agent works in.
+  const location = leadLocation(lead);
   return {
     kind: "lead_touch",
-    text: `${lead.location} ${lead.preferences} ${lead.notes}`,
+    text: `${location} ${lead.preferences} ${leadNotes(lead)}`.trim(),
     meta: {
-      neighborhood: lead.location,
+      ...(location ? { neighborhood: location } : {}),
       tag: lead.tags[0],
       channel: lead.source,
     },
