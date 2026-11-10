@@ -16,7 +16,8 @@ export const Route = createRootRoute({
       {
         name: "viewport",
         // No maximum-scale / user-scalable=no: pinch-zoom must stay available
-        // (WCAG 1.4.4). Inputs are 16px on phones, so iOS does not zoom on focus.
+        // (WCAG 1.4.4). iOS would zoom on focusing a field under 16px, so
+        // styles.css holds every form control at 16px below the md breakpoint.
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       {

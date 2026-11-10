@@ -51,6 +51,7 @@ import {
   cn,
 } from "@/lib/utils";
 import type { Lead, LeadHeat, LeadSource, LeadStatus } from "@/data/seed";
+import { pickFollowUpLeads } from "@/lib/lead-follow-up";
 
 export const Route = createFileRoute("/leads")({
   component: LeadsPage,
@@ -163,7 +164,7 @@ function LeadsPage() {
     toast.success(`${lead.name} added · score ${lead.score}`);
   };
 
-  const followUpTargets = leads.filter((l) => l.heat !== "cold").slice(0, 5);
+  const followUpTargets = pickFollowUpLeads(leads);
   const filtersActive = search.trim() !== "" || heatFilter !== "all";
 
   const scheduleFollowups = () => {
@@ -476,7 +477,9 @@ function LeadsPage() {
                 <p className="text-sm text-[var(--color-fg-muted)]">
                   {leads.length === 0
                     ? "Insights appear here once you have leads. They come only from your own records."
-                    : "Nothing needs attention right now. Every active lead has been contacted in the last 5 days."}
+                    : // Only what the check proves. "Last contact" starts at the moment a
+                      // lead is added, so this cannot claim anyone was contacted.
+                      "No overdue follow-ups. A lead is flagged here after 5 days with no contact logged."}
                 </p>
               )}
             </CardContent>

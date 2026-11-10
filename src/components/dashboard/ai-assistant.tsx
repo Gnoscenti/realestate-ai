@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bot,
   Home,
-  Lock,
   Send,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -45,7 +45,7 @@ const QUICK = [
       "Explain the professional CMA workflow and what data I need before recommending a price.",
   },
   {
-    label: "My listings",
+    label: "Social Desk listings",
     icon: Home,
     query:
       "Summarize my active server-saved listings using only objective property and transaction facts.",
@@ -71,21 +71,30 @@ export function AIAssistant({ className }: { className?: string }) {
   const [thinking, setThinking] = useState(false);
   const [rated, setRated] = useState<Record<string, "up" | "down">>({});
   const logRef = useRef<HTMLDivElement>(null);
-  const seenMessages = useRef<number | null>(null);
+  const seen = useRef<{ messages: number; thinking: boolean } | null>(null);
 
   // Follow the conversation inside the chat panel only. scrollIntoView() also
   // scrolls the page, which used to drag the Command Center past its own
   // heading on every load, so the panel's viewport is moved directly, and only
   // once the conversation actually changes.
+  //
+  // Messages and the "thinking" bubble are tracked separately. A reply arrives
+  // as one more message and one fewer bubble in the same render, so a combined
+  // count would not change and the reply would be left below the fold.
   useEffect(() => {
-    const count = chat.length + (thinking ? 1 : 0);
-    const previous = seenMessages.current;
-    seenMessages.current = count;
-    if (previous === null || previous === count) return;
+    const previous = seen.current;
+    seen.current = { messages: chat.length, thinking };
+    if (previous && previous.messages === chat.length && previous.thinking === thinking) return;
     const viewport = logRef.current?.closest<HTMLElement>(
       "[data-radix-scroll-area-viewport]",
     );
     if (!viewport) return;
+    if (!previous) {
+      // First render: open a saved conversation at its latest reply. Setting the
+      // panel's own scroll position moves nothing else on the page.
+      viewport.scrollTop = viewport.scrollHeight;
+      return;
+    }
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     viewport.scrollTo({
       top: viewport.scrollHeight,
@@ -119,7 +128,7 @@ export function AIAssistant({ className }: { className?: string }) {
           live.source === "verified-sold-records"
             ? "From your verified Closed/Sold records, listed as-is. Not ranked as comps."
             : live.source === "workspace"
-              ? "AI analysis of your saved workspace records. No public web or MLS lookup."
+              ? "AI answer from your saved profile, Social Desk listings and sold records. No web or MLS lookup."
               : null;
         reply = sourceNote
           ? `${live.answer}\n\n— ${sourceNote}`
@@ -150,12 +159,14 @@ export function AIAssistant({ className }: { className?: string }) {
           <Bot className="h-4 w-4 text-[var(--color-primary)]" />
         </div>
         <CardTitle className="flex-1">AI assistant</CardTitle>
+        {/* States the boundary, not a promise about every answer: the model also
+            draws on general knowledge, but it never looks anything up. */}
         <Badge
           variant="success"
-          title="Answers use only the records saved in your workspace"
+          title="Reads your saved profile, the listings you add in Social Desk and your verified sold records. It does not search the web or an MLS."
         >
-          <Lock aria-hidden="true" className="h-3 w-3" />
-          Your data only
+          <ShieldCheck aria-hidden="true" className="h-3 w-3" />
+          No web or MLS lookup
         </Badge>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-4">
@@ -191,7 +202,7 @@ export function AIAssistant({ className }: { className?: string }) {
                         <p role="status" className="flex min-h-11 items-center px-1 text-xs text-[var(--color-fg-muted)]">
                           {rated[m.id] === "up"
                             ? "Thanks. Marked as helpful."
-                            : "Thanks. We'll use that to improve answers."}
+                            : "Thanks. Marked as not helpful."}
                         </p>
                       ) : (
                         <>
@@ -262,7 +273,7 @@ export function AIAssistant({ className }: { className?: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             maxLength={2_000}
-            placeholder="Ask about your listings, sold records or strategy…"
+            placeholder="Ask about your profile, sold records or strategy…"
             aria-label="Ask the AI assistant"
             className="min-h-11 flex-1"
           />

@@ -116,7 +116,7 @@ function TransactionsPage() {
                 <CardContent className="space-y-3">
                   {!deal && (
                     <p className="text-sm text-[var(--color-fg-muted)]">
-                      Documents you have noted on a deal are listed here.
+                      There are no deals yet, so there are no documents to show.
                     </p>
                   )}
                   {deal?.documents.map((doc) => (
@@ -230,7 +230,7 @@ function TransactionsPage() {
         <TabsContent value="signatures" className="space-y-4">
           {deals.length === 0 && (
             <NoDealsNotice>
-              E-signature isn't connected yet. Documents you mark as signed will be listed here.
+              E-signature isn't connected yet. Keep signed documents in your transaction platform.
             </NoDealsNotice>
           )}
           <div className="grid gap-4 md:grid-cols-2">

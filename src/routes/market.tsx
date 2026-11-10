@@ -56,10 +56,10 @@ function MarketDataPage() {
             </li>
           </ol>
           <div className="mt-6 flex flex-wrap gap-2">
-            <Button asChild className="min-h-11">
+            <Button asChild className="h-auto min-h-11 whitespace-normal text-center">
               <Link to="/cma">Import authorized Closed/Sold records</Link>
             </Button>
-            <Button asChild variant="secondary" className="min-h-11">
+            <Button asChild variant="secondary" className="h-auto min-h-11 whitespace-normal text-center">
               <Link to="/cma">Open comparison planning</Link>
             </Button>
           </div>

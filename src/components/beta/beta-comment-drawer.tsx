@@ -40,6 +40,7 @@ import {
   DEFAULT_FEEDBACK_TRIGGER_POSITION,
   FEEDBACK_TRIGGER_POSITION_KEY,
   clampFeedbackTriggerRatio,
+  feedbackTriggerTop,
   feedbackTriggerPositionFromPointer,
   parseFeedbackTriggerPosition,
   type FeedbackTriggerPosition,
@@ -113,6 +114,8 @@ export function BetaCommentDrawer() {
     DEFAULT_FEEDBACK_TRIGGER_POSITION,
   );
   const [viewportHeight, setViewportHeight] = useState(0);
+  // Top edge of the phone tab bar while it is on screen; null on wider layouts.
+  const [bottomLimit, setBottomLimit] = useState<number | null>(null);
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
   const drag = useRef<DragState | null>(null);
   const suppressTriggerClick = useRef(false);
@@ -124,7 +127,14 @@ export function BetaCommentDrawer() {
   const visibleHistory = showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_COUNT);
 
   useEffect(() => {
-    const applyViewport = () => setViewportHeight(window.innerHeight);
+    const applyViewport = () => {
+      setViewportHeight(window.innerHeight);
+      // Measured, not assumed: the bar's height includes the device's bottom
+      // inset, and it is hidden altogether at tablet width and above.
+      const tabBar = document.querySelector<HTMLElement>("nav.ios-tab-bar");
+      const rect = tabBar?.getBoundingClientRect();
+      setBottomLimit(rect && rect.height > 0 ? rect.top : null);
+    };
     try {
       setTriggerPosition(
         parseFeedbackTriggerPosition(localStorage.getItem(FEEDBACK_TRIGGER_POSITION_KEY)),
@@ -149,7 +159,11 @@ export function BetaCommentDrawer() {
   if (!unlocked) return null;
 
   const { title: pageTitle, module, pagePath } = resolvePageMeta(pathname);
-  const triggerTop = Math.round(Math.max(1, viewportHeight || 800) * triggerPosition.yRatio);
+  const triggerTop = feedbackTriggerTop({
+    position: triggerPosition,
+    viewportHeight: viewportHeight || 800,
+    bottomLimit,
+  });
   const positionStyle = {
     top: `${triggerTop}px`,
     transform: "translateY(-50%)",

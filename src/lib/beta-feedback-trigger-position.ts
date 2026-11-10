@@ -20,6 +20,33 @@ export const DEFAULT_FEEDBACK_TRIGGER_POSITION: FeedbackTriggerPosition = {
   yRatio: MAX_Y_RATIO,
 };
 
+/** Half the trigger's 44px height: it is positioned by its centre line. */
+export const FEEDBACK_TRIGGER_HALF_HEIGHT = 22;
+/** Space kept between the trigger and the tab bar or the edge of the screen. */
+export const FEEDBACK_TRIGGER_GAP = 8;
+
+/**
+ * Centre line of the trigger, in pixels from the top of the viewport.
+ *
+ * A share of the viewport height is not enough on its own: on a phone held
+ * sideways 84% of the height is inside the tab bar. `bottomLimit` is the top
+ * edge of whatever is fixed to the bottom of the screen (the tab bar), or null
+ * when nothing is. The page reserves matching space under its last element;
+ * see `.main-content` in styles.css.
+ */
+export function feedbackTriggerTop(input: {
+  position: FeedbackTriggerPosition;
+  viewportHeight: number;
+  bottomLimit?: number | null;
+}): number {
+  const height = Math.max(1, input.viewportHeight);
+  const floor = Math.min(height, input.bottomLimit ?? height);
+  const reach = FEEDBACK_TRIGGER_HALF_HEIGHT + FEEDBACK_TRIGGER_GAP;
+  const wanted = Math.round(height * clampFeedbackTriggerRatio(input.position.yRatio));
+  // Never below the floor; and never off the top, even on a very short screen.
+  return Math.max(reach, Math.min(wanted, Math.round(floor - reach)));
+}
+
 export function clampFeedbackTriggerRatio(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_FEEDBACK_TRIGGER_POSITION.yRatio;
   return Math.min(MAX_Y_RATIO, Math.max(MIN_Y_RATIO, value));

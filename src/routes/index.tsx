@@ -433,7 +433,7 @@ function DashboardPage() {
           ) : (
             <Card>
               <CardContent className="py-16 text-center text-sm text-[var(--color-fg-muted)]">
-                Pick a priority on the left to see its action pack.
+                When you have a priority, its action pack appears here.
               </CardContent>
             </Card>
           )}

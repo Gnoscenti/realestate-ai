@@ -536,24 +536,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div data-testid={accessOk ? "entitled-workspace" : "free-workspace"} className="gradient-mesh flex min-h-dvh text-[var(--color-fg)]">
-      {profileSyncError && (
-        <div
-          role="status"
-          className="fixed bottom-20 left-4 right-4 z-50 mx-auto flex max-w-lg flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm shadow-[var(--shadow-lg)]"
-        >
-          <p className="min-w-0 flex-1">
-            We couldn't load your saved profile. You can keep working with what's on this device.
-          </p>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="min-h-[40px]"
-            onClick={() => setProfileSyncAttempt((attempt) => attempt + 1)}
-          >
-            Try again
-          </Button>
-        </div>
-      )}
       <aside
         className={cn(
           "glass-sidebar sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-[color-mix(in_oklab,var(--color-border)_80%,transparent)] transition-[width] duration-200 md:flex",
@@ -829,6 +811,28 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
         </header>
         {isDemo && <DemoBanner />}
+        {/* Under the header, in the page's own flow. Floating at the bottom of
+            the screen it shared that corner with the feedback button, which
+            covered "Try again" on a phone. */}
+        {profileSyncError && (
+          <div
+            role="status"
+            data-testid="profile-sync-notice"
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-[color-mix(in_oklab,var(--color-warning)_40%,var(--color-border))] bg-[color-mix(in_oklab,var(--color-warning)_14%,var(--color-bg))] px-3 py-2 text-sm text-[var(--color-fg)] sm:px-5"
+          >
+            <p className="min-w-0 flex-1">
+              We couldn't load your saved profile. You can keep working with what's on this device.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-[40px] shrink-0"
+              onClick={() => setProfileSyncAttempt((attempt) => attempt + 1)}
+            >
+              Try again
+            </Button>
+          </div>
+        )}
         </div>
 
         <main className="main-content flex-1 p-4 sm:p-6 lg:p-8">
