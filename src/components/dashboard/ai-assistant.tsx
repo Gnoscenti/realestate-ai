@@ -71,17 +71,19 @@ export function AIAssistant({ className }: { className?: string }) {
   const [thinking, setThinking] = useState(false);
   const [rated, setRated] = useState<Record<string, "up" | "down">>({});
   const logRef = useRef<HTMLDivElement>(null);
-  const seenMessages = useRef<number | null>(null);
+  const seenMessages = useRef<{ count: number; thinking: boolean } | null>(null);
 
   // Follow the conversation inside the chat panel only. scrollIntoView() also
   // scrolls the page, which used to drag the Command Center past its own
   // heading on every load, so the panel's viewport is moved directly, and only
   // once the conversation actually changes.
   useEffect(() => {
-    const count = chat.length + (thinking ? 1 : 0);
     const previous = seenMessages.current;
-    seenMessages.current = count;
-    if (previous === null || previous === count) return;
+    seenMessages.current = { count: chat.length, thinking };
+    if (
+      previous === null ||
+      (previous.count === chat.length && previous.thinking === thinking)
+    ) return;
     const viewport = logRef.current?.closest<HTMLElement>(
       "[data-radix-scroll-area-viewport]",
     );
