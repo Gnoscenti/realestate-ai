@@ -4,6 +4,7 @@ import type {
   BetaCommentRecord,
 } from "@/lib/beta-comments";
 import {
+  betaCommentDeliveryStatus,
   loadLocalBetaInbox,
   reconcileLocalBetaComment,
   saveLocalBetaComment,
@@ -86,5 +87,69 @@ describe("device-first beta comment storage", () => {
 
     expect(loadLocalBetaInbox()).toHaveLength(1);
     expect(loadLocalBetaInbox()[0]?.body).toBe("Updated canonical body");
+  });
+});
+
+describe("engineering-intake delivery tracking", () => {
+  const serverRecord = (local: BetaCommentRecord, id: string): BetaCommentRecord => ({
+    pagePath: local.pagePath,
+    pageTitle: local.pageTitle,
+    module: local.module,
+    body: local.body,
+    category: local.category,
+    sessionId: local.sessionId,
+    sessionNumber: local.sessionNumber,
+    id,
+    createdAt: local.createdAt,
+    globalNumber: local.globalNumber,
+    fileName: local.fileName,
+  });
+
+  it("marks a new suggestion unsent until the server confirms an issue", () => {
+    const local = saveLocalBetaComment(payload);
+    expect(betaCommentDeliveryStatus(local)).toBe("unsent");
+
+    reconcileLocalBetaComment(local.id, serverRecord(local, "feedback_1"), {
+      state: "sent",
+      issueNumber: 12,
+      issueUrl: "https://github.com/o/r/issues/12",
+    });
+
+    const [stored] = loadLocalBetaInbox();
+    expect(betaCommentDeliveryStatus(stored!)).toBe("sent");
+    expect(stored?.delivery).toEqual({
+      state: "sent",
+      issueNumber: 12,
+      issueUrl: "https://github.com/o/r/issues/12",
+    });
+  });
+
+  it("keeps a server-accepted suggestion re-sendable when no issue was created", () => {
+    const local = saveLocalBetaComment(payload);
+    reconcileLocalBetaComment(local.id, serverRecord(local, "feedback_2"), { state: "unsent" });
+
+    expect(betaCommentDeliveryStatus(loadLocalBetaInbox()[0]!)).toBe("unsent");
+  });
+
+  it("classifies records saved before delivery tracking existed", () => {
+    const legacy = serverRecord(saveLocalBetaComment(payload), "x");
+
+    expect(betaCommentDeliveryStatus({ ...legacy, id: "bc_local_3_abc" })).toBe("unsent");
+    expect(betaCommentDeliveryStatus({ ...legacy, id: "feedback_legacy" })).toBe("unknown");
+  });
+
+  it("re-sends an older suggestion in place without duplicating or reordering", () => {
+    const older = saveLocalBetaComment(payload);
+    const newer = saveLocalBetaComment({ ...payload, body: "A newer idea." });
+
+    reconcileLocalBetaComment(older.id, serverRecord(older, "feedback_older"), {
+      state: "sent",
+      issueNumber: 3,
+      issueUrl: "https://github.com/o/r/issues/3",
+    });
+
+    const inbox = loadLocalBetaInbox();
+    expect(inbox.map((record) => record.id)).toEqual([newer.id, "feedback_older"]);
+    expect(betaCommentDeliveryStatus(inbox[1]!)).toBe("sent");
   });
 });
