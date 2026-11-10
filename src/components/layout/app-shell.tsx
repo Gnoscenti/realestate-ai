@@ -351,10 +351,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           if (!hasAppAccess(billing) || billing.currentPeriodEnd !== entitlement.currentPeriodEnd) {
             activateBilling({
               ...billing,
-              status: entitlement.source === "code" ? "code" : "trialing",
-              source: entitlement.source === "code" ? "free_code" : entitlement.source === "demo" ? "demo_checkout" : "stripe_intro",
+              // Paid and code access is for life: the server sends no end date,
+              // which also clears a 30-day date an older mirror still holds.
+              status: entitlement.source === "code" ? "code" : entitlement.source === "demo" ? "trialing" : "active",
+              source: entitlement.source === "code" ? "free_code" : entitlement.source === "demo" ? "demo_checkout" : "stripe_active",
               currentPeriodEnd: entitlement.currentPeriodEnd,
-              introEndsAt: entitlement.source === "code" ? null : entitlement.currentPeriodEnd,
+              introEndsAt: entitlement.source === "demo" ? entitlement.currentPeriodEnd : null,
               activatedAt: billing.activatedAt || new Date().toISOString(),
               isDemo: entitlement.source === "demo",
             });
