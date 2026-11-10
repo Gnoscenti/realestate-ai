@@ -49,7 +49,7 @@ import type { Contractor } from "@/lib/contractors";
 import {
   emptyBilling,
   activateFreeCode,
-  startDemoAccess,
+  startIntroAccess,
   startLifetimeAccess,
   type BillingState,
 } from "@/lib/billing";
@@ -141,7 +141,7 @@ interface AppState {
   clearBilling: () => void;
   completeDemoCheckout: (sessionId?: string) => void;
   /** A server-verified Stripe payment. Never recorded as a demo. */
-  completePaidCheckout: (sessionId: string) => void;
+  completePaidCheckout: (sessionId: string, lifetime?: boolean) => void;
   importLeadsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   importListingsCsv: (raw: string) => { added: number; skipped: number; errors: string[] };
   addProperty: (
@@ -215,14 +215,16 @@ const STAGE_PROGRESS: Record<Deal["stage"], number> = {
 
 function welcomeFor(name?: string, area?: string): ChatMessage[] {
   const greet = name ? `Hi ${name.split(" ")[0]}` : "Hello";
+  // The assistant reads server-side records only. Local market notes are a page
+  // to browse, not something it can answer from, so they are offered as a link.
   const local = isRsfCorridor(area)
-    ? " RSF corridor knowledge is loaded — ask about Covenant, comps, or schools."
-    : " Import your leads and listings — we never invent client or inventory data.";
+    ? " Local notes for Rancho Santa Fe are on the Market Knowledge page."
+    : "";
   return [
     {
       id: "welcome",
       role: "assistant",
-      content: `${greet} — I'm your AI real estate copilot.${local} Your book starts empty. Import CSV or add records so priorities and CMAs use YOUR data.`,
+      content: `${greet}. I'm your AI assistant. I answer from your saved profile, the listings you add in Social Desk and your verified sold records. I can't read your leads or imported listings yet, I don't search the web or an MLS, and I never invent data.${local}`,
       createdAt: new Date(0).toISOString(),
     },
   ];
@@ -811,8 +813,10 @@ export const useAppStore = create<AppState>()(
       clearBilling: () => set({ billing: emptyBilling() }),
 
       completeDemoCheckout: (sessionId) => {
-        const billing = startDemoAccess({
+        const billing = startIntroAccess({
+          source: "demo_checkout",
           sessionId: sessionId ?? `cs_demo_${Date.now().toString(36)}`,
+          isDemo: true,
         });
         set({ billing });
       },
@@ -821,8 +825,15 @@ export const useAppStore = create<AppState>()(
       // separate from completeDemoCheckout so a genuine purchase is never
       // stamped isDemo: true (which also showed "demo checkout" on /billing
       // and offered paying customers a "Reset access (demo)" button).
-      completePaidCheckout: (sessionId) => {
-        const billing = startLifetimeAccess({ sessionId });
+      completePaidCheckout: (sessionId, lifetime) => {
+        // A beta-round purchase is for life; a later one buys the 30-day window.
+        const billing = lifetime
+          ? startLifetimeAccess({ sessionId })
+          : startIntroAccess({
+              source: "stripe_intro",
+              sessionId,
+              isDemo: false,
+            });
         set({ billing });
       },
 
@@ -1180,13 +1191,12 @@ export const useAppStore = create<AppState>()(
 
       clearChat: () => {
         const name = get().agentProfile?.name;
-        const area = get().agentProfile?.areaOfOperations;
         set({
           chat: [
             {
               id: "welcome",
               role: "assistant",
-              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about calendars, RSF knowledge, or CMAs${area && isRsfCorridor(area) ? " — corridor KB is still online" : ""}.`,
+              content: `Chat cleared${name ? `, ${name.split(" ")[0]}` : ""}. Ask about your profile, sold records or strategy.`,
               createdAt: new Date().toISOString(),
             },
           ],

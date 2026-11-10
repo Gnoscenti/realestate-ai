@@ -1,30 +1,44 @@
 /**
  * Pricing + access codes for RealEstate AI launch.
  *
- * Pricing: a single one-time $9.99 charge that unlocks lifetime access.
- * There is no subscription, nothing renews, and a customer who has paid or
- * redeemed a beta code is never asked to pay for app access again. Everyone
- * who paid under the earlier 30-day terms keeps access for life as well.
+ * Pricing: a single one-time $9.99 charge that unlocks 30 days of access.
+ * There is no subscription and nothing renews automatically.
  * Five free beta codes unlock full access + feedback board.
+ *
+ * Beta round: everyone who paid or redeemed a code before
+ * BETA_LIFETIME_CUTOFF_ISO keeps access for life and is never charged for it
+ * again. The terms above apply to everyone who arrives after that.
  */
 
-export const ACCESS_PRICE_CENTS = 999;
-/** Demo checkout (never production) is the only time-limited grant. */
-export const DEMO_ACCESS_DAYS = 30;
+export const INTRO_PRICE_CENTS = 999;
+export const INTRO_DAYS = 30;
 export const CURRENCY = "usd";
+
+/**
+ * End of the beta round: the end of November 10, 2026, Pacific time. A payment
+ * or code redemption before this instant is a lifetime grant.
+ */
+export const BETA_LIFETIME_CUTOFF_ISO = "2026-11-11T08:00:00.000Z";
+
+/** Whether a purchase made at `atMs` still earns the beta round's lifetime access. */
+export function betaLifetimeOfferOpen(atMs: number = Date.now()): boolean {
+  return atMs < Date.parse(BETA_LIFETIME_CUTOFF_ISO);
+}
 
 export const PLAN = {
   id: "pro",
   name: "RealEstate AI Pro",
-  priceLabel: "$9.99",
-  accessLabel: "one-time payment, lifetime access",
+  introLabel: "$9.99",
+  introPeriod: "30 days of access",
+  // Shown to a buyer deciding whether to pay: benefits in plain words, no
+  // internal feature or vendor names.
   features: [
-    "CiteLock visibility batches across configured answer engines",
-    "Ranked fixes with drafted pages, FAQs, and profile checklists",
-    "Social Desk: facts-first drafts, fair-housing review, Postiz publishing or handoff",
-    "Command Center, instant-response scripts, CMA notes, calendar and vendors",
-    "Priority support during beta",
-    "Suggest drawer → engineering feedback",
+    "CiteLock: check how AI answer engines describe you in your market",
+    "Ranked fixes, with drafted pages, FAQs and profile checklists",
+    "Social Desk: posts drafted from facts, fair-housing review, then publish or hand off",
+    "Command Center, lead reply drafts, CMA notes, calendar and vendors",
+    "Priority support during the beta",
+    "Send suggestions to the team from any page",
   ],
 } as const;
 
@@ -77,9 +91,12 @@ export type SubscriptionStatus =
 export type BillingState = {
   status: SubscriptionStatus;
   source: AccessSource;
-  /** ISO — end of a time-limited demo window; null for paid and code access. */
+  /** ISO — end of the paid access window */
   introEndsAt: string | null;
-  /** ISO — end of time-limited access; null means lifetime access. */
+  /**
+   * ISO — access paid-through. Nothing renews automatically. Null on active
+   * access means a beta-round lifetime grant: there is no end date.
+   */
   currentPeriodEnd: string | null;
   /** Stripe session / sub ids when available */
   stripeCustomerId: string | null;
@@ -144,7 +161,28 @@ export function formatMoney(cents: number): string {
   }).format(cents / 100);
 }
 
-/** Browser mirror of a verified one-time payment: access never ends. */
+export function startIntroAccess(opts?: {
+  source?: AccessSource;
+  sessionId?: string;
+  isDemo?: boolean;
+}): BillingState {
+  const now = new Date();
+  const end = new Date(now.getTime() + INTRO_DAYS * 24 * 60 * 60 * 1000);
+  return {
+    status: "trialing",
+    source: opts?.source ?? "demo_checkout",
+    introEndsAt: end.toISOString(),
+    currentPeriodEnd: end.toISOString(),
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    lastCheckoutSessionId: opts?.sessionId ?? null,
+    redeemedCode: null,
+    activatedAt: now.toISOString(),
+    isDemo: opts?.isDemo ?? true,
+  };
+}
+
+/** Browser mirror of a beta-round lifetime purchase: access has no end date. */
 export function startLifetimeAccess(opts?: { sessionId?: string }): BillingState {
   return {
     status: "active",
@@ -160,34 +198,22 @@ export function startLifetimeAccess(opts?: { sessionId?: string }): BillingState
   };
 }
 
-/** Browser mirror of a demo checkout: time-limited test access, no payment. */
-export function startDemoAccess(opts?: { sessionId?: string }): BillingState {
-  const now = new Date();
-  const end = new Date(now.getTime() + DEMO_ACCESS_DAYS * 24 * 60 * 60 * 1000);
-  return {
-    status: "trialing",
-    source: "demo_checkout",
-    introEndsAt: end.toISOString(),
-    currentPeriodEnd: end.toISOString(),
-    stripeCustomerId: null,
-    stripeSubscriptionId: null,
-    lastCheckoutSessionId: opts?.sessionId ?? null,
-    redeemedCode: null,
-    activatedAt: now.toISOString(),
-    isDemo: true,
-  };
+/** True when this browser's access has no end date (a beta-round lifetime grant). */
+export function hasLifetimeAccess(b: BillingState | null | undefined): boolean {
+  return Boolean(b) && hasAppAccess(b) && !b!.currentPeriodEnd && !b!.isDemo;
 }
 
 export function activateFreeCode(code: string): BillingState | null {
   const match = findFreeCode(code);
   if (!match) return null;
   const now = new Date();
-  // Beta codes grant lifetime access.
+  // Codes grant 1 year pilot access
+  const end = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   return {
     status: "code",
     source: "free_code",
     introEndsAt: null,
-    currentPeriodEnd: null,
+    currentPeriodEnd: end.toISOString(),
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     lastCheckoutSessionId: null,
