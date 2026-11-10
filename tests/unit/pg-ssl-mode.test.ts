@@ -36,6 +36,34 @@ describe("pinVerifyFullSslMode", () => {
     expect(pinVerifyFullSslMode(url)).toBe(url);
   });
 
+  it("pins every duplicate, because the driver keeps the last one", () => {
+    const pinned = pinVerifyFullSslMode(`${BASE}?sslmode=require&connect_timeout=5&sslmode=prefer`);
+
+    expect(pinned).toBe(`${BASE}?sslmode=verify-full&connect_timeout=5&sslmode=verify-full`);
+    expect(parse(pinned).sslmode).toBe("verify-full");
+  });
+
+  it("treats a question mark inside a value as part of that value", () => {
+    expect(
+      pinVerifyFullSslMode(`${BASE}?application_name=job?sslmode=require&sslmode=require`),
+    ).toBe(`${BASE}?application_name=job?sslmode=require&sslmode=verify-full`);
+    // The compatibility text sits inside application_name, so it is not an opt-in.
+    expect(
+      pinVerifyFullSslMode(`${BASE}?application_name=worker?uselibpqcompat=true&sslmode=require`),
+    ).toBe(`${BASE}?application_name=worker?uselibpqcompat=true&sslmode=verify-full`);
+  });
+
+  it("pins a percent-encoded mode the driver would decode to a weakening one", () => {
+    const original = `${BASE}?sslmode=%72equire`;
+    expect(parse(pinVerifyFullSslMode(original)).sslmode).toBe("verify-full");
+  });
+
+  it("keeps a trailing fragment in place", () => {
+    expect(pinVerifyFullSslMode(`${BASE}?sslmode=require#note`)).toBe(
+      `${BASE}?sslmode=verify-full#note`,
+    );
+  });
+
   it("does not touch a password that happens to contain sslmode text", () => {
     const url = "postgresql://u:sslmode%3Drequire@db.example.com/app?sslmode=require";
     expect(pinVerifyFullSslMode(url)).toBe(
