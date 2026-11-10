@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -209,10 +210,11 @@ function AlertsPage() {
               </div>
               <div>
                 <Label htmlFor="token">Access token (optional — live Gmail)</Label>
-                <Input
+                <PasswordInput
                   id="token"
-                  type="password"
-                  className="mt-1.5 h-11"
+                  secretLabel="access token"
+                  containerClassName="mt-1.5"
+                  className="h-11"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="Paste OAuth token if you have one"

@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState, type AppUser } from "@/lib/auth/use-current-user";
 import { useSignOut } from "@/lib/auth/use-sign-out";
@@ -278,10 +279,10 @@ function LoginPage() {
 
               <div>
                 <Label htmlFor="login-password">Password</Label>
-                <Input
+                <PasswordInput
                   id="login-password"
-                  type="password"
-                  className="mt-1.5 h-11"
+                  containerClassName="mt-1.5"
+                  className="h-11"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
