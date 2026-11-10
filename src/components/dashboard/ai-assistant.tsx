@@ -71,7 +71,7 @@ export function AIAssistant({ className }: { className?: string }) {
   const [thinking, setThinking] = useState(false);
   const [rated, setRated] = useState<Record<string, "up" | "down">>({});
   const logRef = useRef<HTMLDivElement>(null);
-  const seen = useRef<{ messages: number; thinking: boolean } | null>(null);
+  const seenMessages = useRef<{ count: number; thinking: boolean } | null>(null);
 
   // Follow the conversation inside the chat panel only. scrollIntoView() also
   // scrolls the page, which used to drag the Command Center past its own
@@ -82,9 +82,9 @@ export function AIAssistant({ className }: { className?: string }) {
   // as one more message and one fewer bubble in the same render, so a combined
   // count would not change and the reply would be left below the fold.
   useEffect(() => {
-    const previous = seen.current;
-    seen.current = { messages: chat.length, thinking };
-    if (previous && previous.messages === chat.length && previous.thinking === thinking) return;
+    const previous = seenMessages.current;
+    seenMessages.current = { count: chat.length, thinking };
+    if (previous && previous.count === chat.length && previous.thinking === thinking) return;
     const viewport = logRef.current?.closest<HTMLElement>(
       "[data-radix-scroll-area-viewport]",
     );
