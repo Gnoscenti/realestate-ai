@@ -1,8 +1,10 @@
+import { BespokeGatewayDashboard } from "@/components/concierge/BespokeGatewayDashboard";
 import { ComplianceSandboxPanel } from "@/components/compliance-ledger/sandbox-panel";
 import { useState, type FormEvent } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  Radar,
   CheckCircle2,
   Clock,
   FileText,
@@ -282,6 +284,7 @@ function TransactionsPage() {
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="signatures">E-signature</TabsTrigger>
           <TabsTrigger value="fractionalization">Fractionalization lab</TabsTrigger>
+          <TabsTrigger value="concierge">Bespoke Gateway</TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="space-y-6">
@@ -553,6 +556,19 @@ function TransactionsPage() {
           ))}
         </TabsContent>
         <TabsContent value="fractionalization"><ComplianceSandboxPanel /></TabsContent>
+        <TabsContent value="concierge">
+          <BespokeGatewayDashboard
+            citeLockLink={
+              <Link
+                to="/aieo"
+                className="flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-[#e3d8c7] hover:bg-[#302820] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#e5caa1]"
+              >
+                <Radar aria-hidden="true" className="size-4 shrink-0 text-[#d1ad7d]" />
+                CiteLock
+              </Link>
+            }
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );
