@@ -101,7 +101,8 @@ export function evaluateGatekeeper({ asset, round, identity, claim }: GateInput)
     return { allowed: false, reason: "The linked round must be in compliance review or open." };
   }
   const wallet = walletSchema.safeParse(identity.walletAddress);
-  if (!wallet.success || claim?.walletAddress !== wallet.data) {
+  const claimWallet = walletSchema.safeParse(claim?.walletAddress);
+  if (!claim || !wallet.success || !claimWallet.success || claimWallet.data !== wallet.data) {
     return { allowed: false, reason: "A claim must be bound to the connected demo wallet." };
   }
   if (
